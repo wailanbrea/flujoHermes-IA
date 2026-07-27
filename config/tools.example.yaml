@@ -1,0 +1,41 @@
+schema_version: 1
+
+default_policy: deny
+
+tools:
+  filesystem:
+    enabled: true
+    mode: workspace_only
+    allowed_roots:
+      - C:\AI-Workspace\local-ai-orchestrator
+  git:
+    enabled: true
+    force_push: false
+    delete_branch: false
+  terminal:
+    enabled: true
+    safe_mode: true
+    timeout_seconds: 300
+  browser:
+    enabled: false
+    reason: requires_phase_approval
+  playwright:
+    enabled: false
+    reason: requires_phase_approval
+  database:
+    enabled: false
+    reason: no_test_database_configured
+
+observability:
+  host: 127.0.0.1
+  port: 4310
+  read_only: true
+  capture_content: false
+  redact_keys:
+    - authorization
+    - api_key
+    - token
+    - cookie
+    - password
+    - prompt
+    - response

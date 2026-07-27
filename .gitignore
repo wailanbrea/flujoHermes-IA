@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+backups/*
+!backups/.gitkeep
+telemetry/events/*
+!telemetry/events/.gitkeep
+reports/**/*.log
+reports/**/raw-*
+dashboard/node_modules/
+dashboard/dist/
+__pycache__/
+*.pyc
+*.zip
+*.bak
+*.tmp

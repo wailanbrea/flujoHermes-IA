@@ -1,0 +1,37 @@
+schema_version: 1
+
+workspace:
+  allowed_roots:
+    - C:\AI-Workspace\local-ai-orchestrator
+  denied_roots:
+    - C:\Users\waila\.ssh
+    - C:\Users\waila\AppData
+    - C:\xampp\php\www
+    - C:\xampp\htdocs
+
+execution:
+  safe_mode: true
+  destructive_actions: deny
+  max_attempts_per_cause: 3
+  command_timeout_seconds: 300
+  require_approval:
+    - administrator
+    - restart
+    - global_install
+    - external_service
+    - credentials
+    - real_project_write
+
+context:
+  one_task_per_session: true
+  retrieve_selectively: true
+  exclude:
+    - .git
+    - vendor
+    - node_modules
+    - .gradle
+    - build
+    - dist
+    - storage/logs
+    - coverage
+    - backups

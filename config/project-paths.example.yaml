@@ -1,0 +1,15 @@
+schema_version: 1
+
+workspace:
+  path: C:\AI-Workspace\local-ai-orchestrator
+  access: read_write
+
+discovered_project_roots:
+  - path: C:\xampp\php\www
+    access: denied_until_pilot_approval
+  - path: C:\xampp\htdocs
+    access: denied_until_pilot_approval
+
+pilot:
+  path: C:\AI-Workspace\local-ai-orchestrator\examples\laravel
+  access: read_write_after_phase_approval

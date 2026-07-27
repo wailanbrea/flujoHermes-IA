@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "taskId": "MODULO-001",
+  "model": "",
+  "startedAt": "",
+  "finishedAt": "",
+  "durationMs": 0,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "contextMax": 0,
+    "contextPercent": 0
+  },
+  "execution": {
+    "apiCalls": 0,
+    "toolCalls": 0,
+    "toolErrors": 0,
+    "retries": 0
+  },
+  "tests": {
+    "executed": 0,
+    "passed": 0,
+    "failed": 0,
+    "qualityResult": "unknown"
+  },
+  "changes": {
+    "filesModified": 0,
+    "linesAdded": 0,
+    "linesDeleted": 0
+  },
+  "resources": {
+    "tokensPerSecond": null,
+    "ramPeakMiB": null,
+    "vramPeakMiB": null
+  },
+  "escalationRequired": false,
+  "humanCorrections": 0
+}

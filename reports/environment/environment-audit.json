@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "auditedAt": "2026-07-27T00:00:00-04:00",
+  "mode": "read-only",
+  "workspace": "C:\\AI-Workspace\\local-ai-orchestrator",
+  "operatingSystem": {
+    "status": "INSTALADO",
+    "name": "Microsoft Windows 11 Pro",
+    "version": "10.0.26200",
+    "build": "26200",
+    "architecture": "x64",
+    "powershell": "5.1.26100.8894"
+  },
+  "hardware": {
+    "cpu": {
+      "name": "AMD Ryzen 7 7800X3D 8-Core Processor",
+      "cores": 8,
+      "logicalProcessors": 16,
+      "virtualizationFirmwareEnabled": true
+    },
+    "memory": {
+      "totalGiB": 62.88,
+      "freeGiBAtAudit": 38.32
+    },
+    "gpu": {
+      "name": "AMD Radeon RX 9070",
+      "vramGiB": 15.92,
+      "driverVersion": "32.0.31021.5001",
+      "cudaStatus": "NO APLICA"
+    },
+    "disks": [
+      {"drive": "C:", "freeGiB": 259.64},
+      {"drive": "E:", "freeGiB": 208.08},
+      {"drive": "G:", "freeGiB": 1271.62}
+    ]
+  },
+  "virtualization": {
+    "hypervisorPresent": true,
+    "wsl": {
+      "status": "INSTALADO",
+      "version": "2.6.3.0",
+      "kernel": "6.6.87.2-1",
+      "defaultVersion": 2,
+      "distributions": [
+        {"name": "docker-desktop", "version": 2, "state": "Stopped"}
+      ]
+    },
+    "ubuntu": {"status": "NO INSTALADO"},
+    "windowsFeatureDetails": {
+      "status": "REQUIERE VERIFICACIÓN",
+      "reason": "DISM query requires elevation"
+    }
+  },
+  "tools": [
+    {"name": "Git", "status": "INSTALADO", "version": "2.55.0.windows.2"},
+    {"name": "Docker Desktop", "status": "INSTALADO", "version": "4.81.0", "runtime": "stopped"},
+    {"name": "Python", "status": "INSTALADO", "version": "3.12.10"},
+    {"name": "Hermes Python", "status": "INSTALADO", "version": "3.11.15"},
+    {"name": "pipx", "status": "NO INSTALADO"},
+    {"name": "Node.js", "status": "INSTALADO", "version": "24.4.0"},
+    {"name": "npm", "status": "INSTALADO", "version": "11.4.2"},
+    {"name": "pnpm", "status": "INSTALADO", "version": "11.9.0"},
+    {"name": "Java", "status": "INSTALADO", "version": "21.0.10"},
+    {"name": "Gradle global", "status": "NO INSTALADO"},
+    {"name": "Android Studio", "status": "INSTALADO", "version": "2025.1"},
+    {"name": "ADB", "status": "INSTALADO", "version": "37.0.0"},
+    {"name": "PHP", "status": "INSTALADO", "version": "8.2.12"},
+    {"name": "Composer", "status": "INSTALADO", "version": "2.8.11"},
+    {"name": "XAMPP", "status": "INSTALADO", "version": "8.2.12-0"},
+    {"name": "MariaDB", "status": "INSTALADO PERO INCOMPATIBLE", "version": "10.4.32", "reason": "MySQL was required"},
+    {"name": "LM Studio", "status": "INSTALADO", "version": "0.4.20+1"},
+    {"name": "Hermes Agent", "status": "INSTALADO", "version": "0.18.2"},
+    {"name": "Codex CLI", "status": "REQUIERE VERIFICACIÓN", "reason": "direct execution was denied"},
+    {"name": "Playwright", "status": "REQUIERE VERIFICACIÓN"},
+    {"name": "Visual Studio Code", "status": "INSTALADO", "version": "1.119.0"},
+    {"name": "Windows Terminal", "status": "INSTALADO"}
+  ],
+  "localServices": [
+    {"name": "LM Studio", "address": "127.0.0.1", "port": 1234, "status": "healthy"},
+    {"name": "Ollama", "address": "127.0.0.1", "port": 11434, "status": "detected_out_of_scope"},
+    {"name": "MariaDB", "address": "::", "port": 3306, "status": "security_review_required"}
+  ],
+  "lmStudio": {
+    "serverStatus": "running",
+    "loadedModels": 0,
+    "models": [
+      {
+        "id": "qwen3.6-27b-mtp",
+        "type": "vlm",
+        "architecture": "qwen35",
+        "quantization": "Q3_K_S",
+        "sizeGiB": 14.42,
+        "toolUseDeclared": true,
+        "benchmarkStatus": "REQUIERE VERIFICACIÓN"
+      },
+      {
+        "id": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+        "type": "vlm",
+        "architecture": "qwen35moe",
+        "quantization": "Q4_K_M",
+        "sizeGiB": 22.07,
+        "toolUseDeclared": true,
+        "benchmarkStatus": "REQUIERE VERIFICACIÓN"
+      },
+      {
+        "id": "text-embedding-nomic-embed-text-v1.5",
+        "type": "embeddings",
+        "quantization": "Q4_K_M",
+        "sizeGiB": 0.08,
+        "benchmarkStatus": "REQUIERE VERIFICACIÓN"
+      }
+    ]
+  },
+  "repositories": {
+    "roots": ["C:\\xampp\\php\\www", "C:\\xampp\\htdocs"],
+    "projectDirectories": 33,
+    "gitRepositories": 15,
+    "dirtyRepositories": 9,
+    "cleanRepositories": 6,
+    "environmentFilesRead": false,
+    "projectsModified": false
+  },
+  "errors": [
+    {
+      "operation": "Windows feature query",
+      "resolution": "Corrected argument shape; individual queries then required elevation",
+      "finalStatus": "REQUIERE VERIFICACIÓN"
+    },
+    {
+      "operation": "Repository inventory PowerShell pipeline",
+      "resolution": "Rebuilt result into an explicit array",
+      "finalStatus": "completed_on_second_attempt"
+    }
+  ]
+}
