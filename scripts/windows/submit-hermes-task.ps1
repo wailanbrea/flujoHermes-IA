@@ -33,6 +33,9 @@ param(
     [ValidateRange(60, 3600)]
     [int]$TimeoutSeconds = 1200,
 
+    [ValidateSet('Codex', 'Claude', 'Antigravity')]
+    [string]$RequestedBy = 'Codex',
+
     [switch]$ModificationAuthorized,
 
     [switch]$Wait
@@ -71,6 +74,7 @@ $contract = [ordered]@{
     projectId = $project.Id
     projectName = $project.Name
     projectRoot = $project.Path
+    requestedBy = $RequestedBy
     objective = $Objective
     acceptanceCriteria = @($AcceptanceCriteria)
     constraints = @($Constraints)
@@ -101,6 +105,7 @@ Set-TaskStatus `
         taskId = $taskId
         projectId = $project.Id
         projectName = $project.Name
+        requestedBy = $RequestedBy
         mode = $Mode
         createdAt = $contract.createdAt
         startedAt = $null

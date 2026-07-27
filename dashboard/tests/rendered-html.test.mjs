@@ -13,7 +13,8 @@ test("builds the finished local observability dashboard", async () => {
   assert.ok(assets.some((name) => name.endsWith(".js")));
   assert.match(page, /Flujo de trabajo real/);
   assert.match(page, /Estado de delegación local/);
-  assert.match(page, /Revisión Codex/);
+  assert.match(page, /Revisión del director/);
+  assert.match(page, /requestedBy/);
   assert.match(page, /El mapa que ya construiste está conectado/);
   assert.match(page, /snapshot\.workflow\.nodes/);
   assert.match(page, /Herramientas observadas/);
@@ -98,6 +99,8 @@ test("delegates Hermes work through a bounded review gate", async () => {
     ),
   ]);
   assert.match(submit, /ModificationAuthorized/);
+  assert.match(submit, /RequestedBy/);
+  assert.match(submit, /Codex.*Claude.*Antigravity/s);
   assert.match(submit, /GitScope -ne 'own'/);
   assert.match(worker, /graphify\.exe query/);
   assert.match(worker, /worktree add --detach/);
@@ -108,5 +111,41 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /diff --binary --no-ext-diff HEAD/);
   assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
   assert.match(review, /apply --check/);
+  assert.match(review, /ReviewedBy/);
   assert.match(review, /ensure-project-graph\.ps1/);
+});
+
+test("shares governance with Claude Code and Antigravity", async () => {
+  const [policy, sync, claude, antigravityRule] = await Promise.all([
+    readFile(
+      new URL("../../config/agent-governance.md", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../../scripts/windows/sync-agent-governance.ps1",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../../CLAUDE.md", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../../.agents/rules/local-ai-governance.md",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ]);
+  assert.match(policy, /Codex, Claude Code y Google Antigravity/);
+  assert.match(policy, /RequestedBy Codex/);
+  assert.match(policy, /RequestedBy Claude/);
+  assert.match(policy, /RequestedBy Antigravity/);
+  assert.match(policy, /Graphify/);
+  assert.match(policy, /Hermes/);
+  assert.match(sync, /\.claude\\CLAUDE\.md/);
+  assert.match(sync, /\.gemini\\GEMINI\.md/);
+  assert.match(sync, /LOCAL_AI_GOVERNANCE:START/);
+  assert.match(claude, /graphify query/);
+  assert.match(antigravityRule, /RequestedBy Antigravity/);
 });

@@ -36,15 +36,18 @@ herramientas salvo que se habilite una captura saneada explícita.
 
 ## Delegación local
 
-- Para implementaciones autorizadas en un repositorio Git propio, Codex diseña el
-  contrato y delega la generación/edición a Hermes mediante
+- Para implementaciones autorizadas en un repositorio Git propio, Codex, Claude Code o
+  Antigravity actúan como director: diseñan el contrato y delegan la generación/edición
+  a Hermes mediante
   `scripts/windows/submit-hermes-task.ps1`.
+- El director debe identificarse con `-RequestedBy Codex`, `-RequestedBy Claude` o
+  `-RequestedBy Antigravity`.
 - No invocar Hermes con `--yolo`, `--oneshot` ni `-z`. El worker usa aprobaciones
   normales, checkpoints, herramientas limitadas, máximo de turnos y worktree aislado.
-- Codex debe revisar `changes.patch`; sólo después puede usar
-  `scripts/windows/review-hermes-task.ps1 -Decision Approve`.
-- Codex ejecuta pruebas independientes y cierra con `-Decision Complete`. Un resultado
-  de Hermes nunca es evidencia suficiente por sí solo.
+- El mismo director debe revisar `changes.patch`; sólo después puede usar
+  `scripts/windows/review-hermes-task.ps1 -Decision Approve -ReviewedBy <director>`.
+- El director ejecuta pruebas independientes y cierra con `-Decision Complete`. Un
+  resultado de Hermes nunca es evidencia suficiente por sí solo.
 - Proyectos sin Git propio permanecen en análisis Graphify, pero no reciben escritura
   delegada hasta disponer de un límite reversible y verificable.
 

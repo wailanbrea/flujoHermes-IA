@@ -318,7 +318,7 @@ export default function Home() {
             <strong>{snapshot?.delegation.activeCount ?? "—"}</strong>
           </div>
           <div>
-            <span>Revisión Codex</span>
+            <span>Revisión del director</span>
             <strong>{snapshot?.delegation.awaitingReviewCount ?? "—"}</strong>
           </div>
           <div>
@@ -329,7 +329,7 @@ export default function Home() {
             <span>Última tarea</span>
             <strong>
               {snapshot?.delegation.latestTask
-                ? `${snapshot.delegation.latestTask.projectName} · ${snapshot.delegation.latestTask.state}`
+                ? `${snapshot.delegation.latestTask.requestedBy} → ${snapshot.delegation.latestTask.projectName} · ${snapshot.delegation.latestTask.state}`
                 : "Sin actividad"}
             </strong>
           </div>

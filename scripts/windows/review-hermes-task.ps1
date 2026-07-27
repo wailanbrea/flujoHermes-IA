@@ -14,7 +14,10 @@ param(
 
     [string]$ValidationSummary,
 
-    [Nullable[bool]]$ValidationPassed
+    [Nullable[bool]]$ValidationPassed,
+
+    [ValidateSet('Codex', 'Claude', 'Antigravity')]
+    [string]$ReviewedBy = 'Codex'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,6 +41,7 @@ if ($Decision -eq 'Reject') {
         -Message 'Codex rechazo el resultado local.' `
         -Fields @{
             reviewedAt = [DateTime]::UtcNow.ToString('o')
+            reviewedBy = $ReviewedBy
             worktreeActive = $false
         }
 }
@@ -70,6 +74,7 @@ elseif ($Decision -eq 'Approve') {
         -Message 'Parche aprobado; Codex debe ejecutar la validacion.' `
         -Fields @{
             reviewedAt = [DateTime]::UtcNow.ToString('o')
+            reviewedBy = $ReviewedBy
             worktreeActive = $false
         }
 }
@@ -95,6 +100,7 @@ else {
         -Message $message `
         -Fields @{
             validatedAt = [DateTime]::UtcNow.ToString('o')
+            reviewedBy = $ReviewedBy
             validationPassed = [bool]$ValidationPassed
             validationSummary = $ValidationSummary.Substring(
                 0,

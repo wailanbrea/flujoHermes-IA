@@ -113,6 +113,7 @@ export type HermesTaskState =
 export interface HermesTaskSummary {
   taskId: string;
   projectName: string;
+  requestedBy: "Codex" | "Claude" | "Antigravity";
   mode: "analysis" | "execute";
   state: HermesTaskState;
   updatedAt: string;

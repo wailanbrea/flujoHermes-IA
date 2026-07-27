@@ -1,7 +1,8 @@
 # Local AI Orchestrator
 
-Entorno aislado para operar una cadena local basada en Codex, Hermes Agent,
-Graphify, LM Studio, WSL2, Docker y el dashboard privado TRAMA.
+Entorno aislado para operar una cadena local dirigida por Codex, Claude Code o
+Google Antigravity, con Hermes Agent, Graphify, LM Studio, WSL2, Docker y el
+dashboard privado TRAMA.
 
 ## Estado
 
@@ -51,25 +52,38 @@ $task = .\scripts\windows\submit-hermes-task.ps1 `
   -Objective "<cambio solicitado>" `
   -AcceptanceCriteria @("<criterio 1>", "<criterio 2>") `
   -Constraints @("no cambiar APIs públicas") `
+  -RequestedBy Codex `
   -Mode execute `
   -ModificationAuthorized `
   -Wait | ConvertFrom-Json
 
-# Codex revisa telemetry\runtime\hermes-jobs\<taskId>\changes.patch
+# El director revisa telemetry\runtime\hermes-jobs\<taskId>\changes.patch
 .\scripts\windows\review-hermes-task.ps1 `
   -TaskId $task.taskId `
-  -Decision Approve
+  -Decision Approve `
+  -ReviewedBy Codex
 
 # Después de pruebas independientes:
 .\scripts\windows\review-hermes-task.ps1 `
   -TaskId $task.taskId `
   -Decision Complete `
+  -ReviewedBy Codex `
   -ValidationPassed $true `
   -ValidationSummary "build, lint y pruebas aprobadas"
 ```
 
 TRAMA muestra la cola, ejecución de Hermes, parche aislado y puerta de revisión,
 pero no expone el objetivo, las respuestas del modelo ni argumentos de herramientas.
+
+Sincronizar la política global para Claude Code y Antigravity:
+
+```powershell
+.\scripts\windows\sync-agent-governance.ps1
+```
+
+Claude usa `~/.claude/CLAUDE.md`; Antigravity usa `~/.gemini/GEMINI.md`. Ambos
+reciben la misma política canónica de `config/agent-governance.md` y deben
+identificarse con `-RequestedBy` y `-ReviewedBy`.
 
 Comprobar el entorno:
 

@@ -115,6 +115,7 @@ const projectCatalogSchema = z.object({
 const hermesTaskSchema = z.object({
   taskId: z.string(),
   projectName: z.string(),
+  requestedBy: z.enum(["Codex", "Claude", "Antigravity"]).default("Codex"),
   mode: z.enum(["analysis", "execute"]),
   state: z.enum([
     "queued",
@@ -748,7 +749,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
       delegation,
       service: {
         id: "hermes-broker",
-        name: "Puente Codex → Hermes",
+        name: "Puente IA → Hermes",
         role: "Delegación local",
         state,
         detail: `${delegation.activeCount} activas · ${delegation.awaitingReviewCount} por revisar · ${delegation.completedCount} validadas`,
@@ -766,7 +767,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     return {
       ...failedProbe(
         "hermes-broker",
-        "Puente Codex → Hermes",
+        "Puente IA → Hermes",
         "Delegación local",
         "Cola JSON local",
         start,
@@ -853,10 +854,10 @@ function buildWorkflow(
       y: 24,
     },
     {
-      id: "codex",
-      label: "Codex",
-      role: "Director y revisor",
-      detail: "Diseña, delega y valida",
+      id: "directors",
+      label: "Directores IA",
+      role: "Dirección y revisión",
+      detail: "Codex · Claude · Antigravity",
       state: graph.codexIntegrated ? "healthy" : "degraded",
       kind: "agent",
       x: 22,
@@ -923,11 +924,11 @@ function buildWorkflow(
       y: 42,
     },
     {
-      id: "codex-review",
-      label: "Revisión Codex",
+      id: "director-review",
+      label: "Revisión del director",
       role: "Puerta de calidad",
       detail: delegation.latestTask
-        ? `${delegation.latestTask.state} · ${delegation.latestTask.filesChanged} archivos`
+        ? `${delegation.latestTask.requestedBy} · ${delegation.latestTask.state} · ${delegation.latestTask.filesChanged} archivos`
         : "Sin tareas recientes",
       state: taskState,
       kind: "review",
@@ -982,16 +983,16 @@ function buildWorkflow(
     lastObservedAt: observedAt,
   });
   const edges: WorkflowEdge[] = [
-    edge("operator", "codex", "tarea", "healthy", "configured"),
+    edge("operator", "directors", "tarea", "healthy", "configured"),
     edge(
-      "codex",
+      "directors",
       "graphify",
       "consulta primero",
       graph.codexIntegrated ? "healthy" : "degraded",
       "configured",
     ),
     edge(
-      "codex",
+      "directors",
       "hermes-broker",
       "delega contrato",
       delegation.state,
@@ -1015,13 +1016,13 @@ function buildWorkflow(
     ),
     edge(
       "worktree",
-      "codex-review",
+      "director-review",
       "diff + evidencia",
       taskState,
       hasTaskEvidence ? "observed" : "configured",
     ),
     edge(
-      "codex-review",
+      "director-review",
       "project-catalog",
       "aplica validado",
       taskState,
