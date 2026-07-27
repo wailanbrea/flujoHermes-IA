@@ -629,6 +629,8 @@ a {
 
 .project-ledger {
   border: 1px solid rgba(7, 22, 34, 0.35);
+  max-height: 520px;
+  overflow-y: auto;
 }
 
 .ledger-heading,
@@ -663,10 +665,52 @@ a {
   min-width: 0;
 }
 
+.project-identity {
+  min-width: 0;
+}
+
+.project-identity small {
+  color: #604437;
+  display: block;
+  font: 7px var(--data);
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
+.project-facts {
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.git-badge {
+  border: 1px solid rgba(7, 22, 34, 0.35);
+  font: 7px var(--data);
+  padding: 5px 6px;
+  text-transform: uppercase;
+}
+
+.git-own {
+  background: rgba(23, 107, 104, 0.14);
+}
+
+.git-inherited,
+.git-dirty {
+  background: rgba(149, 90, 43, 0.16);
+}
+
+.git-none {
+  background: rgba(117, 56, 45, 0.12);
+}
+
 .project-row i {
   background: var(--ink);
   height: 7px;
   width: 7px;
+}
+
+.project-row i.project-index-failed {
+  background: var(--red);
 }
 
 .project-row strong {

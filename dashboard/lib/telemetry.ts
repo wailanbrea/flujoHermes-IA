@@ -60,6 +60,18 @@ export interface GraphRepositorySummary {
   label: string;
   nodeCount: number;
   edgeCount: number;
+  rootAlias: string | null;
+  relativePath: string | null;
+  hasGit: boolean | null;
+  gitScope: "own" | "inherited" | "none" | "unknown";
+  gitBranch: string | null;
+  gitDirty: boolean | null;
+  graphStatus:
+    | "ready"
+    | "metadata-only"
+    | "failed"
+    | "inventory-only"
+    | "unknown";
 }
 
 export interface KnowledgeGraphSummary {

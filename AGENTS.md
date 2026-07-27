@@ -53,6 +53,12 @@ Rules:
   `scripts/windows/ensure-project-graph.ps1 -ProjectPath <exact-root> -Question <task>`.
 - If the project is absent, the script builds an AST-only graph in the local Graphify
   cache and registers it globally. It never enables semantic or external model extraction.
+- Before resolving a named local project with broad disk search, consult
+  `telemetry/runtime/project-catalog.json`. The managed roots are `C:\xampp\php\www`,
+  `C:\Users\waila\StudioProjects`, and `C:\Users\waila\AndroidStudioProjects`.
+- Refresh the managed catalog with `scripts/windows/index-project-roots.ps1`. This
+  authorized batch may cross the interactive corpus-size guard, but remains AST-only,
+  skips sensitive files, and must not modify project source.
 - Stop and narrow scope when the detector reports more than 500 supported files or two
   million words. Never bypass this guard with broad raw searches.
 - Use the returned bounded subgraph first. Read exact files only when needed to implement

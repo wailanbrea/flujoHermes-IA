@@ -18,6 +18,18 @@ Maximum Graphify query output budget. Defaults to 1200 tokens.
 
 .PARAMETER Refresh
 Incrementally refresh an existing local/cache graph before querying it.
+
+.PARAMETER AllowLargeCorpus
+Allows an explicitly authorized batch inventory to index a project above the
+interactive 500-file or two-million-word guard. Structural extraction remains local.
+
+.PARAMETER ExactRoot
+Uses the supplied directory as the project boundary even when it is nested inside
+another Git worktree. Intended for managed multi-project containers.
+
+.PARAMETER AllowMetadataOnly
+Registers an honest project-boundary node when Graphify finds no supported source
+files. No code relationships are inferred.
 #>
 [CmdletBinding()]
 param(
@@ -30,15 +42,27 @@ param(
     [ValidateRange(200, 4000)]
     [int]$Budget = 1200,
 
-    [switch]$Refresh
+    [switch]$Refresh,
+
+    [switch]$AllowLargeCorpus,
+
+    [switch]$ExactRoot,
+
+    [switch]$AllowMetadataOnly
 )
 
 $ErrorActionPreference = 'Stop'
 
-function Get-ProjectRoot([string]$Path) {
+function Get-ProjectRoot(
+    [string]$Path,
+    [bool]$PreserveExactRoot
+) {
     $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
     if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
         throw 'The project target must be an existing directory.'
+    }
+    if ($PreserveExactRoot) {
+        return $resolved
     }
 
     $previousPreference = $ErrorActionPreference
@@ -119,21 +143,21 @@ function Get-GraphStats(
 ) {
     $graph = Get-Content -LiteralPath $GraphPath -Raw -Encoding UTF8 |
         ConvertFrom-Json
-    $nodes = if ($RepositoryId) {
-        @($graph.nodes | Where-Object { $_.repo -eq $RepositoryId })
+    $nodes = @(if ($RepositoryId) {
+        $graph.nodes | Where-Object { $_.repo -eq $RepositoryId }
     }
     else {
-        @($graph.nodes)
-    }
-    $edges = if ($RepositoryId) {
-        @($graph.links | Where-Object {
+        $graph.nodes
+    })
+    $edges = @(if ($RepositoryId) {
+        $graph.links | Where-Object {
             $_.source -like "${RepositoryId}::*" -and
             $_.target -like "${RepositoryId}::*"
-        })
+        }
     }
     else {
-        @($graph.links)
-    }
+        $graph.links
+    })
     if ($nodes.Count -eq 0) {
         throw 'Graphify produced an empty graph; raw file exploration remains blocked.'
     }
@@ -145,7 +169,9 @@ function Get-GraphStats(
 
 function Invoke-StructuralBuild(
     [string]$Root,
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    [bool]$LargeCorpusAuthorized,
+    [bool]$MetadataOnlyAuthorized
 ) {
     $graphify = Get-Command graphify.exe -ErrorAction Stop
     $pythonRoot = Split-Path (Split-Path $graphify.Source -Parent) -Parent
@@ -171,9 +197,51 @@ print(json.dumps({
     }
     $detected = $detectRaw | ConvertFrom-Json
     if ($detected.total_files -eq 0) {
-        throw 'No supported project files were found; raw exploration remains blocked.'
+        if (-not $MetadataOnlyAuthorized) {
+            throw 'No supported project files were found; raw exploration remains blocked.'
+        }
+        New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+        $metadataGraph = [ordered]@{
+            input_tokens = 0
+            output_tokens = 0
+            nodes = @(
+                [ordered]@{
+                    id = 'project_boundary'
+                    label = Split-Path -Leaf $Root
+                    file_type = 'project'
+                    metadata = [ordered]@{
+                        kind = 'filesystem_project_boundary'
+                        supportedSourceFiles = 0
+                    }
+                    _origin = 'filesystem-marker'
+                }
+            )
+            links = @()
+        }
+        $utf8WithoutBom = [Text.UTF8Encoding]::new($false)
+        [IO.File]::WriteAllText(
+            (Join-Path $OutputDirectory 'graph.json'),
+            ($metadataGraph | ConvertTo-Json -Depth 6),
+            $utf8WithoutBom
+        )
+        [IO.File]::WriteAllText(
+            (Join-Path $OutputDirectory '.graphify_root'),
+            $Root,
+            $utf8WithoutBom
+        )
+        return [pscustomobject]@{
+            SensitiveSkipped = [int]$detected.skipped_sensitive
+            TotalFiles = 0
+            TotalWords = [long]$detected.total_words
+            LargeCorpus = $false
+            MetadataOnly = $true
+        }
     }
-    if ($detected.total_files -gt 500 -or $detected.total_words -gt 2000000) {
+    $isLargeCorpus = (
+        $detected.total_files -gt 500 -or
+        $detected.total_words -gt 2000000
+    )
+    if ($isLargeCorpus -and -not $LargeCorpusAuthorized) {
         throw "Project corpus is too large for automatic onboarding ($($detected.total_files) files). Narrow the authorized project root first."
     }
 
@@ -204,10 +272,15 @@ print(json.dumps({
     [pscustomobject]@{
         SensitiveSkipped = [int]$detected.skipped_sensitive
         TotalFiles = [int]$detected.total_files
+        TotalWords = [long]$detected.total_words
+        LargeCorpus = $isLargeCorpus
+        MetadataOnly = $false
     }
 }
 
-$root = Get-ProjectRoot -Path $ProjectPath
+$root = Get-ProjectRoot `
+    -Path $ProjectPath `
+    -PreserveExactRoot $ExactRoot.IsPresent
 $projectId = Get-ProjectId -Root $root
 $graphifyCommand = Get-Command graphify.exe -ErrorAction Stop
 $userProfile = [Environment]::GetFolderPath('UserProfile')
@@ -244,6 +317,10 @@ $graphPath = $null
 $source = $null
 $action = 'already-indexed'
 $skippedSensitive = $null
+$totalFiles = $null
+$totalWords = $null
+$largeCorpus = $null
+$metadataOnly = $false
 
 if (Test-Path -LiteralPath $workspaceGraph -PathType Leaf) {
     $graphPath = $workspaceGraph
@@ -259,8 +336,16 @@ elseif ($isGlobal -and (Test-Path -LiteralPath $globalGraph -PathType Leaf)) {
 }
 
 if (-not $graphPath) {
-    $build = Invoke-StructuralBuild -Root $root -OutputDirectory $cacheDirectory
+    $build = Invoke-StructuralBuild `
+        -Root $root `
+        -OutputDirectory $cacheDirectory `
+        -LargeCorpusAuthorized $AllowLargeCorpus.IsPresent `
+        -MetadataOnlyAuthorized $AllowMetadataOnly.IsPresent
     $skippedSensitive = $build.SensitiveSkipped
+    $totalFiles = $build.TotalFiles
+    $totalWords = $build.TotalWords
+    $largeCorpus = $build.LargeCorpus
+    $metadataOnly = $build.MetadataOnly
     $graphPath = $cacheGraph
     $source = 'local-cache'
     $action = 'indexed'
@@ -272,8 +357,16 @@ elseif ($Refresh) {
     else {
         $cacheDirectory
     }
-    $build = Invoke-StructuralBuild -Root $root -OutputDirectory $outputDirectory
+    $build = Invoke-StructuralBuild `
+        -Root $root `
+        -OutputDirectory $outputDirectory `
+        -LargeCorpusAuthorized $AllowLargeCorpus.IsPresent `
+        -MetadataOnlyAuthorized $AllowMetadataOnly.IsPresent
     $skippedSensitive = $build.SensitiveSkipped
+    $totalFiles = $build.TotalFiles
+    $totalWords = $build.TotalWords
+    $largeCorpus = $build.LargeCorpus
+    $metadataOnly = $build.MetadataOnly
     $graphPath = Join-Path $outputDirectory 'graph.json'
     $source = if ($source -eq 'workspace') { 'workspace' } else { 'local-cache' }
     $action = 'refreshed'
@@ -281,6 +374,18 @@ elseif ($Refresh) {
 
 $statsRepository = if ($source -eq 'global') { $projectId } else { $null }
 $stats = Get-GraphStats -GraphPath $graphPath -RepositoryId $statsRepository
+if (-not $metadataOnly) {
+    try {
+        $graphProbe = Get-Content -LiteralPath $graphPath -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+        $metadataOnly = [bool](@($graphProbe.nodes | Where-Object {
+            $_._origin -eq 'filesystem-marker'
+        }).Count)
+    }
+    catch {
+        $metadataOnly = $false
+    }
+}
 if (-not $isGlobal -or $action -in @('indexed', 'refreshed')) {
     $globalAdd = & $graphifyCommand.Source global add $graphPath --as $projectId 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -295,6 +400,10 @@ if (-not $isGlobal -or $action -in @('indexed', 'refreshed')) {
     source = $source
     nodes = $stats.Nodes
     edges = $stats.Edges
+    totalFiles = $totalFiles
+    totalWords = $totalWords
+    largeCorpus = $largeCorpus
+    metadataOnly = $metadataOnly
     sensitiveFilesSkipped = $skippedSensitive
     semanticModelUsed = $false
 } | ConvertTo-Json -Compress

@@ -25,6 +25,12 @@ const INTERVAL_MS = 4_000;
 const WORKSPACE_ROOT = resolve(import.meta.dirname, "..", "..");
 const GLOBAL_GRAPH_PATH = resolve(homedir(), ".graphify", "global-graph.json");
 const LOCAL_GRAPH_PATH = resolve(WORKSPACE_ROOT, "graphify-out", "graph.json");
+const PROJECT_CATALOG_PATH = resolve(
+  WORKSPACE_ROOT,
+  "telemetry",
+  "runtime",
+  "project-catalog.json",
+);
 const CODEX_GRAPHIFY_SKILL = resolve(homedir(), ".codex", "skills", "graphify", "SKILL.md");
 const HERMES_GRAPHIFY_SKILL = resolve(
   homedir(),
@@ -73,6 +79,25 @@ const graphSchema = z.object({
     }),
   ),
 });
+const projectCatalogSchema = z.object({
+  projects: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      rootAlias: z.string(),
+      relativePath: z.string().nullable(),
+      hasGit: z.boolean().nullable(),
+      gitScope: z
+        .enum(["own", "inherited", "none", "unknown"])
+        .default("unknown"),
+      gitBranch: z.string().nullable(),
+      gitDirty: z.boolean().nullable(),
+      graphStatus: z
+        .enum(["ready", "metadata-only", "failed", "inventory-only"])
+        .default("inventory-only"),
+    }),
+  ),
+});
 
 interface Probe {
   service: ServiceHealth;
@@ -88,6 +113,18 @@ interface GpuProbe extends Probe {
   sharedUsedGiB: number | null;
 }
 
+interface CachedGraphData {
+  mtimeMs: number;
+  updatedAt: string;
+  nodeCount: number;
+  edgeCount: number;
+  communityCount: number;
+  repositoryCounts: Array<{ label: string; count: number }>;
+  edgeCountByRepository: Map<string, number>;
+  nodeTypes: Array<{ label: string; count: number }>;
+  relations: Array<{ label: string; count: number }>;
+}
+
 const events: TelemetryEvent[] = [];
 const previousStates = new Map<string, HealthState>();
 const counters = new Map<string, { success: number; failure: number }>();
@@ -95,6 +132,7 @@ const clients = new Set<ServerResponse>();
 let sequence = 0;
 let current: TelemetrySnapshot | null = null;
 let refreshPromise: Promise<void> | null = null;
+let cachedGraphData: CachedGraphData | null = null;
 
 const checkedAt = () => new Date().toISOString();
 const latency = (start: number) =>
@@ -120,6 +158,53 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function readProjectCatalog() {
+  try {
+    const body = await readFile(PROJECT_CATALOG_PATH, "utf8");
+    return projectCatalogSchema.parse(JSON.parse(body.replace(/^\uFEFF/, "")));
+  } catch {
+    return { projects: [] };
+  }
+}
+
+async function readGraphData(): Promise<CachedGraphData> {
+  const fileStat = await stat(GLOBAL_GRAPH_PATH);
+  if (cachedGraphData?.mtimeMs === fileStat.mtimeMs) {
+    return cachedGraphData;
+  }
+
+  const body = await readFile(GLOBAL_GRAPH_PATH, "utf8");
+  const parsed = graphSchema.parse(JSON.parse(body));
+  const edgeCountByRepository = new Map<string, number>();
+  for (const link of parsed.links) {
+    const separator = link.source.indexOf("::");
+    if (separator <= 0) continue;
+    const repositoryId = link.source.slice(0, separator);
+    if (!link.target.startsWith(`${repositoryId}::`)) continue;
+    edgeCountByRepository.set(
+      repositoryId,
+      (edgeCountByRepository.get(repositoryId) ?? 0) + 1,
+    );
+  }
+
+  cachedGraphData = {
+    mtimeMs: fileStat.mtimeMs,
+    updatedAt: fileStat.mtime.toISOString(),
+    nodeCount: parsed.nodes.length,
+    edgeCount: parsed.links.length,
+    communityCount: new Set(
+      parsed.nodes
+        .map((node) => node.community)
+        .filter((community) => community !== undefined),
+    ).size,
+    repositoryCounts: countBy(parsed.nodes.map((node) => node.repo)),
+    edgeCountByRepository,
+    nodeTypes: countBy(parsed.nodes.map((node) => node.file_type)).slice(0, 6),
+    relations: countBy(parsed.links.map((link) => link.relation)).slice(0, 6),
+  };
+  return cachedGraphData;
 }
 
 function countBy(values: Array<string | undefined>): Array<{ label: string; count: number }> {
@@ -338,48 +423,88 @@ async function probeGraphify(): Promise<GraphProbe> {
   };
 
   try {
-    const [body, fileStat, codexIntegrated, hermesIntegrated, localGraphExists] =
+    const [
+      graphData,
+      codexIntegrated,
+      hermesIntegrated,
+      localGraphExists,
+      catalog,
+    ] =
       await Promise.all([
-        readFile(GLOBAL_GRAPH_PATH, "utf8"),
-        stat(GLOBAL_GRAPH_PATH),
+        readGraphData(),
         pathExists(CODEX_GRAPHIFY_SKILL),
         pathExists(HERMES_GRAPHIFY_SKILL),
         pathExists(LOCAL_GRAPH_PATH),
+        readProjectCatalog(),
       ]);
-    const parsed = graphSchema.parse(JSON.parse(body));
-    const repositories = countBy(parsed.nodes.map((node) => node.repo)).map(
-      ({ label, count }): GraphRepositorySummary => ({
-        id: label,
-        label,
-        nodeCount: count,
-        edgeCount: parsed.links.filter(
-          (link) =>
-            link.source.startsWith(`${label}::`) &&
-            link.target.startsWith(`${label}::`),
-        ).length,
-      }),
+    const catalogById = new Map(
+      catalog.projects.map((project) => [project.id, project]),
     );
+    const repositories: GraphRepositorySummary[] = graphData.repositoryCounts.map(
+      ({ label, count }): GraphRepositorySummary => {
+        const project = catalogById.get(label);
+        return {
+          id: label,
+          label: project?.name ?? label,
+          nodeCount: count,
+          edgeCount: graphData.edgeCountByRepository.get(label) ?? 0,
+          rootAlias: project?.rootAlias ?? null,
+          relativePath: project?.relativePath ?? null,
+          hasGit: project?.hasGit ?? null,
+          gitScope: project?.gitScope ?? "unknown",
+          gitBranch: project?.gitBranch ?? null,
+          gitDirty: project?.gitDirty ?? null,
+          graphStatus: project?.graphStatus ?? "unknown",
+        };
+      },
+    );
+    const registeredIds = new Set(repositories.map((repository) => repository.id));
+    for (const project of catalog.projects) {
+      if (registeredIds.has(project.id)) continue;
+      repositories.push({
+        id: project.id,
+        label: project.name,
+        nodeCount: 0,
+        edgeCount: 0,
+        rootAlias: project.rootAlias,
+        relativePath: project.relativePath,
+        hasGit: project.hasGit,
+        gitScope: project.gitScope,
+        gitBranch: project.gitBranch,
+        gitDirty: project.gitDirty,
+        graphStatus: project.graphStatus,
+      });
+    }
+    repositories.sort(
+      (left, right) =>
+        (left.rootAlias ?? "otros").localeCompare(
+          right.rootAlias ?? "otros",
+          "es",
+        ) || left.label.localeCompare(right.label, "es"),
+    );
+    const failedProjects = repositories.filter(
+      (repository) => repository.graphStatus === "failed",
+    ).length;
     const graphState: HealthState =
-      codexIntegrated && hermesIntegrated && localGraphExists
+      codexIntegrated &&
+      hermesIntegrated &&
+      localGraphExists &&
+      failedProjects === 0
         ? "healthy"
         : "degraded";
     const graph: KnowledgeGraphSummary = {
       state: graphState,
       checkedAt: checked,
-      updatedAt: fileStat.mtime.toISOString(),
-      nodeCount: parsed.nodes.length,
-      edgeCount: parsed.links.length,
-      communityCount: new Set(
-        parsed.nodes
-          .map((node) => node.community)
-          .filter((community) => community !== undefined),
-      ).size,
+      updatedAt: graphData.updatedAt,
+      nodeCount: graphData.nodeCount,
+      edgeCount: graphData.edgeCount,
+      communityCount: graphData.communityCount,
       projectCount: repositories.length,
       codexIntegrated,
       hermesIntegrated,
       repositories,
-      nodeTypes: countBy(parsed.nodes.map((node) => node.file_type)).slice(0, 6),
-      relations: countBy(parsed.links.map((link) => link.relation)).slice(0, 6),
+      nodeTypes: graphData.nodeTypes,
+      relations: graphData.relations,
     };
 
     return {
@@ -642,13 +767,29 @@ function buildWorkflow(
     },
   ];
 
-  graph.repositories.slice(0, 4).forEach((repository, index, visible) => {
+  const groupedProjects = new Map<
+    string,
+    { label: string; projects: number; nodes: number }
+  >();
+  for (const repository of graph.repositories) {
+    const key = repository.rootAlias ?? "otros";
+    const group = groupedProjects.get(key) ?? {
+      label: key,
+      projects: 0,
+      nodes: 0,
+    };
+    group.projects += 1;
+    group.nodes += repository.nodeCount;
+    groupedProjects.set(key, group);
+  }
+  const projectGroups = [...groupedProjects.entries()].slice(0, 4);
+  projectGroups.forEach(([id, group], index, visible) => {
     const spread = visible.length === 1 ? 24 : 48 / (visible.length - 1);
     nodes.push({
-      id: `project-${repository.id}`,
-      label: repository.label,
-      role: "Proyecto",
-      detail: `${repository.nodeCount} nodos · ${repository.edgeCount} enlaces`,
+      id: `project-group-${id}`,
+      label: group.label,
+      role: "Grupo de proyectos",
+      detail: `${group.projects} proyectos · ${group.nodes} nodos`,
       state: "healthy",
       kind: "project",
       x: 93,
@@ -694,11 +835,11 @@ function buildWorkflow(
     edge("dashboard", "graphify", "metadatos", graph.state, "observed"),
     edge("dashboard", "lm-studio", "estado REST", stateOf("lm-studio"), "observed"),
   ];
-  for (const repository of graph.repositories.slice(0, 4)) {
+  for (const [id] of projectGroups) {
     edges.push(
       edge(
         "graph-store",
-        `project-${repository.id}`,
+        `project-group-${id}`,
         "indexa",
         "healthy",
         "indexed",

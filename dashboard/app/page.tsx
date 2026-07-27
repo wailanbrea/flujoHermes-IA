@@ -359,18 +359,43 @@ export default function Home() {
         <div className="project-ledger">
           <div className="ledger-heading">
             <span>Proyectos indexados</span>
-            <span>Nodos / relaciones</span>
+            <span>Git · nodos / relaciones</span>
           </div>
           {snapshot?.graph.repositories.map((repository) => (
             <div className="project-row" key={repository.id}>
               <div>
-                <i aria-hidden="true" />
-                <strong>{repository.label}</strong>
+                <i
+                  className={
+                    repository.graphStatus === "failed"
+                      ? "project-index-failed"
+                      : ""
+                  }
+                  aria-hidden="true"
+                />
+                <span className="project-identity">
+                  <strong>{repository.label}</strong>
+                  {repository.rootAlias && <small>{repository.rootAlias}</small>}
+                </span>
               </div>
-              <span>
-                {repository.nodeCount.toLocaleString("es-DO")} /{" "}
-                {repository.edgeCount.toLocaleString("es-DO")}
-              </span>
+              <div className="project-facts">
+                <span
+                  className={`git-badge git-${repository.gitScope}${
+                    repository.gitDirty ? " git-dirty" : ""
+                  }`}
+                >
+                  {repository.gitScope === "own"
+                    ? `Git · ${repository.gitBranch ?? "detached"}`
+                    : repository.gitScope === "inherited"
+                      ? "Git heredado"
+                      : repository.gitScope === "none"
+                        ? "Sin Git"
+                        : "Git sin catalogar"}
+                </span>
+                <span>
+                  {repository.nodeCount.toLocaleString("es-DO")} /{" "}
+                  {repository.edgeCount.toLocaleString("es-DO")}
+                </span>
+              </div>
             </div>
           ))}
         </div>

@@ -51,3 +51,23 @@ No semantic model or external API is used during automatic onboarding.
 Projects under `C:\xampp\php\www` and `C:\xampp\htdocs` may be indexed when a user
 task targets them, but they remain unauthorized for modification until the task
 explicitly requests a code change.
+
+## Managed project catalog
+
+The local catalog covers these explicitly authorized discovery roots:
+
+- `C:\xampp\php\www`
+- `C:\Users\waila\StudioProjects`
+- `C:\Users\waila\AndroidStudioProjects`
+
+Refresh it with:
+
+```powershell
+.\scripts\windows\index-project-roots.ps1
+```
+
+The scan detects project boundaries from Git and ecosystem manifests, excludes
+dependencies and generated directories, records owned/inherited/missing Git state,
+and builds only local structural graphs. The resulting
+`telemetry/runtime/project-catalog.json` is runtime state and is not committed.
+The dashboard reads this catalog but never executes indexing itself.

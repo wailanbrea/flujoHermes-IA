@@ -31,6 +31,8 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.doesNotMatch(server, /shell:\s*true/);
   assert.doesNotMatch(server, /message\.content|api[_-]?key/i);
   assert.match(server, /GLOBAL_GRAPH_PATH/);
+  assert.match(server, /PROJECT_CATALOG_PATH/);
+  assert.match(server, /projectCatalogSchema/);
   assert.match(server, /buildWorkflow/);
   assert.match(server, /Graph JSON local/);
   assert.match(server, /Windows GPU counters/);
@@ -38,6 +40,8 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(dashboardServer, /request\.method !== "GET"/);
   assert.match(dashboardServer, /startsWith\(`\$\{STATIC_ROOT\}\$\{sep\}`\)/);
   assert.match(page, /EventSource/);
+  assert.match(page, /Git heredado/);
+  assert.match(page, /Sin Git/);
   assert.match(packageJson, /server\/dashboard-server\.ts/);
 });
 
@@ -54,5 +58,22 @@ test("keeps automatic graph onboarding local, bounded, and structural", async ()
   assert.match(script, /Test-GraphRoot/);
   assert.match(script, /Get-PathFingerprint/);
   assert.match(script, /semanticModelUsed = \$false/);
+  assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
+});
+
+test("catalogs the authorized project roots without changing project source", async () => {
+  const script = await readFile(
+    new URL("../../scripts/windows/index-project-roots.ps1", import.meta.url),
+    "utf8",
+  );
+  assert.match(script, /C:\\xampp\\php\\www/);
+  assert.match(script, /C:\\Users\\waila\\StudioProjects/);
+  assert.match(script, /C:\\Users\\waila\\AndroidStudioProjects/);
+  assert.match(script, /InventoryOnly/);
+  assert.match(script, /AllowLargeCorpus = \$true/);
+  assert.match(script, /ExactRoot = \$true/);
+  assert.match(script, /AllowMetadataOnly = \$true/);
+  assert.match(script, /project-catalog\.json/);
+  assert.match(script, /gitScope/);
   assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
 });
