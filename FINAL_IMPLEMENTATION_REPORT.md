@@ -130,4 +130,5 @@ Ninguno para uso local o para TRAMA.
 
 ### Futuro
 
-Graphiti queda solo evaluado en `docs/17_FUTURE_GRAPHITI_INTEGRATION.md`.
+Graphify quedó integrado y Graphiti continúa diferido según
+`docs/17_GRAPHIFY_AND_GRAPHITI.md`.

@@ -13,6 +13,8 @@ dashboard/dist/
 dashboard/.next/
 dashboard/.vinext/
 dashboard/.wrangler/
+.codex/
+graphify-out/
 __pycache__/
 *.pyc
 *.zip

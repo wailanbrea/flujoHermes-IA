@@ -2,36 +2,45 @@
 
 ## Objetivo
 
-Mostrar en tiempo real el estado, las conexiones y la comunicación operacional
-entre LM Studio, Hermes, WSL2, Docker, Apache y MariaDB.
+Mostrar en tiempo real el flujo operativo entre Codex, Hermes, Graphify, LM Studio,
+la RX 9070, WSL2, Docker, Apache, MariaDB y los proyectos indexados.
 
 ## Arquitectura
 
 - Interfaz: React 19 + TypeScript, servida en `127.0.0.1:4310`.
-- Servidor UI: adaptador Node local que sirve el build de Vite con normalización
-  segura de rutas para Windows.
-- API: Node.js + TypeScript en `127.0.0.1:4311`.
+- API de solo lectura: Node.js + TypeScript en `127.0.0.1:4311`.
 - Actualización: Server-Sent Events cada 4 segundos.
-- Validación externa: Zod para la respuesta de LM Studio.
-- Comandos: lista cerrada, `execFile`, sin `shell: true`, con timeout y buffer
-  limitado.
+- Validación: Zod para respuestas externas y archivos Graphify.
+- Ejecución: lista cerrada con `execFile`, sin `shell: true`, timeout y buffer limitado.
 - CORS: solo `localhost` y `127.0.0.1` en los puertos previstos.
-- Métodos de API: solo GET y OPTIONS.
+- Métodos: GET, HEAD y OPTIONS según el servicio.
+
+## Diagrama de flujo
+
+El circuito diferencia la procedencia de cada enlace:
+
+- **Observada ahora:** comprobación viva de una API, proceso, contador o archivo.
+- **Configurada:** ruta declarada en Codex, Hermes o el orquestador.
+- **Indexada:** relación obtenida del grafo local.
+
+El diagrama no afirma que una conexión configurada esté generando tráfico. La
+actividad animada se limita a enlaces observados.
 
 ## Datos visibles
 
-- Estado: operativo, atención, sin conexión o sin datos.
-- Latencia de sondeo.
+- Estado, latencia, procedencia y antigüedad.
 - Modelo cargado, contexto y paralelismo.
-- Contadores de comprobaciones correctas/fallidas.
-- Cambios de estado.
-- Uso de memoria y tiempo activo del equipo.
+- VRAM dedicada y memoria GPU compartida.
+- Integración Graphify en Codex y Hermes.
+- Proyectos, nodos, relaciones y comunidades del grafo.
+- Contadores de comprobaciones y cambios de estado.
+- Uso de RAM y tiempo activo del equipo.
 
 ## Datos prohibidos
 
-- Prompts y respuestas.
-- Contenido de archivos o proyectos.
-- Tokens, claves, variables secretas o identificadores personales.
+- Prompts, respuestas y argumentos de herramientas.
+- Contenido de archivos o nodos.
+- Tokens, claves, secretos o rutas personales.
 - Historial del perfil Hermes predeterminado.
 
 ## Operación
@@ -42,9 +51,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\status-dashboard.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-dashboard.ps1
 ```
 
-La interfaz presenta datos reales. Si XAMPP está detenido, Apache y MariaDB se
-muestran sin conexión; no se simula un estado saludable.
-
-Se descartó el starter Next/Vinext tras detectar avisos de seguridad transitivos y
-un fallo de assets en Windows. La implementación final usa React + Vite, restringe
-métodos a GET/HEAD y bloquea traversal fuera de `dist`.
+Si un servicio está detenido se muestra sin conexión; no se simulan estados
+saludables. El dashboard es observador y no ejecuta cambios sobre los proyectos.

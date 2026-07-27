@@ -11,7 +11,9 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(html, /<title>TRAMA · Observador local de IA<\/title>/i);
   assert.match(html, /<div id="root"><\/div>/);
   assert.ok(assets.some((name) => name.endsWith(".js")));
-  assert.match(page, /Cada herramienta/);
+  assert.match(page, /Flujo de trabajo real/);
+  assert.match(page, /El mapa que ya construiste está conectado/);
+  assert.match(page, /snapshot\.workflow\.nodes/);
   assert.match(page, /Herramientas observadas/);
   assert.match(page, /no captura/);
 });
@@ -27,7 +29,11 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(server, /request\.method !== "GET"/);
   assert.match(server, /Origen local no autorizado/);
   assert.doesNotMatch(server, /shell:\s*true/);
-  assert.doesNotMatch(server, /prompt|message\.content|api[_-]?key/i);
+  assert.doesNotMatch(server, /message\.content|api[_-]?key/i);
+  assert.match(server, /GLOBAL_GRAPH_PATH/);
+  assert.match(server, /buildWorkflow/);
+  assert.match(server, /Graph JSON local/);
+  assert.match(server, /Windows GPU counters/);
   assert.match(dashboardServer, /const HOST = "127\.0\.0\.1"/);
   assert.match(dashboardServer, /request\.method !== "GET"/);
   assert.match(dashboardServer, /startsWith\(`\$\{STATIC_ROOT\}\$\{sep\}`\)/);

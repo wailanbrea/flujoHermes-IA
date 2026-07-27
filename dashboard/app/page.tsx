@@ -3,6 +3,8 @@ import type {
   HealthState,
   ServiceHealth,
   TelemetrySnapshot,
+  WorkflowEdge,
+  WorkflowNode,
 } from "../lib/telemetry";
 
 const API_URL =
@@ -15,6 +17,12 @@ const stateLabels: Record<HealthState, string> = {
   unknown: "Sin datos",
 };
 
+const evidenceLabels: Record<WorkflowEdge["evidence"], string> = {
+  observed: "Observada ahora",
+  configured: "Configurada",
+  indexed: "Indexada",
+};
+
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("es-DO", {
     hour: "2-digit",
@@ -22,6 +30,16 @@ function formatTime(value: string): string {
     second: "2-digit",
     hour12: false,
   }).format(new Date(value));
+}
+
+function formatAge(value: string | null): string {
+  if (!value) return "sin fecha";
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return `hace ${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `hace ${hours} h` : `hace ${Math.floor(hours / 24)} d`;
 }
 
 function formatUptime(seconds: number): string {
@@ -63,6 +81,81 @@ function ServiceNode({
         <span>{formatTime(service.checkedAt)}</span>
       </div>
     </article>
+  );
+}
+
+function WorkflowMap({
+  nodes,
+  edges,
+}: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}) {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return (
+    <div className="workflow-scroll">
+      <div className="workflow-canvas" aria-label="Flujo de trabajo real">
+        <svg
+          className="workflow-links"
+          viewBox="0 0 1000 520"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <defs>
+            <marker
+              id="arrow"
+              markerWidth="8"
+              markerHeight="8"
+              refX="7"
+              refY="4"
+              orient="auto"
+            >
+              <path d="M0,0 L8,4 L0,8 Z" />
+            </marker>
+          </defs>
+          {edges.map((edge, index) => {
+            const source = byId.get(edge.source);
+            const target = byId.get(edge.target);
+            if (!source || !target) return null;
+            const x1 = source.x * 10;
+            const y1 = source.y * 5.2;
+            const x2 = target.x * 10;
+            const y2 = target.y * 5.2;
+            const bend = Math.max(24, Math.abs(x2 - x1) * 0.42);
+            const path = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+            return (
+              <g
+                key={edge.id}
+                className={`flow-edge evidence-${edge.evidence} state-stroke-${edge.state}`}
+              >
+                <path d={path} markerEnd="url(#arrow)" />
+                {edge.evidence === "observed" && (
+                  <circle r="3.6">
+                    <animateMotion
+                      dur={`${2.8 + (index % 3) * 0.45}s`}
+                      repeatCount="indefinite"
+                      path={path}
+                    />
+                  </circle>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {nodes.map((node) => (
+          <article
+            key={node.id}
+            className={`workflow-node node-kind-${node.kind} state-border-${node.state}`}
+            style={{ left: `${node.x}%`, top: `${node.y}%` }}
+          >
+            <span className="workflow-role">{node.role}</span>
+            <strong>{node.label}</strong>
+            <small>{node.detail}</small>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -124,6 +217,11 @@ export default function Home() {
             <small>Observador local</small>
           </span>
         </a>
+        <nav className="mast-nav" aria-label="Secciones">
+          <a href="#flujo">Flujo</a>
+          <a href="#grafo">Grafo</a>
+          <a href="#servicios">Servicios</a>
+        </nav>
         <div className={`live-indicator stream-${streamState}`} role="status">
           <span aria-hidden="true" />
           {streamState === "live"
@@ -136,15 +234,16 @@ export default function Home() {
 
       <section className="signal-room" id="top">
         <div className="hero-copy">
-          <p className="eyebrow">Sistema local · {snapshot?.sequence ?? "—"}</p>
+          <p className="eyebrow">Sistema local · lectura {snapshot?.sequence ?? "—"}</p>
           <h1>
-            Cada herramienta,
+            El trabajo,
             <br />
-            <em>una señal visible.</em>
+            <em>puesto en circuito.</em>
           </h1>
           <p className="hero-description">
-            Estado, conexión y comunicación de tu entorno de IA en tiempo real.
-            Solo telemetría operativa; el contenido permanece privado.
+            Sigue el recorrido real entre agentes, modelo, GPU, herramientas y
+            proyectos. Las líneas continuas son señales observadas; las discontinuas,
+            rutas configuradas.
           </p>
         </div>
 
@@ -156,22 +255,27 @@ export default function Home() {
               {healthyCount}
             </span>
             <p>
-              <strong>de {snapshot?.services.length ?? 6}</strong>
+              <strong>de {snapshot?.services.length ?? 8}</strong>
               <span>servicios operativos</span>
             </p>
           </div>
           <dl>
             <div>
-              <dt>Memoria</dt>
-              <dd>{snapshot ? `${snapshot.system.memoryUsagePercent}%` : "—"}</dd>
+              <dt>VRAM</dt>
+              <dd>
+                {snapshot?.system.gpuDedicatedUsedGiB === null ||
+                snapshot?.system.gpuDedicatedUsedGiB === undefined
+                  ? "—"
+                  : `${snapshot.system.gpuDedicatedUsedGiB} G`}
+              </dd>
+            </div>
+            <div>
+              <dt>Grafo</dt>
+              <dd>{snapshot?.graph.nodeCount.toLocaleString("es-DO") ?? "—"}</dd>
             </div>
             <div>
               <dt>Actividad</dt>
               <dd>{activityCount}</dd>
-            </div>
-            <div>
-              <dt>Equipo activo</dt>
-              <dd>{snapshot ? formatUptime(snapshot.system.uptimeSeconds) : "—"}</dd>
             </div>
           </dl>
         </div>
@@ -184,16 +288,110 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="service-field" aria-labelledby="services-title">
+      <section className="workflow-field" id="flujo" aria-labelledby="workflow-title">
+        <div className="section-heading workflow-heading">
+          <div>
+            <p className="eyebrow">Flujo de trabajo real</p>
+            <h2 id="workflow-title">De la tarea al proyecto</h2>
+          </div>
+          <div className="flow-legend">
+            {Object.entries(evidenceLabels).map(([evidence, label]) => (
+              <span key={evidence} className={`legend-${evidence}`}>
+                <i />
+                {label}
+              </span>
+            ))}
+          </div>
+        </div>
+        {snapshot ? (
+          <WorkflowMap nodes={snapshot.workflow.nodes} edges={snapshot.workflow.edges} />
+        ) : (
+          <div className="workflow-loading">Construyendo el circuito local…</div>
+        )}
+        <p className="provenance-line">
+          Evidencia actualizada{" "}
+          <strong>{snapshot ? formatAge(snapshot.generatedAt) : "sin datos"}</strong>.
+          No se capturan prompts, respuestas ni argumentos de herramientas.
+        </p>
+      </section>
+
+      <section className="graph-field" id="grafo" aria-labelledby="graph-title">
+        <div className="graph-intro">
+          <p className="eyebrow">Graphify · conocimiento local</p>
+          <h2 id="graph-title">El mapa que ya construiste está conectado.</h2>
+          <p>
+            Codex y Hermes consultan relaciones estructurales antes de recorrer archivos.
+            El dashboard lee únicamente métricas y procedencia del grafo global.
+          </p>
+          <div className="integration-state">
+            <span>
+              <i className={snapshot?.graph.codexIntegrated ? "ok" : ""} />
+              Codex
+            </span>
+            <span>
+              <i className={snapshot?.graph.hermesIntegrated ? "ok" : ""} />
+              Hermes localai
+            </span>
+          </div>
+        </div>
+
+        <div className="graph-metrics">
+          <div>
+            <span>Nodos</span>
+            <strong>{snapshot?.graph.nodeCount.toLocaleString("es-DO") ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Relaciones</span>
+            <strong>{snapshot?.graph.edgeCount.toLocaleString("es-DO") ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Comunidades</span>
+            <strong>{snapshot?.graph.communityCount ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Actualizado</span>
+            <strong className="metric-age">
+              {formatAge(snapshot?.graph.updatedAt ?? null)}
+            </strong>
+          </div>
+        </div>
+
+        <div className="project-ledger">
+          <div className="ledger-heading">
+            <span>Proyectos indexados</span>
+            <span>Nodos / relaciones</span>
+          </div>
+          {snapshot?.graph.repositories.map((repository) => (
+            <div className="project-row" key={repository.id}>
+              <div>
+                <i aria-hidden="true" />
+                <strong>{repository.label}</strong>
+              </div>
+              <span>
+                {repository.nodeCount.toLocaleString("es-DO")} /{" "}
+                {repository.edgeCount.toLocaleString("es-DO")}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section
+        className="service-field"
+        id="servicios"
+        aria-labelledby="services-title"
+      >
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Mapa de conexiones</p>
+            <p className="eyebrow">Estado operativo</p>
             <h2 id="services-title">Herramientas observadas</h2>
           </div>
           <p>
             Actualización cada 4 segundos
             <br />
-            <span>Última lectura {snapshot ? formatTime(snapshot.generatedAt) : "—"}</span>
+            <span>
+              Última lectura {snapshot ? formatTime(snapshot.generatedAt) : "—"}
+            </span>
           </p>
         </div>
 
@@ -224,9 +422,7 @@ export default function Home() {
           <div className="connection-list">
             {snapshot?.connections.map((connection) => (
               <div className="connection-row" key={connection.id}>
-                <span
-                  className={`connection-light state-bg-${connection.state}`}
-                />
+                <span className={`connection-light state-bg-${connection.state}`} />
                 <div>
                   <strong>{connection.target}</strong>
                   <small>
@@ -255,7 +451,7 @@ export default function Home() {
             <span className="event-count">{snapshot?.events.length ?? 0}</span>
           </div>
           <ol className="event-list">
-            {snapshot?.events.slice(0, 8).map((event) => (
+            {snapshot?.events.slice(0, 10).map((event) => (
               <li key={event.id} className={`event-${event.severity}`}>
                 <time dateTime={event.timestamp}>{formatTime(event.timestamp)}</time>
                 <div>
@@ -274,7 +470,10 @@ export default function Home() {
           Escucha exclusiva en <strong>127.0.0.1</strong> · no captura
           conversaciones ni credenciales
         </p>
-        <p>TRAMA / Local AI Orchestrator</p>
+        <p>
+          TRAMA · equipo activo{" "}
+          {snapshot ? formatUptime(snapshot.system.uptimeSeconds) : "—"}
+        </p>
       </footer>
     </main>
   );

@@ -32,6 +32,51 @@ export interface TelemetryEvent {
   message: string;
 }
 
+export type WorkflowEvidence = "observed" | "configured" | "indexed";
+
+export interface WorkflowNode {
+  id: string;
+  label: string;
+  role: string;
+  detail: string;
+  state: HealthState;
+  kind: "observer" | "agent" | "model" | "compute" | "graph" | "project";
+  x: number;
+  y: number;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  state: HealthState;
+  evidence: WorkflowEvidence;
+  lastObservedAt: string;
+}
+
+export interface GraphRepositorySummary {
+  id: string;
+  label: string;
+  nodeCount: number;
+  edgeCount: number;
+}
+
+export interface KnowledgeGraphSummary {
+  state: HealthState;
+  checkedAt: string;
+  updatedAt: string | null;
+  nodeCount: number;
+  edgeCount: number;
+  communityCount: number;
+  projectCount: number;
+  codexIntegrated: boolean;
+  hermesIntegrated: boolean;
+  repositories: GraphRepositorySummary[];
+  nodeTypes: Array<{ label: string; count: number }>;
+  relations: Array<{ label: string; count: number }>;
+}
+
 export interface TelemetrySnapshot {
   generatedAt: string;
   sequence: number;
@@ -39,11 +84,18 @@ export interface TelemetrySnapshot {
   services: ServiceHealth[];
   connections: ConnectionHealth[];
   events: TelemetryEvent[];
+  graph: KnowledgeGraphSummary;
+  workflow: {
+    nodes: WorkflowNode[];
+    edges: WorkflowEdge[];
+  };
   system: {
     memoryUsedGiB: number;
     memoryTotalGiB: number;
     memoryUsagePercent: number;
     uptimeSeconds: number;
+    gpuDedicatedUsedGiB: number | null;
+    gpuSharedUsedGiB: number | null;
   };
   privacy: { capturesContent: false; binding: "127.0.0.1" };
 }

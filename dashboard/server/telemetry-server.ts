@@ -1,21 +1,42 @@
 import { execFile } from "node:child_process";
+import { readFile, stat } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { connect } from "node:net";
-import { freemem, hostname, totalmem, uptime } from "node:os";
+import { freemem, homedir, hostname, totalmem, uptime } from "node:os";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type {
   ConnectionHealth,
+  GraphRepositorySummary,
   HealthState,
+  KnowledgeGraphSummary,
   ServiceHealth,
   TelemetryEvent,
   TelemetrySnapshot,
+  WorkflowEdge,
+  WorkflowNode,
 } from "../lib/telemetry";
 
 const execFileAsync = promisify(execFile);
 const HOST = "127.0.0.1";
 const PORT = Number.parseInt(process.env.TELEMETRY_PORT ?? "4311", 10);
 const INTERVAL_MS = 4_000;
+const WORKSPACE_ROOT = resolve(import.meta.dirname, "..", "..");
+const GLOBAL_GRAPH_PATH = resolve(homedir(), ".graphify", "global-graph.json");
+const LOCAL_GRAPH_PATH = resolve(WORKSPACE_ROOT, "graphify-out", "graph.json");
+const CODEX_GRAPHIFY_SKILL = resolve(homedir(), ".codex", "skills", "graphify", "SKILL.md");
+const HERMES_GRAPHIFY_SKILL = resolve(
+  homedir(),
+  "AppData",
+  "Local",
+  "hermes",
+  "profiles",
+  "localai",
+  "skills",
+  "graphify",
+  "SKILL.md",
+);
 const allowedOrigin = /^http:\/\/(?:localhost|127\.0\.0\.1):(?:3000|4310)$/;
 const lmSchema = z.object({
   models: z.array(
@@ -35,10 +56,36 @@ const lmSchema = z.object({
     }),
   ),
 });
+const graphSchema = z.object({
+  nodes: z.array(
+    z.object({
+      id: z.string(),
+      repo: z.string().optional(),
+      file_type: z.string().optional(),
+      community: z.union([z.string(), z.number()]).optional(),
+    }),
+  ),
+  links: z.array(
+    z.object({
+      source: z.string(),
+      target: z.string(),
+      relation: z.string().optional(),
+    }),
+  ),
+});
 
 interface Probe {
   service: ServiceHealth;
   protocol: string;
+}
+
+interface GraphProbe extends Probe {
+  graph: KnowledgeGraphSummary;
+}
+
+interface GpuProbe extends Probe {
+  dedicatedUsedGiB: number | null;
+  sharedUsedGiB: number | null;
 }
 
 const events: TelemetryEvent[] = [];
@@ -47,7 +94,7 @@ const counters = new Map<string, { success: number; failure: number }>();
 const clients = new Set<ServerResponse>();
 let sequence = 0;
 let current: TelemetrySnapshot | null = null;
-let collecting = false;
+let refreshPromise: Promise<void> | null = null;
 
 const checkedAt = () => new Date().toISOString();
 const latency = (start: number) =>
@@ -65,6 +112,25 @@ async function run(file: string, args: string[]): Promise<string> {
     encoding: "utf8",
   });
   return stdout.trim();
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function countBy(values: Array<string | undefined>): Array<{ label: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const label = value?.trim() || "unknown";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
 
 function failedProbe(
@@ -253,6 +319,157 @@ async function probeWsl(): Promise<Probe> {
   }
 }
 
+async function probeGraphify(): Promise<GraphProbe> {
+  const start = performance.now();
+  const checked = checkedAt();
+  const empty: KnowledgeGraphSummary = {
+    state: "offline",
+    checkedAt: checked,
+    updatedAt: null,
+    nodeCount: 0,
+    edgeCount: 0,
+    communityCount: 0,
+    projectCount: 0,
+    codexIntegrated: false,
+    hermesIntegrated: false,
+    repositories: [],
+    nodeTypes: [],
+    relations: [],
+  };
+
+  try {
+    const [body, fileStat, codexIntegrated, hermesIntegrated, localGraphExists] =
+      await Promise.all([
+        readFile(GLOBAL_GRAPH_PATH, "utf8"),
+        stat(GLOBAL_GRAPH_PATH),
+        pathExists(CODEX_GRAPHIFY_SKILL),
+        pathExists(HERMES_GRAPHIFY_SKILL),
+        pathExists(LOCAL_GRAPH_PATH),
+      ]);
+    const parsed = graphSchema.parse(JSON.parse(body));
+    const repositories = countBy(parsed.nodes.map((node) => node.repo)).map(
+      ({ label, count }): GraphRepositorySummary => ({
+        id: label,
+        label,
+        nodeCount: count,
+        edgeCount: parsed.links.filter(
+          (link) =>
+            link.source.startsWith(`${label}::`) &&
+            link.target.startsWith(`${label}::`),
+        ).length,
+      }),
+    );
+    const graphState: HealthState =
+      codexIntegrated && hermesIntegrated && localGraphExists
+        ? "healthy"
+        : "degraded";
+    const graph: KnowledgeGraphSummary = {
+      state: graphState,
+      checkedAt: checked,
+      updatedAt: fileStat.mtime.toISOString(),
+      nodeCount: parsed.nodes.length,
+      edgeCount: parsed.links.length,
+      communityCount: new Set(
+        parsed.nodes
+          .map((node) => node.community)
+          .filter((community) => community !== undefined),
+      ).size,
+      projectCount: repositories.length,
+      codexIntegrated,
+      hermesIntegrated,
+      repositories,
+      nodeTypes: countBy(parsed.nodes.map((node) => node.file_type)).slice(0, 6),
+      relations: countBy(parsed.links.map((link) => link.relation)).slice(0, 6),
+    };
+
+    return {
+      protocol: "Graph JSON local",
+      graph,
+      service: {
+        id: "graphify",
+        name: "Graphify",
+        role: "Grafo de conocimiento",
+        state: graphState,
+        detail: `${graph.nodeCount.toLocaleString("es-DO")} nodos · ${graph.edgeCount.toLocaleString("es-DO")} relaciones · ${graph.projectCount} proyectos`,
+        latencyMs: latency(start),
+        checkedAt: checked,
+        metrics: {
+          nodes: graph.nodeCount,
+          edges: graph.edgeCount,
+          projects: graph.projectCount,
+          codexIntegrated,
+          hermesIntegrated,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...failedProbe(
+        "graphify",
+        "Graphify",
+        "Grafo de conocimiento",
+        "Graph JSON local",
+        start,
+        error,
+      ),
+      graph: empty,
+    };
+  }
+}
+
+async function probeGpu(): Promise<GpuProbe> {
+  const start = performance.now();
+  const script = [
+    "$samples=(Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage','\\GPU Adapter Memory(*)\\Shared Usage').CounterSamples",
+    "$dedicated=@($samples|Where-Object {$_.Path -like '*dedicated usage'}|Sort-Object CookedValue -Descending)[0].CookedValue",
+    "$shared=@($samples|Where-Object {$_.Path -like '*shared usage'}|Sort-Object CookedValue -Descending)[0].CookedValue",
+    "[pscustomobject]@{dedicatedGiB=[math]::Round($dedicated/1GB,2);sharedGiB=[math]::Round($shared/1GB,2)}|ConvertTo-Json -Compress",
+  ].join("; ");
+  try {
+    const output = await run("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      script,
+    ]);
+    const metrics = z
+      .object({ dedicatedGiB: z.number(), sharedGiB: z.number() })
+      .parse(JSON.parse(output));
+    const state: HealthState = metrics.sharedGiB > 0.25 ? "degraded" : "healthy";
+    return {
+      protocol: "Windows GPU counters",
+      dedicatedUsedGiB: metrics.dedicatedGiB,
+      sharedUsedGiB: metrics.sharedGiB,
+      service: {
+        id: "rx9070",
+        name: "Radeon RX 9070",
+        role: "Cómputo principal",
+        state,
+        detail: `${metrics.dedicatedGiB.toFixed(2)} GiB VRAM · ${metrics.sharedGiB.toFixed(2)} GiB compartida`,
+        latencyMs: latency(start),
+        checkedAt: checkedAt(),
+        metrics: {
+          dedicatedUsedGiB: metrics.dedicatedGiB,
+          sharedUsedGiB: metrics.sharedGiB,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...failedProbe(
+        "rx9070",
+        "Radeon RX 9070",
+        "Cómputo principal",
+        "Windows GPU counters",
+        start,
+        error,
+      ),
+      dedicatedUsedGiB: null,
+      sharedUsedGiB: null,
+    };
+  }
+}
+
 function probeTcp(
   id: string,
   name: string,
@@ -335,22 +552,200 @@ function connectionFrom(probe: Probe): ConnectionHealth {
   };
 }
 
+function buildWorkflow(
+  services: ServiceHealth[],
+  graph: KnowledgeGraphSummary,
+  observedAt: string,
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const byId = new Map(services.map((service) => [service.id, service]));
+  const stateOf = (id: string): HealthState => byId.get(id)?.state ?? "unknown";
+  const nodes: WorkflowNode[] = [
+    {
+      id: "operator",
+      label: "Operador",
+      role: "Entrada",
+      detail: "Solicitudes locales",
+      state: "healthy",
+      kind: "observer",
+      x: 8,
+      y: 24,
+    },
+    {
+      id: "dashboard",
+      label: "TRAMA",
+      role: "Observador",
+      detail: "Telemetría sin contenido",
+      state: "healthy",
+      kind: "observer",
+      x: 8,
+      y: 76,
+    },
+    {
+      id: "codex",
+      label: "Codex",
+      role: "Agente",
+      detail: graph.codexIntegrated ? "Graphify registrado" : "Sin Graphify",
+      state: graph.codexIntegrated ? "healthy" : "degraded",
+      kind: "agent",
+      x: 29,
+      y: 24,
+    },
+    {
+      id: "hermes",
+      label: "Hermes",
+      role: "Agente local",
+      detail: byId.get("hermes")?.detail ?? "Sin datos",
+      state: stateOf("hermes"),
+      kind: "agent",
+      x: 29,
+      y: 76,
+    },
+    {
+      id: "graphify",
+      label: "Graphify",
+      role: "Índice estructural",
+      detail: `${graph.nodeCount.toLocaleString("es-DO")} nodos disponibles`,
+      state: graph.state,
+      kind: "graph",
+      x: 52,
+      y: 24,
+    },
+    {
+      id: "lm-studio",
+      label: "LM Studio",
+      role: "Inferencia",
+      detail: byId.get("lm-studio")?.detail ?? "Sin datos",
+      state: stateOf("lm-studio"),
+      kind: "model",
+      x: 52,
+      y: 76,
+    },
+    {
+      id: "graph-store",
+      label: "Grafo global",
+      role: "Conocimiento",
+      detail: `${graph.projectCount} proyectos indexados`,
+      state: graph.state,
+      kind: "graph",
+      x: 74,
+      y: 24,
+    },
+    {
+      id: "rx9070",
+      label: "RX 9070",
+      role: "GPU",
+      detail: byId.get("rx9070")?.detail ?? "Sin datos",
+      state: stateOf("rx9070"),
+      kind: "compute",
+      x: 74,
+      y: 76,
+    },
+  ];
+
+  graph.repositories.slice(0, 4).forEach((repository, index, visible) => {
+    const spread = visible.length === 1 ? 24 : 48 / (visible.length - 1);
+    nodes.push({
+      id: `project-${repository.id}`,
+      label: repository.label,
+      role: "Proyecto",
+      detail: `${repository.nodeCount} nodos · ${repository.edgeCount} enlaces`,
+      state: "healthy",
+      kind: "project",
+      x: 93,
+      y: visible.length === 1 ? 24 : 10 + spread * index,
+    });
+  });
+
+  const edge = (
+    source: string,
+    target: string,
+    label: string,
+    state: HealthState,
+    evidence: WorkflowEdge["evidence"],
+  ): WorkflowEdge => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    label,
+    state,
+    evidence,
+    lastObservedAt: observedAt,
+  });
+  const edges: WorkflowEdge[] = [
+    edge("operator", "codex", "tarea", "healthy", "configured"),
+    edge("operator", "hermes", "tarea local", stateOf("hermes"), "configured"),
+    edge(
+      "codex",
+      "graphify",
+      "consulta primero",
+      graph.codexIntegrated ? "healthy" : "degraded",
+      "configured",
+    ),
+    edge(
+      "hermes",
+      "graphify",
+      "consulta primero",
+      graph.hermesIntegrated ? "healthy" : "degraded",
+      "configured",
+    ),
+    edge("hermes", "lm-studio", "OpenAI local", stateOf("lm-studio"), "observed"),
+    edge("lm-studio", "rx9070", "capas GPU", stateOf("rx9070"), "observed"),
+    edge("graphify", "graph-store", "lee relaciones", graph.state, "observed"),
+    edge("dashboard", "graphify", "metadatos", graph.state, "observed"),
+    edge("dashboard", "lm-studio", "estado REST", stateOf("lm-studio"), "observed"),
+  ];
+  for (const repository of graph.repositories.slice(0, 4)) {
+    edges.push(
+      edge(
+        "graph-store",
+        `project-${repository.id}`,
+        "indexa",
+        "healthy",
+        "indexed",
+      ),
+    );
+  }
+  return { nodes, edges };
+}
+
 async function collect(): Promise<TelemetrySnapshot> {
-  const probes = await Promise.all([
+  const [
+    lmStudioProbe,
+    hermesProbe,
+    dockerProbe,
+    wslProbe,
+    mariadbProbe,
+    apacheProbe,
+    graphProbe,
+    gpuProbe,
+  ] = await Promise.all([
     probeLmStudio(),
     probeHermes(),
     probeDocker(),
     probeWsl(),
     probeTcp("mariadb", "MariaDB", "Datos locales", 3306),
     probeTcp("apache", "Apache", "Aplicaciones XAMPP", 80),
+    probeGraphify(),
+    probeGpu(),
   ]);
+  const probes: Probe[] = [
+    lmStudioProbe,
+    hermesProbe,
+    dockerProbe,
+    wslProbe,
+    mariadbProbe,
+    apacheProbe,
+    graphProbe,
+    gpuProbe,
+  ];
   const services = probes.map(({ service }) => service);
   updateEvents(services);
   const free = freemem();
   const total = totalmem();
+  const generatedAt = checkedAt();
   sequence += 1;
   return {
-    generatedAt: checkedAt(),
+    generatedAt,
     sequence,
     overallState: services.some((service) => service.state !== "healthy")
       ? "degraded"
@@ -358,11 +753,15 @@ async function collect(): Promise<TelemetrySnapshot> {
     services,
     connections: probes.map(connectionFrom),
     events: [...events],
+    graph: graphProbe.graph,
+    workflow: buildWorkflow(services, graphProbe.graph, generatedAt),
     system: {
       memoryUsedGiB: Number(((total - free) / 1024 ** 3).toFixed(2)),
       memoryTotalGiB: Number((total / 1024 ** 3).toFixed(2)),
       memoryUsagePercent: Number((((total - free) / total) * 100).toFixed(1)),
       uptimeSeconds: Math.round(uptime()),
+      gpuDedicatedUsedGiB: gpuProbe.dedicatedUsedGiB,
+      gpuSharedUsedGiB: gpuProbe.sharedUsedGiB,
     },
     privacy: { capturesContent: false, binding: "127.0.0.1" },
   };
@@ -385,15 +784,15 @@ function json(response: ServerResponse, status: number, body: unknown): void {
 }
 
 async function refresh(): Promise<void> {
-  if (collecting) return;
-  collecting = true;
-  try {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
     current = await collect();
     const payload = `event: snapshot\ndata: ${JSON.stringify(current)}\n\n`;
     for (const client of clients) client.write(payload);
-  } finally {
-    collecting = false;
-  }
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
 }
 
 const server = createServer(async (request, response) => {
