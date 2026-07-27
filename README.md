@@ -1,8 +1,8 @@
 # Local AI Orchestrator
 
-Entorno aislado para operar una cadena local dirigida por Codex, Claude Code o
-Google Antigravity, con Hermes Agent, Graphify, LM Studio, WSL2, Docker y el
-dashboard privado TRAMA.
+Entorno aislado para operar una cadena local dirigida por Codex, Claude Code,
+Google Antigravity u OpenCode, con Hermes Agent, Graphify, LM Studio, WSL2, Docker
+y el dashboard privado TRAMA.
 
 ## Estado
 
@@ -75,15 +75,16 @@ $task = .\scripts\windows\submit-hermes-task.ps1 `
 TRAMA muestra la cola, ejecución de Hermes, parche aislado y puerta de revisión,
 pero no expone el objetivo, las respuestas del modelo ni argumentos de herramientas.
 
-Sincronizar la política global para Claude Code y Antigravity:
+Sincronizar la política global para Claude Code, Antigravity y OpenCode:
 
 ```powershell
 .\scripts\windows\sync-agent-governance.ps1
 ```
 
-Claude usa `~/.claude/CLAUDE.md`; Antigravity usa `~/.gemini/GEMINI.md`. Ambos
-reciben la misma política canónica de `config/agent-governance.md` y deben
-identificarse con `-RequestedBy` y `-ReviewedBy`.
+Claude usa `~/.claude/CLAUDE.md`; Antigravity usa `~/.gemini/GEMINI.md`; OpenCode
+usa `~/.config/opencode/AGENTS.md`. Los tres reciben la misma política canónica de
+`config/agent-governance.md` y deben identificarse con `-RequestedBy` y
+`-ReviewedBy`.
 
 Comprobar el entorno:
 

@@ -33,7 +33,7 @@ param(
     [ValidateRange(60, 3600)]
     [int]$TimeoutSeconds = 1200,
 
-    [ValidateSet('Codex', 'Claude', 'Antigravity')]
+    [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
     [string]$RequestedBy = 'Codex',
 
     [switch]$ModificationAuthorized,

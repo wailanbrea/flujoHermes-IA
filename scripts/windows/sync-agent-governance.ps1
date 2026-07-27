@@ -74,9 +74,13 @@ Set-ManagedPolicyBlock `
 Set-ManagedPolicyBlock `
     -Path (Join-Path $env:USERPROFILE '.gemini\GEMINI.md') `
     -AgentName 'Google Antigravity'
+Set-ManagedPolicyBlock `
+    -Path (Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md') `
+    -AgentName 'OpenCode'
 
 [pscustomobject]@{
     policy = $policyPath
     claude = Join-Path $env:USERPROFILE '.claude\CLAUDE.md'
     antigravity = Join-Path $env:USERPROFILE '.gemini\GEMINI.md'
+    openCode = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
 } | ConvertTo-Json -Compress

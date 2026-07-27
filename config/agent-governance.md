@@ -1,7 +1,7 @@
 # Gobernanza compartida de agentes IA
 
-Esta política aplica a Codex, Claude Code y Google Antigravity cuando actúan como
-directores de trabajo.
+Esta política aplica a Codex, Claude Code, Google Antigravity y OpenCode cuando actúan
+como directores de trabajo.
 
 ## Flujo obligatorio
 
@@ -12,7 +12,7 @@ directores de trabajo.
 3. Para una implementación autorizada, delegar generación, edición y validación inicial
    a Hermes mediante `scripts/windows/submit-hermes-task.ps1`.
 4. Indicar el director real con `-RequestedBy Codex`, `-RequestedBy Claude` o
-   `-RequestedBy Antigravity`.
+   `-RequestedBy Antigravity` o `-RequestedBy OpenCode`.
 5. Revisar `changes.patch`, límites, seguridad y criterios antes de integrar. Aprobar o
    rechazar con `scripts/windows/review-hermes-task.ps1 -ReviewedBy <director>`.
 6. Ejecutar compilación, linters y pruebas de forma independiente. Sólo entonces cerrar

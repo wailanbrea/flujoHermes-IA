@@ -17,6 +17,7 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(page, /requestedBy/);
   assert.match(page, /graph\.claudeIntegrated/);
   assert.match(page, /graph\.antigravityIntegrated/);
+  assert.match(page, /graph\.openCodeIntegrated/);
   assert.match(page, /El mapa que ya construiste está conectado/);
   assert.match(page, /snapshot\.workflow\.nodes/);
   assert.match(page, /Herramientas observadas/);
@@ -38,6 +39,7 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(server, /GLOBAL_GRAPH_PATH/);
   assert.match(server, /CLAUDE_GLOBAL_RULES/);
   assert.match(server, /ANTIGRAVITY_GLOBAL_RULES/);
+  assert.match(server, /OPENCODE_GLOBAL_RULES/);
   assert.match(server, /LOCAL_AI_GOVERNANCE:START/);
   assert.match(server, /PROJECT_CATALOG_PATH/);
   assert.match(server, /projectCatalogSchema/);
@@ -105,7 +107,7 @@ test("delegates Hermes work through a bounded review gate", async () => {
   ]);
   assert.match(submit, /ModificationAuthorized/);
   assert.match(submit, /RequestedBy/);
-  assert.match(submit, /Codex.*Claude.*Antigravity/s);
+  assert.match(submit, /Codex.*Claude.*Antigravity.*OpenCode/s);
   assert.match(submit, /GitScope -ne 'own'/);
   assert.match(worker, /graphify\.exe query/);
   assert.match(worker, /worktree add --detach/);
@@ -120,7 +122,7 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(review, /ensure-project-graph\.ps1/);
 });
 
-test("shares governance with Claude Code and Antigravity", async () => {
+test("shares governance with Claude Code, Antigravity, and OpenCode", async () => {
   const [policy, sync, claude, antigravityRule] = await Promise.all([
     readFile(
       new URL("../../config/agent-governance.md", import.meta.url),
@@ -142,14 +144,16 @@ test("shares governance with Claude Code and Antigravity", async () => {
       "utf8",
     ),
   ]);
-  assert.match(policy, /Codex, Claude Code y Google Antigravity/);
+  assert.match(policy, /Codex, Claude Code, Google Antigravity y OpenCode/);
   assert.match(policy, /RequestedBy Codex/);
   assert.match(policy, /RequestedBy Claude/);
   assert.match(policy, /RequestedBy Antigravity/);
+  assert.match(policy, /RequestedBy OpenCode/);
   assert.match(policy, /Graphify/);
   assert.match(policy, /Hermes/);
   assert.match(sync, /\.claude\\CLAUDE\.md/);
   assert.match(sync, /\.gemini\\GEMINI\.md/);
+  assert.match(sync, /\.config\\opencode\\AGENTS\.md/);
   assert.match(sync, /LOCAL_AI_GOVERNANCE:START/);
   assert.match(claude, /graphify query/);
   assert.match(antigravityRule, /RequestedBy Antigravity/);

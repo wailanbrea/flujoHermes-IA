@@ -9,6 +9,6 @@
 6. Detener una causa tras tres intentos fallidos y actualizar `docs/BLOCKER_REPORT.md`.
 7. Mantener separación entre orquestación, inferencia, herramientas, validación y
    observabilidad.
-8. Codex, Claude Code y Antigravity deben seguir
+8. Codex, Claude Code, Antigravity y OpenCode deben seguir
    `config/agent-governance.md`: Graphify primero, Hermes para la ejecución pesada y
    revisión independiente antes de integrar.

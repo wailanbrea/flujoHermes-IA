@@ -48,6 +48,12 @@ const HERMES_SUBMIT_SCRIPT = resolve(
 const CODEX_GRAPHIFY_SKILL = resolve(homedir(), ".codex", "skills", "graphify", "SKILL.md");
 const CLAUDE_GLOBAL_RULES = resolve(homedir(), ".claude", "CLAUDE.md");
 const ANTIGRAVITY_GLOBAL_RULES = resolve(homedir(), ".gemini", "GEMINI.md");
+const OPENCODE_GLOBAL_RULES = resolve(
+  homedir(),
+  ".config",
+  "opencode",
+  "AGENTS.md",
+);
 const HERMES_GRAPHIFY_SKILL = resolve(
   homedir(),
   "AppData",
@@ -117,7 +123,9 @@ const projectCatalogSchema = z.object({
 const hermesTaskSchema = z.object({
   taskId: z.string(),
   projectName: z.string(),
-  requestedBy: z.enum(["Codex", "Claude", "Antigravity"]).default("Codex"),
+  requestedBy: z
+    .enum(["Codex", "Claude", "Antigravity", "OpenCode"])
+    .default("Codex"),
   mode: z.enum(["analysis", "execute"]),
   state: z.enum([
     "queued",
@@ -469,6 +477,7 @@ async function probeGraphify(): Promise<GraphProbe> {
     codexIntegrated: false,
     claudeIntegrated: false,
     antigravityIntegrated: false,
+    openCodeIntegrated: false,
     hermesIntegrated: false,
     repositories: [],
     nodeTypes: [],
@@ -481,6 +490,7 @@ async function probeGraphify(): Promise<GraphProbe> {
       codexIntegrated,
       claudeIntegrated,
       antigravityIntegrated,
+      openCodeIntegrated,
       hermesIntegrated,
       localGraphExists,
       catalog,
@@ -490,6 +500,7 @@ async function probeGraphify(): Promise<GraphProbe> {
         pathExists(CODEX_GRAPHIFY_SKILL),
         hasGovernanceMarker(CLAUDE_GLOBAL_RULES),
         hasGovernanceMarker(ANTIGRAVITY_GLOBAL_RULES),
+        hasGovernanceMarker(OPENCODE_GLOBAL_RULES),
         pathExists(HERMES_GRAPHIFY_SKILL),
         pathExists(LOCAL_GRAPH_PATH),
         readProjectCatalog(),
@@ -546,6 +557,7 @@ async function probeGraphify(): Promise<GraphProbe> {
       codexIntegrated &&
       claudeIntegrated &&
       antigravityIntegrated &&
+      openCodeIntegrated &&
       hermesIntegrated &&
       localGraphExists &&
       failedProjects === 0
@@ -562,6 +574,7 @@ async function probeGraphify(): Promise<GraphProbe> {
       codexIntegrated,
       claudeIntegrated,
       antigravityIntegrated,
+      openCodeIntegrated,
       hermesIntegrated,
       repositories,
       nodeTypes: graphData.nodeTypes,
@@ -586,6 +599,7 @@ async function probeGraphify(): Promise<GraphProbe> {
           codexIntegrated,
           claudeIntegrated,
           antigravityIntegrated,
+          openCodeIntegrated,
           hermesIntegrated,
         },
       },
@@ -858,7 +872,8 @@ function buildWorkflow(
   const directorsIntegrated =
     graph.codexIntegrated &&
     graph.claudeIntegrated &&
-    graph.antigravityIntegrated;
+    graph.antigravityIntegrated &&
+    graph.openCodeIntegrated;
   const hasTaskEvidence = delegation.totalTasks > 0;
   const taskState: HealthState =
     delegation.latestTask &&
@@ -884,7 +899,7 @@ function buildWorkflow(
       id: "directors",
       label: "Directores IA",
       role: "Dirección y revisión",
-      detail: "Codex · Claude · Antigravity",
+      detail: "Codex · Claude · Antigravity · OpenCode",
       state: directorsIntegrated ? "healthy" : "degraded",
       kind: "agent",
       x: 22,

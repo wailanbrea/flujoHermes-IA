@@ -94,6 +94,7 @@ export interface KnowledgeGraphSummary {
   codexIntegrated: boolean;
   claudeIntegrated: boolean;
   antigravityIntegrated: boolean;
+  openCodeIntegrated: boolean;
   hermesIntegrated: boolean;
   repositories: GraphRepositorySummary[];
   nodeTypes: Array<{ label: string; count: number }>;
@@ -115,7 +116,7 @@ export type HermesTaskState =
 export interface HermesTaskSummary {
   taskId: string;
   projectName: string;
-  requestedBy: "Codex" | "Claude" | "Antigravity";
+  requestedBy: "Codex" | "Claude" | "Antigravity" | "OpenCode";
   mode: "analysis" | "execute";
   state: HermesTaskState;
   updatedAt: string;

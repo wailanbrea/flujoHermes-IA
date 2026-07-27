@@ -36,12 +36,12 @@ herramientas salvo que se habilite una captura saneada explícita.
 
 ## Delegación local
 
-- Para implementaciones autorizadas en un repositorio Git propio, Codex, Claude Code o
-  Antigravity actúan como director: diseñan el contrato y delegan la generación/edición
-  a Hermes mediante
+- Para implementaciones autorizadas en un repositorio Git propio, Codex, Claude Code,
+  Antigravity u OpenCode actúan como director: diseñan el contrato y delegan la
+  generación/edición a Hermes mediante
   `scripts/windows/submit-hermes-task.ps1`.
 - El director debe identificarse con `-RequestedBy Codex`, `-RequestedBy Claude` o
-  `-RequestedBy Antigravity`.
+  `-RequestedBy Antigravity` o `-RequestedBy OpenCode`.
 - No invocar Hermes con `--yolo`, `--oneshot` ni `-z`. El worker usa aprobaciones
   normales, checkpoints, herramientas limitadas, máximo de turnos y worktree aislado.
 - El mismo director debe revisar `changes.patch`; sólo después puede usar

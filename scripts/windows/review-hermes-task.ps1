@@ -16,7 +16,7 @@ param(
 
     [Nullable[bool]]$ValidationPassed,
 
-    [ValidateSet('Codex', 'Claude', 'Antigravity')]
+    [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
     [string]$ReviewedBy = 'Codex'
 )
 
