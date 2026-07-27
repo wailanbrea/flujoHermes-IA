@@ -35,6 +35,14 @@ Consultar primero el grafo:
 graphify query "¿cómo se conecta la telemetría con el dashboard?"
 ```
 
+Incorporar o consultar automáticamente un proyecto:
+
+```powershell
+.\scripts\windows\ensure-project-graph.ps1 `
+  -ProjectPath <ruta-exacta> `
+  -Question "<indicación resumida>"
+```
+
 Comprobar el entorno:
 
 ```powershell

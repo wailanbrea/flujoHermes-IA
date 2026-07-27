@@ -40,3 +40,19 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(page, /EventSource/);
   assert.match(packageJson, /server\/dashboard-server\.ts/);
 });
+
+test("keeps automatic graph onboarding local, bounded, and structural", async () => {
+  const script = await readFile(
+    new URL("../../scripts/windows/ensure-project-graph.ps1", import.meta.url),
+    "utf8",
+  );
+  assert.match(script, /Resolve-Path -LiteralPath/);
+  assert.match(script, /global add/);
+  assert.match(script, /update \$Root --no-cluster/);
+  assert.match(script, /total_files -gt 500/);
+  assert.match(script, /total_words -gt 2000000/);
+  assert.match(script, /Test-GraphRoot/);
+  assert.match(script, /Get-PathFingerprint/);
+  assert.match(script, /semanticModelUsed = \$false/);
+  assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
+});

@@ -23,4 +23,6 @@
 | OBS-001 | Implementar colector y contrato | COMPLETADA | API loopback/SSE |
 | OBS-002 | Implementar dashboard en tiempo real | COMPLETADA | TRAMA `127.0.0.1:4310` |
 | OBS-003 | Probar redacción, carga y reconexión | COMPLETADA | navegador y pruebas HTTP |
+| GRAPH-001 | Integrar Graphify en Codex, Hermes y TRAMA | COMPLETADA | grafo global y flujo visible |
+| GRAPH-002 | Incorporar automáticamente proyectos ausentes | COMPLETADA | `ensure-project-graph.ps1` |
 | PILOT-001 | Crear piloto PHP aislado | COMPLETADA CON OBSERVACIÓN | prueba PASS; reporte del agente corregido |

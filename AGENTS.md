@@ -46,3 +46,17 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+### Automatic project onboarding
+
+- Before raw search or file reads, run
+  `scripts/windows/ensure-project-graph.ps1 -ProjectPath <exact-root> -Question <task>`.
+- If the project is absent, the script builds an AST-only graph in the local Graphify
+  cache and registers it globally. It never enables semantic or external model extraction.
+- Stop and narrow scope when the detector reports more than 500 supported files or two
+  million words. Never bypass this guard with broad raw searches.
+- Use the returned bounded subgraph first. Read exact files only when needed to implement
+  or verify a change.
+- After code changes, run the same script with `-Refresh` before handoff.
+- Graph registration is read-only navigation authorization, not authorization to modify
+  the indexed project.
