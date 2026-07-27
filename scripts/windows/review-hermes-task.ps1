@@ -35,7 +35,7 @@ if ($Decision -eq 'Reject') {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'rejected' `
-        -Message 'Codex rechazó el resultado local.' `
+        -Message 'Codex rechazo el resultado local.' `
         -Fields @{
             reviewedAt = [DateTime]::UtcNow.ToString('o')
             worktreeActive = $false
@@ -67,7 +67,7 @@ elseif ($Decision -eq 'Approve') {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'validating' `
-        -Message 'Parche aprobado; Codex debe ejecutar la validación.' `
+        -Message 'Parche aprobado; Codex debe ejecutar la validacion.' `
         -Fields @{
             reviewedAt = [DateTime]::UtcNow.ToString('o')
             worktreeActive = $false
@@ -84,10 +84,10 @@ else {
         'validation-failed'
     }
     $message = if ($ValidationPassed) {
-        'Codex validó el trabajo local.'
+        'Codex valido el trabajo local.'
     }
     else {
-        'La validación independiente de Codex falló.'
+        'La validacion independiente de Codex fallo.'
     }
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `

@@ -100,20 +100,24 @@ try {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'executing' `
-        -Message 'Hermes está trabajando con LM Studio.' `
-        -Fields @{ worktreeActive = [bool]$worktreePath }
+        -Message 'Hermes esta trabajando con LM Studio.' `
+        -Fields @{ worktreeActive = $true }
 
     $prompt = 'Read and execute the local task contract at "' +
         (Join-Path $taskDirectory 'execution-contract.json') +
         '". Obey every boundary. Use the provided Graphify context before files. ' +
-        'Do not access secrets, networks, databases, deployments, or paths outside ' +
-        'workspacePath. Do not commit. Finish with the required concise report.'
+        'Your exact writable workspace is workspacePath; never use the source ' +
+        'repository path. The contract and graph context are the only permitted ' +
+        'read-only paths outside workspacePath. Do not access secrets, networks, ' +
+        'databases, deployments, or any other external path. Do not commit. ' +
+        'Finish with the required concise report.'
     $stdoutPath = Join-Path $taskDirectory 'hermes-final.txt'
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
     $argumentLine = '--profile localai chat -q "' +
         $prompt.Replace('"', '\"') +
         '" -Q -t terminal,file,skills,todo --checkpoints --max-turns ' +
-        [int]$contract.maxTurns + ' --source tool'
+        [int]$contract.maxTurns +
+        ' --source tool --no-restore-cwd'
     $process = Start-Process `
         -FilePath 'hermes.exe' `
         -ArgumentList $argumentLine `
@@ -126,8 +130,16 @@ try {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         throw 'Hermes execution timed out.'
     }
-    if ($process.ExitCode -ne 0) {
-        throw "Hermes returned exit code $($process.ExitCode)."
+    $process.WaitForExit()
+    $process.Refresh()
+    $hermesExitCode = $process.ExitCode
+    if ($hermesExitCode -ne 0) {
+        throw "Hermes returned exit code $hermesExitCode."
+    }
+
+    $sourceStatusAfter = @(& git.exe -C $project.Path status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $sourceStatusAfter.Count -gt 0) {
+        throw 'Hermes containment failed: the source repository changed.'
     }
 
     $filesChanged = 0
@@ -157,7 +169,7 @@ try {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'awaiting-review' `
-        -Message 'Resultado local listo para revisión de Codex.' `
+        -Message 'Resultado local listo para revision de Codex.' `
         -Fields @{
             finishedAt = [DateTime]::UtcNow.ToString('o')
             filesChanged = $filesChanged
@@ -167,7 +179,8 @@ try {
         }
 }
 catch {
-    $safeMessage = $_.Exception.Message -replace
+    $originalError = $_
+    $safeMessage = $originalError.Exception.Message -replace
         [regex]::Escape([string]$contract.projectRoot), '[project]'
     $safeMessage = ($safeMessage -replace '[\r\n\t]+', ' ').Substring(
         0,
@@ -176,7 +189,7 @@ catch {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'failed' `
-        -Message 'La ejecución local falló; requiere revisión.' `
+        -Message 'La ejecucion local fallo; requiere revision.' `
         -Fields @{
             finishedAt = [DateTime]::UtcNow.ToString('o')
             errorCode = $safeMessage

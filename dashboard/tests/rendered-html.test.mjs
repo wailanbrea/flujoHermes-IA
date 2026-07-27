@@ -101,6 +101,8 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(submit, /GitScope -ne 'own'/);
   assert.match(worker, /graphify\.exe query/);
   assert.match(worker, /worktree add --detach/);
+  assert.match(worker, /--source tool --no-restore-cwd/);
+  assert.match(worker, /source repository changed/);
   assert.match(worker, /--checkpoints/);
   assert.match(worker, /--max-turns/);
   assert.match(worker, /diff --binary --no-ext-diff HEAD/);

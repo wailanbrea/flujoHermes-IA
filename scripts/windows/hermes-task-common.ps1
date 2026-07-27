@@ -172,4 +172,3 @@ function Remove-TaskWorktree(
     }
     & git.exe -C $ProjectRoot worktree prune 2>$null
 }
-

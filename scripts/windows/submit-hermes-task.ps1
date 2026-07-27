@@ -45,6 +45,13 @@ $project = Get-AuthorizedProject -ProjectPath $ProjectPath
 if ($project.GitScope -ne 'own') {
     throw 'Hermes delegation currently requires a project-owned Git repository.'
 }
+$projectStatus = @(& git.exe -C $project.Path status --porcelain)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Git status failed for the delegated project.'
+}
+if ($projectStatus.Count -gt 0) {
+    throw 'Hermes delegation requires a clean target worktree.'
+}
 if ($Mode -eq 'execute') {
     if (-not $ModificationAuthorized) {
         throw 'Execute mode requires -ModificationAuthorized.'
