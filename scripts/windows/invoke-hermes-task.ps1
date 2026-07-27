@@ -69,8 +69,7 @@ try {
     ) 'telemetry\runtime\hermes-worktrees'
     New-Item -ItemType Directory -Path $worktreeRoot -Force | Out-Null
     $worktreePath = Join-Path $worktreeRoot $TaskId
-    & git.exe -C $project.Path worktree add --detach $worktreePath HEAD 2>&1 |
-        Out-Null
+    & git.exe -C $project.Path worktree add --detach $worktreePath HEAD 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw 'Git could not create the isolated Hermes worktree.'
     }
