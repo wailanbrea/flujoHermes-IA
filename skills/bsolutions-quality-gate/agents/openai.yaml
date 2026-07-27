@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Quality Gate"
+  short_description: "Validación reproducible antes de entregar"
+  default_prompt: "Use $bsolutions-quality-gate para ejecutar y documentar los controles de calidad de esta tarea."

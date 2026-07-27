@@ -1,15 +1,27 @@
-# Inventario MCP inicial
+# MCP and tool inventory
 
-No se habilitó ningún MCP en la Fase 0.
+No external MCP server was installed or connected.
 
-| MCP | Necesidad | Riesgo | Permiso objetivo | Estado |
+## Hermes `localai` tools
+
+Enabled: terminal, file, skills, todo, memory, clarify.
+
+Disabled: web, browser, code execution, vision, image/video generation, TTS,
+session search, delegation, cron, computer use, social/search and home services.
+
+Git is available through the controlled terminal. The dashboard reads local
+health endpoints only. This is the minimum set needed for the isolated pilot.
+
+## Future candidates
+
+| Candidate | Function | Risk/data | Alternative | Enable when |
 |---|---|---|---|---|
-| Filesystem | Operar workspace | Escritura fuera de alcance | allowlist estricta | PROPUESTO |
-| Git | Diff y checkpoints | Alteración de historial | sin force/delete | PROPUESTO |
-| Documentación | Contratos oficiales | salida de datos/red | sólo fuentes aprobadas | PROPUESTO |
-| Playwright | E2E del piloto | sesión/navegación | datos sintéticos | DIFERIDO |
-| GitHub | No requerido inicialmente | datos externos | deshabilitado | DIFERIDO |
-| Base de datos | Piloto futuro | pérdida/exposición | sólo instancia sintética | DIFERIDO |
+| Filesystem MCP | Scoped file access | Source disclosure/write | Built-in file tool + safe root | Stronger per-path enforcement is proven |
+| Git MCP | Structured Git operations | Repository mutation | CLI + checkpoints | A pilot needs structured operations |
+| Playwright MCP | Local E2E | Browser/session data | Project CLI | An authorized web project is onboarded |
+| Docs MCP | Official reference | External request metadata | Manual official docs | A task needs current API docs |
+| Test DB MCP | Query isolated DB | Schema/data mutation | CLI in Docker | A disposable database exists |
 
-Gmail, calendarios, contactos, producción, VPS, finanzas y bases reales están
-explícitamente fuera de alcance.
+GitHub, Gmail, calendars, contacts, financial systems, production, VPS, and real
+databases remain prohibited. Disable a future MCP by removing it from the
+isolated profile configuration and verifying `hermes tools list`.

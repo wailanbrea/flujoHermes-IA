@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Playwright"
+  short_description: "Pruebas E2E reproducibles y seguras"
+  default_prompt: "Use $bsolutions-playwright para crear una prueba E2E reproducible sin datos reales."

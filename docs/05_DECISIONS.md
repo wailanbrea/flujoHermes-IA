@@ -28,3 +28,15 @@ se tomará antes del piloto.
 
 No se propondrán CUDA ni herramientas NVIDIA. La optimización de LM Studio se validará
 con el backend soportado por la Radeon RX 9070 y mediciones reales.
+
+## ADR-006 — Carga explícita del modelo
+
+Hermes usará el modelo 35B MoE con contexto 65.536, paralelismo 1 y descarga parcial
+a GPU. La carga JIT de LM Studio eligió 262K y paralelismo 4, reduciendo el margen de
+RAM a un nivel inaceptable.
+
+## ADR-007 — Prohibición de modos sin aprobación
+
+Se prohíben `--yolo`, `--oneshot` y `-z`. En la versión instalada, `--oneshot`
+activa internamente el modo YOLO. Las tareas con herramientas deben ejecutarse en el
+CLI interactivo con aprobaciones manuales.

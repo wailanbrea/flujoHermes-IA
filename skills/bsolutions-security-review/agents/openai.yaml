@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Security Review"
+  short_description: "Revisión de seguridad basada en riesgo"
+  default_prompt: "Use $bsolutions-security-review para auditar este cambio dentro del alcance autorizado."

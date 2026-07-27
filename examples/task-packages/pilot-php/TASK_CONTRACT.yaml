@@ -1,0 +1,17 @@
+task_id: PILOT-001
+title: Correct integer discount rounding
+objective: Return an integer percentage discount without exceeding the subtotal.
+allowed_scope:
+  - examples/task-packages/pilot-php
+forbidden_scope:
+  - .env
+  - C:\xampp
+  - paths outside the pilot directory
+acceptance_criteria:
+  - subtotal 1000 and 15 percent returns 850
+  - subtotal 1 and 50 percent returns 1 using half-up rounding
+  - invalid percentages are rejected
+required_tests:
+  - php tests/run.php
+max_attempts: 3
+failure_policy: Create BLOCKER_REPORT.md in the pilot directory and stop.

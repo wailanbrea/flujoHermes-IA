@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions MySQL"
+  short_description: "Diseño y revisión segura de MySQL"
+  default_prompt: "Use $bsolutions-mysql para diseñar o revisar un cambio MySQL aislado y reversible."

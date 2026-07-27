@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Kotlin Android"
+  short_description: "Cambios Android y Kotlin con calidad"
+  default_prompt: "Use $bsolutions-kotlin-android para implementar una tarea Android respetando la arquitectura existente."

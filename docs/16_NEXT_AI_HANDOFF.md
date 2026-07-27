@@ -1,24 +1,33 @@
-# Handoff
+# Handoff para la siguiente IA
 
-## Estado
+## Estado actual
 
-Fase 0 completada y documentada. No se modificaron proyectos existentes. El siguiente
-punto es la aprobación única de la Fase 2 y fases locales relacionadas.
+El entorno local está operativo. Dashboard TRAMA: `http://127.0.0.1:4310`.
+LM Studio: `127.0.0.1:1234`. Hermes usa exclusivamente el perfil `localai`.
+Docker, WSL2, Apache y MariaDB responden en la última validación.
 
-## Próxima acción segura
+## Reglas innegociables
 
-1. Obtener aprobación del usuario.
-2. Consultar documentación oficial vigente para WSL, Ubuntu, LM Studio y Hermes.
-3. Validar versiones y comandos antes de cualquier instalación.
-4. Crear backup de configuración saneado.
-5. Preparar Ubuntu LTS en WSL si el usuario mantiene esa decisión.
-6. Implementar después los health checks y el dashboard local por incrementos.
+- No usar Hermes con `--oneshot`, `-z` ni `--yolo`.
+- No iniciar Hermes sin `scripts/windows/start-hermes-local.ps1`.
+- No autorizar rutas fuera de este workspace sin decisión explícita del usuario.
+- No modificar proyectos XAMPP existentes.
+- Validar siempre con pruebas, diff y linters; nunca confiar solo en el resumen del modelo.
+
+## Próximo paso recomendado
+
+Elegir un proyecto real mediante el procedimiento de `docs/15_PROJECT_ONBOARDING.md`,
+crear un contrato de una sola tarea y autorizar únicamente su ruta. Mantener Git,
+checkpoint Hermes y pruebas como tres capas separadas.
+
+## Validación rápida
+
+```powershell
+.\scripts\health\check-all.ps1
+.\scripts\windows\status-dashboard.ps1
+C:\xampp\php\php.exe examples\task-packages\pilot-php\tests\run.php
+```
 
 ## Riesgos abiertos
 
-- MariaDB expuesta en `::`.
-- No hay Ubuntu de trabajo en WSL.
-- Docker daemon detenido.
-- Modelos disponibles pero no benchmarkeados.
-- La configuración activa de Hermes no ha sido auditada.
-- Dashboard transversal aún no implementado; sólo está diseñado.
+Consultar `docs/BLOCKER_REPORT.md` y `reports/tests/hermes-validation.md`.

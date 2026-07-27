@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions API Review"
+  short_description: "Revisión rigurosa de contratos API"
+  default_prompt: "Use $bsolutions-api-review para revisar este contrato API y producir hallazgos verificables."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Laravel"
+  short_description: "Implementación Laravel segura y verificable"
+  default_prompt: "Use $bsolutions-laravel para implementar una tarea Laravel con pruebas y quality gates."

@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-07-27T14:25:00-04:00",
+  "selectedModel": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+  "configuration": {
+    "contextLength": 65536,
+    "parallel": 1,
+    "gpuOffload": 0.6,
+    "reasoningEffort": "none",
+    "loadMode": "explicit"
+  },
+  "benchmarks": [
+    {
+      "model": "qwen3.6-27b-mtp",
+      "nativeTokensPerSecond": 14.24,
+      "timeToFirstTokenSeconds": 0.417,
+      "structuredOutput": false,
+      "toolCalling": false
+    },
+    {
+      "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+      "nativeTokensPerSecond": 27.58,
+      "timeToFirstTokenSeconds": 0.358,
+      "structuredOutput": true,
+      "toolCalling": true
+    }
+  ],
+  "memorySafety": {
+    "jitFreeMemoryGiB": 1.54,
+    "safeParallelOneFreeMemoryGiB": 13.01
+  },
+  "downloadsPerformed": 0
+}

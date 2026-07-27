@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Project Handoff"
+  short_description: "Handoff compacto para el siguiente agente"
+  default_prompt: "Use $bsolutions-project-handoff para cerrar esta tarea y preparar un handoff verificable."

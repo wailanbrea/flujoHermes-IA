@@ -5,10 +5,14 @@ backups/*
 !backups/.gitkeep
 telemetry/events/*
 !telemetry/events/.gitkeep
+telemetry/runtime/
 reports/**/*.log
 reports/**/raw-*
 dashboard/node_modules/
 dashboard/dist/
+dashboard/.next/
+dashboard/.vinext/
+dashboard/.wrangler/
 __pycache__/
 *.pyc
 *.zip

@@ -1,0 +1,26 @@
+task_id: MODULO-001
+title: Título de la tarea
+objective: Objetivo único y verificable.
+context: Resumen mínimo necesario.
+allowed_scope:
+  - rutas autorizadas
+forbidden_scope:
+  - rutas prohibidas
+dependencies:
+  - dependencias previas
+technical_constraints:
+  - tecnologías, versiones, arquitectura y seguridad
+acceptance_criteria:
+  - criterio verificable 1
+  - criterio verificable 2
+required_tests:
+  - prueba requerida
+required_commands:
+  - comando reproducible
+required_evidence:
+  - archivos modificados
+  - resumen del diff
+  - resultados de pruebas
+  - riesgos y decisiones
+max_attempts: 3
+failure_policy: Crear un informe de bloqueo y detener la tarea.

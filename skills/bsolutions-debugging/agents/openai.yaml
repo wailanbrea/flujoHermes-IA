@@ -1,0 +1,4 @@
+interface:
+  display_name: "BSolutions Debugging"
+  short_description: "Diagnóstico disciplinado contra bucles"
+  default_prompt: "Use $bsolutions-debugging para aislar esta falla con un máximo de tres intentos razonados."

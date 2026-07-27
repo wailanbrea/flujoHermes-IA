@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "quality:format": "pint --test",
+    "quality:static": "phpstan analyse",
+    "quality:test": "php artisan test",
+    "quality:audit": "composer audit",
+    "quality": [
+      "@quality:format",
+      "@quality:static",
+      "@quality:test",
+      "@quality:audit"
+    ]
+  }
+}
