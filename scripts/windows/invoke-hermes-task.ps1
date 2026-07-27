@@ -126,20 +126,36 @@ try {
         '" -Q -t terminal,file,skills,todo --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
         ' --source tool --no-restore-cwd'
-    $process = Start-Process `
-        -FilePath 'hermes.exe' `
-        -ArgumentList $argumentLine `
-        -WorkingDirectory $executionRoot `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdoutPath `
-        -RedirectStandardError $stderrPath `
-        -PassThru
-    if (-not $process.WaitForExit([int]$contract.timeoutSeconds * 1000)) {
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        throw 'Hermes execution timed out.'
+    $processInfo = [Diagnostics.ProcessStartInfo]::new()
+    $processInfo.FileName = 'hermes.exe'
+    $processInfo.Arguments = $argumentLine
+    $processInfo.WorkingDirectory = $executionRoot
+    $processInfo.UseShellExecute = $false
+    $processInfo.CreateNoWindow = $true
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $processInfo
+    if (-not $process.Start()) {
+        throw 'Hermes process could not be started.'
+    }
+    $stdoutRead = $process.StandardOutput.ReadToEndAsync()
+    $stderrRead = $process.StandardError.ReadToEndAsync()
+    $completedInTime = $process.WaitForExit(
+        [int]$contract.timeoutSeconds * 1000
+    )
+    if (-not $completedInTime) {
+        $process.Kill($true)
     }
     $process.WaitForExit()
-    $process.Refresh()
+    $stdoutText = $stdoutRead.GetAwaiter().GetResult()
+    $stderrText = $stderrRead.GetAwaiter().GetResult()
+    $utf8NoBom = [Text.UTF8Encoding]::new($false)
+    [IO.File]::WriteAllText($stdoutPath, $stdoutText, $utf8NoBom)
+    [IO.File]::WriteAllText($stderrPath, $stderrText, $utf8NoBom)
+    if (-not $completedInTime) {
+        throw 'Hermes execution timed out.'
+    }
     $hermesExitCode = $process.ExitCode
     if ($hermesExitCode -ne 0) {
         throw "Hermes returned exit code $hermesExitCode."
