@@ -86,6 +86,10 @@ usa `~/.config/opencode/AGENTS.md`. Los tres reciben la misma política canónic
 `config/agent-governance.md` y deben identificarse con `-RequestedBy` y
 `-ReviewedBy`.
 
+OpenCode carga además la política desde `opencode.json`: la edición directa está
+denegada y terminal, rutas externas y web requieren aprobación. Esto no cambia el
+modelo, proveedor ni MCP seleccionados en OpenCode.
+
 Comprobar el entorno:
 
 ```powershell
