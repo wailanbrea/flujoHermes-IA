@@ -46,6 +46,8 @@ const HERMES_SUBMIT_SCRIPT = resolve(
   "submit-hermes-task.ps1",
 );
 const CODEX_GRAPHIFY_SKILL = resolve(homedir(), ".codex", "skills", "graphify", "SKILL.md");
+const CLAUDE_GLOBAL_RULES = resolve(homedir(), ".claude", "CLAUDE.md");
+const ANTIGRAVITY_GLOBAL_RULES = resolve(homedir(), ".gemini", "GEMINI.md");
 const HERMES_GRAPHIFY_SKILL = resolve(
   homedir(),
   "AppData",
@@ -195,6 +197,15 @@ async function run(file: string, args: string[]): Promise<string> {
 async function pathExists(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function hasGovernanceMarker(path: string): Promise<boolean> {
+  try {
+    const content = await readFile(path, "utf8");
+    return content.includes("<!-- LOCAL_AI_GOVERNANCE:START -->");
   } catch {
     return false;
   }
@@ -456,6 +467,8 @@ async function probeGraphify(): Promise<GraphProbe> {
     communityCount: 0,
     projectCount: 0,
     codexIntegrated: false,
+    claudeIntegrated: false,
+    antigravityIntegrated: false,
     hermesIntegrated: false,
     repositories: [],
     nodeTypes: [],
@@ -466,6 +479,8 @@ async function probeGraphify(): Promise<GraphProbe> {
     const [
       graphData,
       codexIntegrated,
+      claudeIntegrated,
+      antigravityIntegrated,
       hermesIntegrated,
       localGraphExists,
       catalog,
@@ -473,6 +488,8 @@ async function probeGraphify(): Promise<GraphProbe> {
       await Promise.all([
         readGraphData(),
         pathExists(CODEX_GRAPHIFY_SKILL),
+        hasGovernanceMarker(CLAUDE_GLOBAL_RULES),
+        hasGovernanceMarker(ANTIGRAVITY_GLOBAL_RULES),
         pathExists(HERMES_GRAPHIFY_SKILL),
         pathExists(LOCAL_GRAPH_PATH),
         readProjectCatalog(),
@@ -527,6 +544,8 @@ async function probeGraphify(): Promise<GraphProbe> {
     ).length;
     const graphState: HealthState =
       codexIntegrated &&
+      claudeIntegrated &&
+      antigravityIntegrated &&
       hermesIntegrated &&
       localGraphExists &&
       failedProjects === 0
@@ -541,6 +560,8 @@ async function probeGraphify(): Promise<GraphProbe> {
       communityCount: graphData.communityCount,
       projectCount: repositories.length,
       codexIntegrated,
+      claudeIntegrated,
+      antigravityIntegrated,
       hermesIntegrated,
       repositories,
       nodeTypes: graphData.nodeTypes,
@@ -563,6 +584,8 @@ async function probeGraphify(): Promise<GraphProbe> {
           edges: graph.edgeCount,
           projects: graph.projectCount,
           codexIntegrated,
+          claudeIntegrated,
+          antigravityIntegrated,
           hermesIntegrated,
         },
       },
@@ -832,6 +855,10 @@ function buildWorkflow(
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const byId = new Map(services.map((service) => [service.id, service]));
   const stateOf = (id: string): HealthState => byId.get(id)?.state ?? "unknown";
+  const directorsIntegrated =
+    graph.codexIntegrated &&
+    graph.claudeIntegrated &&
+    graph.antigravityIntegrated;
   const hasTaskEvidence = delegation.totalTasks > 0;
   const taskState: HealthState =
     delegation.latestTask &&
@@ -858,7 +885,7 @@ function buildWorkflow(
       label: "Directores IA",
       role: "Dirección y revisión",
       detail: "Codex · Claude · Antigravity",
-      state: graph.codexIntegrated ? "healthy" : "degraded",
+      state: directorsIntegrated ? "healthy" : "degraded",
       kind: "agent",
       x: 22,
       y: 24,
@@ -988,7 +1015,7 @@ function buildWorkflow(
       "directors",
       "graphify",
       "consulta primero",
-      graph.codexIntegrated ? "healthy" : "degraded",
+      directorsIntegrated ? "healthy" : "degraded",
       "configured",
     ),
     edge(

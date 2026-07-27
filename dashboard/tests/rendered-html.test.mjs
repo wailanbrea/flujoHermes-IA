@@ -15,6 +15,8 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(page, /Estado de delegación local/);
   assert.match(page, /Revisión del director/);
   assert.match(page, /requestedBy/);
+  assert.match(page, /graph\.claudeIntegrated/);
+  assert.match(page, /graph\.antigravityIntegrated/);
   assert.match(page, /El mapa que ya construiste está conectado/);
   assert.match(page, /snapshot\.workflow\.nodes/);
   assert.match(page, /Herramientas observadas/);
@@ -34,6 +36,9 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.doesNotMatch(server, /shell:\s*true/);
   assert.doesNotMatch(server, /message\.content|api[_-]?key/i);
   assert.match(server, /GLOBAL_GRAPH_PATH/);
+  assert.match(server, /CLAUDE_GLOBAL_RULES/);
+  assert.match(server, /ANTIGRAVITY_GLOBAL_RULES/);
+  assert.match(server, /LOCAL_AI_GOVERNANCE:START/);
   assert.match(server, /PROJECT_CATALOG_PATH/);
   assert.match(server, /projectCatalogSchema/);
   assert.match(server, /probeHermesBroker/);

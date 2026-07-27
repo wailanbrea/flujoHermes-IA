@@ -92,6 +92,8 @@ export interface KnowledgeGraphSummary {
   communityCount: number;
   projectCount: number;
   codexIntegrated: boolean;
+  claudeIntegrated: boolean;
+  antigravityIntegrated: boolean;
   hermesIntegrated: boolean;
   repositories: GraphRepositorySummary[];
   nodeTypes: Array<{ label: string; count: number }>;

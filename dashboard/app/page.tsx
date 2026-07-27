@@ -346,13 +346,22 @@ export default function Home() {
           <p className="eyebrow">Graphify · conocimiento local</p>
           <h2 id="graph-title">El mapa que ya construiste está conectado.</h2>
           <p>
-            Codex y Hermes consultan relaciones estructurales antes de recorrer archivos.
-            El dashboard lee únicamente métricas y procedencia del grafo global.
+            Codex, Claude, Antigravity y Hermes consultan relaciones estructurales antes
+            de recorrer archivos. El dashboard lee únicamente métricas y procedencia del
+            grafo global.
           </p>
           <div className="integration-state">
             <span>
               <i className={snapshot?.graph.codexIntegrated ? "ok" : ""} />
               Codex
+            </span>
+            <span>
+              <i className={snapshot?.graph.claudeIntegrated ? "ok" : ""} />
+              Claude
+            </span>
+            <span>
+              <i className={snapshot?.graph.antigravityIntegrated ? "ok" : ""} />
+              Antigravity
             </span>
             <span>
               <i className={snapshot?.graph.hermesIntegrated ? "ok" : ""} />
