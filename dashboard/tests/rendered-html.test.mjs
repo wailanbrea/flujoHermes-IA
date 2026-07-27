@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import test from "node:test";
+
+test("builds the finished local observability dashboard", async () => {
+  const [html, page, assets] = await Promise.all([
+    readFile(new URL("../dist/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readdir(new URL("../dist/assets/", import.meta.url)),
+  ]);
+  assert.match(html, /<title>TRAMA · Observador local de IA<\/title>/i);
+  assert.match(html, /<div id="root"><\/div>/);
+  assert.ok(assets.some((name) => name.endsWith(".js")));
+  assert.match(page, /Cada herramienta/);
+  assert.match(page, /Herramientas observadas/);
+  assert.match(page, /no captura/);
+});
+
+test("keeps telemetry loopback-only and read-only", async () => {
+  const [server, dashboardServer, page, packageJson] = await Promise.all([
+    readFile(new URL("../server/telemetry-server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../server/dashboard-server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /const HOST = "127\.0\.0\.1"/);
+  assert.match(server, /request\.method !== "GET"/);
+  assert.match(server, /Origen local no autorizado/);
+  assert.doesNotMatch(server, /shell:\s*true/);
+  assert.doesNotMatch(server, /prompt|message\.content|api[_-]?key/i);
+  assert.match(dashboardServer, /const HOST = "127\.0\.0\.1"/);
+  assert.match(dashboardServer, /request\.method !== "GET"/);
+  assert.match(dashboardServer, /startsWith\(`\$\{STATIC_ROOT\}\$\{sep\}`\)/);
+  assert.match(page, /EventSource/);
+  assert.match(packageJson, /server\/dashboard-server\.ts/);
+});
