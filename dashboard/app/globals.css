@@ -477,6 +477,28 @@ a {
   width: 142px;
 }
 
+.workflow-node.node-kind-queue {
+  border-color: rgba(240, 163, 106, 0.72);
+}
+
+.workflow-node.node-kind-queue::before {
+  background: var(--copper);
+}
+
+.workflow-node.node-kind-workspace {
+  background: #162d37;
+  border-style: dashed;
+}
+
+.workflow-node.node-kind-review {
+  background: #23323a;
+  border-color: rgba(232, 195, 106, 0.72);
+}
+
+.workflow-node.node-kind-review::before {
+  background: var(--amber);
+}
+
 .workflow-role {
   color: var(--muted);
   display: block;
@@ -514,6 +536,49 @@ a {
   justify-content: center;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.delegation-strip {
+  border: 1px solid var(--line);
+  border-top: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(95px, 0.65fr)) minmax(220px, 2fr);
+}
+
+.delegation-strip > div {
+  border-right: 1px solid var(--line);
+  min-height: 68px;
+  padding: 13px 15px;
+}
+
+.delegation-strip > div:last-child {
+  border-right: 0;
+}
+
+.delegation-strip span,
+.delegation-strip strong {
+  display: block;
+}
+
+.delegation-strip span {
+  color: var(--muted);
+  font: 7px var(--data);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.delegation-strip strong {
+  color: var(--paper);
+  font: 500 20px var(--display);
+  margin-top: 8px;
+}
+
+.delegation-latest strong {
+  color: var(--aqua);
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provenance-line {
@@ -1228,6 +1293,18 @@ footer strong {
 
   .workflow-canvas {
     height: 460px;
+  }
+
+  .delegation-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .delegation-strip > div {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .delegation-latest {
+    grid-column: 1 / -1;
   }
 
   .provenance-line {

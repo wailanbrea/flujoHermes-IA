@@ -34,6 +34,20 @@ mostrar la procedencia y antigüedad de cada dato, distinguir `healthy`, `degrad
 `offline` y `unknown`, y no mostrar contenido de prompts, respuestas ni argumentos de
 herramientas salvo que se habilite una captura saneada explícita.
 
+## Delegación local
+
+- Para implementaciones autorizadas en un repositorio Git propio, Codex diseña el
+  contrato y delega la generación/edición a Hermes mediante
+  `scripts/windows/submit-hermes-task.ps1`.
+- No invocar Hermes con `--yolo`, `--oneshot` ni `-z`. El worker usa aprobaciones
+  normales, checkpoints, herramientas limitadas, máximo de turnos y worktree aislado.
+- Codex debe revisar `changes.patch`; sólo después puede usar
+  `scripts/windows/review-hermes-task.ps1 -Decision Approve`.
+- Codex ejecuta pruebas independientes y cierra con `-Decision Complete`. Un resultado
+  de Hermes nunca es evidencia suficiente por sí solo.
+- Proyectos sin Git propio permanecen en análisis Graphify, pero no reciben escritura
+  delegada hasta disponer de un límite reversible y verificable.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

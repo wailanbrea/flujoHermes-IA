@@ -308,6 +308,32 @@ export default function Home() {
         ) : (
           <div className="workflow-loading">Construyendo el circuito local…</div>
         )}
+        <div className="delegation-strip" aria-label="Estado de delegación local">
+          <div>
+            <span>Cola</span>
+            <strong>{snapshot?.delegation.queuedCount ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Hermes activo</span>
+            <strong>{snapshot?.delegation.activeCount ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Revisión Codex</span>
+            <strong>{snapshot?.delegation.awaitingReviewCount ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Validadas</span>
+            <strong>{snapshot?.delegation.completedCount ?? "—"}</strong>
+          </div>
+          <div className="delegation-latest">
+            <span>Última tarea</span>
+            <strong>
+              {snapshot?.delegation.latestTask
+                ? `${snapshot.delegation.latestTask.projectName} · ${snapshot.delegation.latestTask.state}`
+                : "Sin actividad"}
+            </strong>
+          </div>
+        </div>
         <p className="provenance-line">
           Evidencia actualizada{" "}
           <strong>{snapshot ? formatAge(snapshot.generatedAt) : "sin datos"}</strong>.

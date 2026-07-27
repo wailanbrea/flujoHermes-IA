@@ -40,7 +40,16 @@ export interface WorkflowNode {
   role: string;
   detail: string;
   state: HealthState;
-  kind: "observer" | "agent" | "model" | "compute" | "graph" | "project";
+  kind:
+    | "observer"
+    | "agent"
+    | "model"
+    | "compute"
+    | "graph"
+    | "project"
+    | "queue"
+    | "workspace"
+    | "review";
   x: number;
   y: number;
 }
@@ -89,6 +98,41 @@ export interface KnowledgeGraphSummary {
   relations: Array<{ label: string; count: number }>;
 }
 
+export type HermesTaskState =
+  | "queued"
+  | "preparing"
+  | "executing"
+  | "awaiting-review"
+  | "validating"
+  | "completed"
+  | "rejected"
+  | "failed"
+  | "blocked"
+  | "validation-failed";
+
+export interface HermesTaskSummary {
+  taskId: string;
+  projectName: string;
+  mode: "analysis" | "execute";
+  state: HermesTaskState;
+  updatedAt: string;
+  filesChanged: number;
+  patchBytes: number;
+  validationPassed: boolean | null;
+}
+
+export interface HermesDelegationSummary {
+  state: HealthState;
+  checkedAt: string;
+  totalTasks: number;
+  queuedCount: number;
+  activeCount: number;
+  awaitingReviewCount: number;
+  completedCount: number;
+  failedCount: number;
+  latestTask: HermesTaskSummary | null;
+}
+
 export interface TelemetrySnapshot {
   generatedAt: string;
   sequence: number;
@@ -97,6 +141,7 @@ export interface TelemetrySnapshot {
   connections: ConnectionHealth[];
   events: TelemetryEvent[];
   graph: KnowledgeGraphSummary;
+  delegation: HermesDelegationSummary;
   workflow: {
     nodes: WorkflowNode[];
     edges: WorkflowEdge[];

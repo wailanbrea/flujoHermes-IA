@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { freemem, homedir, hostname, totalmem, uptime } from "node:os";
@@ -10,6 +10,8 @@ import type {
   ConnectionHealth,
   GraphRepositorySummary,
   HealthState,
+  HermesDelegationSummary,
+  HermesTaskSummary,
   KnowledgeGraphSummary,
   ServiceHealth,
   TelemetryEvent,
@@ -30,6 +32,18 @@ const PROJECT_CATALOG_PATH = resolve(
   "telemetry",
   "runtime",
   "project-catalog.json",
+);
+const HERMES_JOBS_PATH = resolve(
+  WORKSPACE_ROOT,
+  "telemetry",
+  "runtime",
+  "hermes-jobs",
+);
+const HERMES_SUBMIT_SCRIPT = resolve(
+  WORKSPACE_ROOT,
+  "scripts",
+  "windows",
+  "submit-hermes-task.ps1",
 );
 const CODEX_GRAPHIFY_SKILL = resolve(homedir(), ".codex", "skills", "graphify", "SKILL.md");
 const HERMES_GRAPHIFY_SKILL = resolve(
@@ -98,6 +112,27 @@ const projectCatalogSchema = z.object({
     }),
   ),
 });
+const hermesTaskSchema = z.object({
+  taskId: z.string(),
+  projectName: z.string(),
+  mode: z.enum(["analysis", "execute"]),
+  state: z.enum([
+    "queued",
+    "preparing",
+    "executing",
+    "awaiting-review",
+    "validating",
+    "completed",
+    "rejected",
+    "failed",
+    "blocked",
+    "validation-failed",
+  ]),
+  updatedAt: z.string(),
+  filesChanged: z.number().int().nonnegative().default(0),
+  patchBytes: z.number().int().nonnegative().default(0),
+  validationPassed: z.boolean().nullable().default(null),
+});
 
 interface Probe {
   service: ServiceHealth;
@@ -111,6 +146,10 @@ interface GraphProbe extends Probe {
 interface GpuProbe extends Probe {
   dedicatedUsedGiB: number | null;
   sharedUsedGiB: number | null;
+}
+
+interface HermesBrokerProbe extends Probe {
+  delegation: HermesDelegationSummary;
 }
 
 interface CachedGraphData {
@@ -631,6 +670,113 @@ function probeTcp(
   });
 }
 
+async function probeHermesBroker(): Promise<HermesBrokerProbe> {
+  const start = performance.now();
+  const checked = checkedAt();
+  const empty: HermesDelegationSummary = {
+    state: "offline",
+    checkedAt: checked,
+    totalTasks: 0,
+    queuedCount: 0,
+    activeCount: 0,
+    awaitingReviewCount: 0,
+    completedCount: 0,
+    failedCount: 0,
+    latestTask: null,
+  };
+  try {
+    if (!(await pathExists(HERMES_SUBMIT_SCRIPT))) {
+      throw new Error("puente local no instalado");
+    }
+    let directories: string[] = [];
+    try {
+      directories = (await readdir(HERMES_JOBS_PATH, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith("hermes-"))
+        .map((entry) => entry.name);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const settled = await Promise.allSettled(
+      directories.map(async (directory) => {
+        const body = await readFile(
+          resolve(HERMES_JOBS_PATH, directory, "status.json"),
+          "utf8",
+        );
+        return hermesTaskSchema.parse(JSON.parse(body.replace(/^\uFEFF/, "")));
+      }),
+    );
+    const tasks: HermesTaskSummary[] = settled
+      .filter(
+        (
+          result,
+        ): result is PromiseFulfilledResult<z.infer<typeof hermesTaskSchema>> =>
+          result.status === "fulfilled",
+      )
+      .map((result) => result.value)
+      .sort(
+        (left, right) =>
+          Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+      );
+    const invalidTaskCount = settled.filter(
+      (result) => result.status === "rejected",
+    ).length;
+    const activeStates = new Set(["preparing", "executing"]);
+    const failedStates = new Set(["failed", "blocked", "validation-failed"]);
+    const latestTask = tasks[0] ?? null;
+    const state: HealthState =
+      invalidTaskCount > 0 ||
+      (latestTask && failedStates.has(latestTask.state))
+        ? "degraded"
+        : "healthy";
+    const delegation: HermesDelegationSummary = {
+      state,
+      checkedAt: checked,
+      totalTasks: tasks.length,
+      queuedCount: tasks.filter((task) => task.state === "queued").length,
+      activeCount: tasks.filter((task) => activeStates.has(task.state)).length,
+      awaitingReviewCount: tasks.filter(
+        (task) => task.state === "awaiting-review",
+      ).length,
+      completedCount: tasks.filter((task) => task.state === "completed").length,
+      failedCount:
+        tasks.filter((task) => failedStates.has(task.state)).length +
+        invalidTaskCount,
+      latestTask,
+    };
+    return {
+      protocol: "Cola JSON local",
+      delegation,
+      service: {
+        id: "hermes-broker",
+        name: "Puente Codex → Hermes",
+        role: "Delegación local",
+        state,
+        detail: `${delegation.activeCount} activas · ${delegation.awaitingReviewCount} por revisar · ${delegation.completedCount} validadas`,
+        latencyMs: latency(start),
+        checkedAt: checked,
+        metrics: {
+          totalTasks: delegation.totalTasks,
+          activeTasks: delegation.activeCount,
+          awaitingReview: delegation.awaitingReviewCount,
+          completedTasks: delegation.completedCount,
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      ...failedProbe(
+        "hermes-broker",
+        "Puente Codex → Hermes",
+        "Delegación local",
+        "Cola JSON local",
+        start,
+        error,
+      ),
+      delegation: empty,
+    };
+  }
+}
+
 function updateEvents(services: ServiceHealth[]): void {
   for (const service of services) {
     const previous = previousStates.get(service.id);
@@ -680,10 +826,21 @@ function connectionFrom(probe: Probe): ConnectionHealth {
 function buildWorkflow(
   services: ServiceHealth[],
   graph: KnowledgeGraphSummary,
+  delegation: HermesDelegationSummary,
   observedAt: string,
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const byId = new Map(services.map((service) => [service.id, service]));
   const stateOf = (id: string): HealthState => byId.get(id)?.state ?? "unknown";
+  const hasTaskEvidence = delegation.totalTasks > 0;
+  const taskState: HealthState =
+    delegation.latestTask &&
+    ["failed", "blocked", "validation-failed"].includes(
+      delegation.latestTask.state,
+    )
+      ? "degraded"
+      : hasTaskEvidence
+        ? "healthy"
+        : "unknown";
   const nodes: WorkflowNode[] = [
     {
       id: "operator",
@@ -692,58 +849,38 @@ function buildWorkflow(
       detail: "Solicitudes locales",
       state: "healthy",
       kind: "observer",
-      x: 8,
+      x: 7,
       y: 24,
-    },
-    {
-      id: "dashboard",
-      label: "TRAMA",
-      role: "Observador",
-      detail: "Telemetría sin contenido",
-      state: "healthy",
-      kind: "observer",
-      x: 8,
-      y: 76,
     },
     {
       id: "codex",
       label: "Codex",
-      role: "Agente",
-      detail: graph.codexIntegrated ? "Graphify registrado" : "Sin Graphify",
+      role: "Director y revisor",
+      detail: "Diseña, delega y valida",
       state: graph.codexIntegrated ? "healthy" : "degraded",
       kind: "agent",
-      x: 29,
+      x: 22,
       y: 24,
-    },
-    {
-      id: "hermes",
-      label: "Hermes",
-      role: "Agente local",
-      detail: byId.get("hermes")?.detail ?? "Sin datos",
-      state: stateOf("hermes"),
-      kind: "agent",
-      x: 29,
-      y: 76,
     },
     {
       id: "graphify",
       label: "Graphify",
-      role: "Índice estructural",
-      detail: `${graph.nodeCount.toLocaleString("es-DO")} nodos disponibles`,
+      role: "Contexto acotado",
+      detail: `${graph.nodeCount.toLocaleString("es-DO")} nodos`,
       state: graph.state,
       kind: "graph",
-      x: 52,
-      y: 24,
+      x: 38,
+      y: 12,
     },
     {
-      id: "lm-studio",
-      label: "LM Studio",
-      role: "Inferencia",
-      detail: byId.get("lm-studio")?.detail ?? "Sin datos",
-      state: stateOf("lm-studio"),
-      kind: "model",
-      x: 52,
-      y: 76,
+      id: "hermes-broker",
+      label: "Contrato local",
+      role: "Cola controlada",
+      detail: `${delegation.activeCount} activas · ${delegation.awaitingReviewCount} revisión`,
+      state: delegation.state,
+      kind: "queue",
+      x: 38,
+      y: 48,
     },
     {
       id: "graph-store",
@@ -752,50 +889,82 @@ function buildWorkflow(
       detail: `${graph.projectCount} proyectos indexados`,
       state: graph.state,
       kind: "graph",
-      x: 74,
-      y: 24,
+      x: 55,
+      y: 12,
+    },
+    {
+      id: "hermes",
+      label: "Hermes",
+      role: "Ejecutor local",
+      detail: byId.get("hermes")?.detail ?? "Sin datos",
+      state: stateOf("hermes"),
+      kind: "agent",
+      x: 55,
+      y: 48,
+    },
+    {
+      id: "project-catalog",
+      label: "Catálogo",
+      role: "Proyectos autorizados",
+      detail: `${graph.projectCount} proyectos conocidos`,
+      state: graph.state,
+      kind: "project",
+      x: 72,
+      y: 12,
+    },
+    {
+      id: "worktree",
+      label: "Worktree aislado",
+      role: "Edición reversible",
+      detail: hasTaskEvidence ? "Parche local capturado" : "En espera",
+      state: taskState,
+      kind: "workspace",
+      x: 72,
+      y: 42,
+    },
+    {
+      id: "codex-review",
+      label: "Revisión Codex",
+      role: "Puerta de calidad",
+      detail: delegation.latestTask
+        ? `${delegation.latestTask.state} · ${delegation.latestTask.filesChanged} archivos`
+        : "Sin tareas recientes",
+      state: taskState,
+      kind: "review",
+      x: 88,
+      y: 42,
+    },
+    {
+      id: "lm-studio",
+      label: "LM Studio",
+      role: "Inferencia local",
+      detail: byId.get("lm-studio")?.detail ?? "Sin datos",
+      state: stateOf("lm-studio"),
+      kind: "model",
+      x: 72,
+      y: 76,
     },
     {
       id: "rx9070",
       label: "RX 9070",
-      role: "GPU",
+      role: "GPU + RAM",
       detail: byId.get("rx9070")?.detail ?? "Sin datos",
       state: stateOf("rx9070"),
       kind: "compute",
-      x: 74,
+      x: 88,
       y: 76,
     },
-  ];
-
-  const groupedProjects = new Map<
-    string,
-    { label: string; projects: number; nodes: number }
-  >();
-  for (const repository of graph.repositories) {
-    const key = repository.rootAlias ?? "otros";
-    const group = groupedProjects.get(key) ?? {
-      label: key,
-      projects: 0,
-      nodes: 0,
-    };
-    group.projects += 1;
-    group.nodes += repository.nodeCount;
-    groupedProjects.set(key, group);
-  }
-  const projectGroups = [...groupedProjects.entries()].slice(0, 4);
-  projectGroups.forEach(([id, group], index, visible) => {
-    const spread = visible.length === 1 ? 24 : 48 / (visible.length - 1);
-    nodes.push({
-      id: `project-group-${id}`,
-      label: group.label,
-      role: "Grupo de proyectos",
-      detail: `${group.projects} proyectos · ${group.nodes} nodos`,
+    {
+      id: "dashboard",
+      label: "TRAMA",
+      role: "Observador",
+      detail: "Solo estados y métricas",
       state: "healthy",
-      kind: "project",
-      x: 93,
-      y: visible.length === 1 ? 24 : 10 + spread * index,
-    });
-  });
+      kind: "observer",
+      x: 7,
+      y: 84,
+    },
+  ];
 
   const edge = (
     source: string,
@@ -814,7 +983,6 @@ function buildWorkflow(
   });
   const edges: WorkflowEdge[] = [
     edge("operator", "codex", "tarea", "healthy", "configured"),
-    edge("operator", "hermes", "tarea local", stateOf("hermes"), "configured"),
     edge(
       "codex",
       "graphify",
@@ -823,29 +991,54 @@ function buildWorkflow(
       "configured",
     ),
     edge(
+      "codex",
+      "hermes-broker",
+      "delega contrato",
+      delegation.state,
+      hasTaskEvidence ? "observed" : "configured",
+    ),
+    edge("graphify", "graph-store", "consulta", graph.state, "observed"),
+    edge("graph-store", "project-catalog", "ubica", graph.state, "indexed"),
+    edge(
+      "hermes-broker",
       "hermes",
-      "graphify",
-      "consulta primero",
-      graph.hermesIntegrated ? "healthy" : "degraded",
-      "configured",
+      "ejecuta local",
+      stateOf("hermes"),
+      hasTaskEvidence ? "observed" : "configured",
+    ),
+    edge(
+      "hermes",
+      "worktree",
+      "crea parche",
+      taskState,
+      hasTaskEvidence ? "observed" : "configured",
+    ),
+    edge(
+      "worktree",
+      "codex-review",
+      "diff + evidencia",
+      taskState,
+      hasTaskEvidence ? "observed" : "configured",
+    ),
+    edge(
+      "codex-review",
+      "project-catalog",
+      "aplica validado",
+      taskState,
+      hasTaskEvidence ? "observed" : "configured",
     ),
     edge("hermes", "lm-studio", "OpenAI local", stateOf("lm-studio"), "observed"),
     edge("lm-studio", "rx9070", "capas GPU", stateOf("rx9070"), "observed"),
-    edge("graphify", "graph-store", "lee relaciones", graph.state, "observed"),
     edge("dashboard", "graphify", "metadatos", graph.state, "observed"),
+    edge(
+      "dashboard",
+      "hermes-broker",
+      "estados",
+      delegation.state,
+      "observed",
+    ),
     edge("dashboard", "lm-studio", "estado REST", stateOf("lm-studio"), "observed"),
   ];
-  for (const [id] of projectGroups) {
-    edges.push(
-      edge(
-        "graph-store",
-        `project-group-${id}`,
-        "indexa",
-        "healthy",
-        "indexed",
-      ),
-    );
-  }
   return { nodes, edges };
 }
 
@@ -859,6 +1052,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     apacheProbe,
     graphProbe,
     gpuProbe,
+    hermesBrokerProbe,
   ] = await Promise.all([
     probeLmStudio(),
     probeHermes(),
@@ -868,6 +1062,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeTcp("apache", "Apache", "Aplicaciones XAMPP", 80),
     probeGraphify(),
     probeGpu(),
+    probeHermesBroker(),
   ]);
   const probes: Probe[] = [
     lmStudioProbe,
@@ -878,6 +1073,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     apacheProbe,
     graphProbe,
     gpuProbe,
+    hermesBrokerProbe,
   ];
   const services = probes.map(({ service }) => service);
   updateEvents(services);
@@ -895,7 +1091,13 @@ async function collect(): Promise<TelemetrySnapshot> {
     connections: probes.map(connectionFrom),
     events: [...events],
     graph: graphProbe.graph,
-    workflow: buildWorkflow(services, graphProbe.graph, generatedAt),
+    delegation: hermesBrokerProbe.delegation,
+    workflow: buildWorkflow(
+      services,
+      graphProbe.graph,
+      hermesBrokerProbe.delegation,
+      generatedAt,
+    ),
     system: {
       memoryUsedGiB: Number(((total - free) / 1024 ** 3).toFixed(2)),
       memoryTotalGiB: Number((total / 1024 ** 3).toFixed(2)),

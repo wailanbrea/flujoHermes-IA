@@ -43,6 +43,34 @@ Incorporar o consultar automáticamente un proyecto:
   -Question "<indicación resumida>"
 ```
 
+Delegar una implementación pesada a Hermes:
+
+```powershell
+$task = .\scripts\windows\submit-hermes-task.ps1 `
+  -ProjectPath <ruta-git-exacta> `
+  -Objective "<cambio solicitado>" `
+  -AcceptanceCriteria @("<criterio 1>", "<criterio 2>") `
+  -Constraints @("no cambiar APIs públicas") `
+  -Mode execute `
+  -ModificationAuthorized `
+  -Wait | ConvertFrom-Json
+
+# Codex revisa telemetry\runtime\hermes-jobs\<taskId>\changes.patch
+.\scripts\windows\review-hermes-task.ps1 `
+  -TaskId $task.taskId `
+  -Decision Approve
+
+# Después de pruebas independientes:
+.\scripts\windows\review-hermes-task.ps1 `
+  -TaskId $task.taskId `
+  -Decision Complete `
+  -ValidationPassed $true `
+  -ValidationSummary "build, lint y pruebas aprobadas"
+```
+
+TRAMA muestra la cola, ejecución de Hermes, parche aislado y puerta de revisión,
+pero no expone el objetivo, las respuestas del modelo ni argumentos de herramientas.
+
 Comprobar el entorno:
 
 ```powershell

@@ -12,6 +12,8 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(html, /<div id="root"><\/div>/);
   assert.ok(assets.some((name) => name.endsWith(".js")));
   assert.match(page, /Flujo de trabajo real/);
+  assert.match(page, /Estado de delegación local/);
+  assert.match(page, /Revisión Codex/);
   assert.match(page, /El mapa que ya construiste está conectado/);
   assert.match(page, /snapshot\.workflow\.nodes/);
   assert.match(page, /Herramientas observadas/);
@@ -33,6 +35,8 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(server, /GLOBAL_GRAPH_PATH/);
   assert.match(server, /PROJECT_CATALOG_PATH/);
   assert.match(server, /projectCatalogSchema/);
+  assert.match(server, /probeHermesBroker/);
+  assert.match(server, /HERMES_JOBS_PATH/);
   assert.match(server, /buildWorkflow/);
   assert.match(server, /Graph JSON local/);
   assert.match(server, /Windows GPU counters/);
@@ -76,4 +80,31 @@ test("catalogs the authorized project roots without changing project source", as
   assert.match(script, /project-catalog\.json/);
   assert.match(script, /gitScope/);
   assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
+});
+
+test("delegates Hermes work through a bounded review gate", async () => {
+  const [submit, worker, review] = await Promise.all([
+    readFile(
+      new URL("../../scripts/windows/submit-hermes-task.ps1", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../scripts/windows/invoke-hermes-task.ps1", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../scripts/windows/review-hermes-task.ps1", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  assert.match(submit, /ModificationAuthorized/);
+  assert.match(submit, /GitScope -ne 'own'/);
+  assert.match(worker, /graphify\.exe query/);
+  assert.match(worker, /worktree add --detach/);
+  assert.match(worker, /--checkpoints/);
+  assert.match(worker, /--max-turns/);
+  assert.match(worker, /diff --binary --no-ext-diff HEAD/);
+  assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
+  assert.match(review, /apply --check/);
+  assert.match(review, /ensure-project-graph\.ps1/);
 });
