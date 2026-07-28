@@ -159,7 +159,7 @@ try {
         'validation. Do not access secrets, external networks, ' +
         'databases, deployments, or any other external path. Do not commit. ' +
         'Do not inspect .git metadata or infer any source repository path. ' +
-        'Use only the file and browser tools provided. Do not attempt terminal ' +
+        'Use only the file and Playwright tools provided. Do not attempt terminal ' +
         'commands; ' +
         'the director runs validation independently. ' +
         'Finish with the required concise report.'
@@ -167,7 +167,7 @@ try {
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
     $argumentLine = 'chat -q "' +
         $prompt.Replace('"', '\"') +
-        '" -Q -t file,browser --checkpoints --max-turns ' +
+        '" -Q -t file,playwright --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
         ' --source tool --no-restore-cwd --ignore-rules'
     $processInfo = [Diagnostics.ProcessStartInfo]::new()
