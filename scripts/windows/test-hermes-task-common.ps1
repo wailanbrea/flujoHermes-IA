@@ -18,6 +18,15 @@ $source = Get-Content -LiteralPath (
 Assert-Condition `
     -Condition ($source -notmatch '\.Kill\(\$true\)') `
     -Message 'The worker still uses Process.Kill(Boolean).'
+Assert-Condition `
+    -Condition ($source -notmatch '--profile localai') `
+    -Message 'The worker still loads the shared localai profile directly.'
+Assert-Condition `
+    -Condition ($source -match 'EnvironmentVariables\[''HERMES_HOME''\] = \$isolatedHermesHome') `
+    -Message 'The worker does not isolate HERMES_HOME per task.'
+Assert-Condition `
+    -Condition ($source -match 'HERMES_WRITE_SAFE_ROOT=\$executionRoot') `
+    -Message 'The per-task Hermes .env does not pin the worktree safe root.'
 
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'hermes-process-test-' + [Guid]::NewGuid().ToString('N')

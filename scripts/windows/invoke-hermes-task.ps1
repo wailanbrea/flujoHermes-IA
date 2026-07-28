@@ -80,6 +80,27 @@ try {
     $executionRoot = $worktreePath
     $exchangeDirectory = Get-TaskExchangeDirectory -TaskId $TaskId
     New-Item -ItemType Directory -Path $exchangeDirectory -Force | Out-Null
+    $localAiProfilePath = Join-Path (
+        [Environment]::GetFolderPath('LocalApplicationData')
+    ) 'hermes\profiles\localai'
+    $localAiConfigPath = Join-Path $localAiProfilePath 'config.yaml'
+    if (-not (Test-Path -LiteralPath $localAiConfigPath -PathType Leaf)) {
+        throw 'The isolated localai Hermes profile is not configured.'
+    }
+    $isolatedHermesHome = Join-Path (
+        Join-Path $exchangeDirectory 'profiles'
+    ) $TaskId
+    New-Item -ItemType Directory -Path $isolatedHermesHome -Force | Out-Null
+    [IO.File]::Copy(
+        $localAiConfigPath,
+        (Join-Path $isolatedHermesHome 'config.yaml'),
+        $false
+    )
+    [IO.File]::WriteAllText(
+        (Join-Path $isolatedHermesHome '.env'),
+        "HERMES_WRITE_SAFE_ROOT=$executionRoot`n",
+        $utf8
+    )
     $graphContextPath = Join-Path $exchangeDirectory 'graph-context.txt'
     [IO.File]::WriteAllText(
         $graphContextPath,
@@ -134,7 +155,7 @@ try {
         'Finish with the required concise report.'
     $stdoutPath = Join-Path $taskDirectory 'hermes-final.txt'
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
-    $argumentLine = '--profile localai chat -q "' +
+    $argumentLine = 'chat -q "' +
         $prompt.Replace('"', '\"') +
         '" -Q -t file --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
@@ -147,6 +168,7 @@ try {
     $processInfo.CreateNoWindow = $true
     $processInfo.RedirectStandardOutput = $true
     $processInfo.RedirectStandardError = $true
+    $processInfo.EnvironmentVariables['HERMES_HOME'] = $isolatedHermesHome
     $processInfo.EnvironmentVariables['HERMES_WRITE_SAFE_ROOT'] = $executionRoot
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $processInfo
@@ -162,9 +184,7 @@ try {
         $lastActivityAt = $startedAt
         $lastCpu = [TimeSpan]::Zero
         $workspaceFingerprint = ''
-        $agentLogPath = Join-Path (
-            [Environment]::GetFolderPath('LocalApplicationData')
-        ) 'hermes\profiles\localai\logs\agent.log'
+        $agentLogPath = Join-Path $isolatedHermesHome 'logs\agent.log'
         $lastAgentLogLength = if (Test-Path -LiteralPath $agentLogPath) {
             (Get-Item -LiteralPath $agentLogPath).Length
         }
