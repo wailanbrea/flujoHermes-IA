@@ -123,6 +123,26 @@ export interface HermesTaskSummary {
   filesChanged: number;
   patchBytes: number;
   validationPassed: boolean | null;
+  lastActivityAt: string | null;
+  elapsedSeconds: number;
+  noProgressSeconds: number;
+  progressKind: string;
+}
+
+export interface HermesBenchmarkSummary {
+  state: HealthState;
+  generatedAt: string | null;
+  model: string;
+  gpuOffload: number;
+  total: number;
+  passed: number;
+  tokensPerSecond: number;
+  tests: Array<{
+    id: string;
+    passed: boolean;
+    durationMs: number;
+    category: string;
+  }>;
 }
 
 export interface HermesDelegationSummary {
@@ -135,6 +155,7 @@ export interface HermesDelegationSummary {
   completedCount: number;
   failedCount: number;
   latestTask: HermesTaskSummary | null;
+  benchmark: HermesBenchmarkSummary;
 }
 
 export interface TelemetrySnapshot {
@@ -157,6 +178,7 @@ export interface TelemetrySnapshot {
     uptimeSeconds: number;
     gpuDedicatedUsedGiB: number | null;
     gpuSharedUsedGiB: number | null;
+    gpuComputePercent: number | null;
   };
   privacy: { capturesContent: false; binding: "127.0.0.1" };
 }

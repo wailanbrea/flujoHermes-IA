@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type {
   HealthState,
+  HermesBenchmarkSummary,
   HermesTaskState,
   HermesTaskSummary,
   ServiceHealth,
@@ -57,6 +58,17 @@ const unsuccessfulTaskStates = new Set<HermesTaskState>([
   "blocked",
   "validation-failed",
 ]);
+
+const progressLabels: Record<string, string> = {
+  queued: "En cola",
+  starting: "Iniciando agente",
+  "waiting-model": "Esperando al modelo",
+  "agent-cpu": "Procesando localmente",
+  "workspace-change": "Editando el workspace",
+  "awaiting-review": "Listo para revisión",
+  stalled: "Sin progreso",
+  failed: "Interrumpido",
+};
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("es-DO", {
@@ -343,10 +355,74 @@ function TaskJourney({
       {task && (
         <p className="journey-meta">
           {task.filesChanged} archivos · {task.patchBytes.toLocaleString("es-DO")} bytes
-          de parche · actualizado {formatAge(task.updatedAt)}
+          de parche · {progressLabels[task.progressKind] ?? task.progressKind} ·{" "}
+          {task.elapsedSeconds} s · actualizado {formatAge(task.updatedAt)}
         </p>
       )}
     </div>
+  );
+}
+
+function HermesLab({
+  benchmark,
+  computePercent,
+}: {
+  benchmark: HermesBenchmarkSummary;
+  computePercent: number | null;
+}) {
+  return (
+    <section className="hermes-lab" aria-labelledby="hermes-lab-title">
+      <div className="lab-intro">
+        <p className="eyebrow">Hermes Lab · prueba sintética local</p>
+        <h3 id="hermes-lab-title">Calidad y rendimiento, medidos.</h3>
+        <p>
+          Sólo conserva resultados, duración y categorías. No registra prompts,
+          respuestas ni argumentos de herramientas.
+        </p>
+      </div>
+      <div className="lab-metrics">
+        <div>
+          <span>Pruebas</span>
+          <strong>{benchmark.total ? `${benchmark.passed}/${benchmark.total}` : "—"}</strong>
+        </div>
+        <div>
+          <span>Generación</span>
+          <strong>
+            {benchmark.tokensPerSecond
+              ? `${benchmark.tokensPerSecond.toFixed(1)} t/s`
+              : "—"}
+          </strong>
+        </div>
+        <div>
+          <span>GPU compute</span>
+          <strong>{computePercent === null ? "—" : `${computePercent.toFixed(1)}%`}</strong>
+        </div>
+        <div>
+          <span>Offload</span>
+          <strong>{benchmark.gpuOffload ? `${benchmark.gpuOffload * 100}%` : "—"}</strong>
+        </div>
+      </div>
+      <div className="lab-tests">
+        {benchmark.tests.length ? (
+          benchmark.tests.map((test) => (
+            <article key={test.id} className={test.passed ? "lab-pass" : "lab-fail"}>
+              <i aria-hidden="true" />
+              <div>
+                <strong>{test.id.replaceAll("-", " ")}</strong>
+                <small>{test.category} · {test.durationMs} ms</small>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p>Ejecuta el benchmark local para establecer la primera línea base.</p>
+        )}
+      </div>
+      <p className="lab-updated">
+        {benchmark.generatedAt
+          ? `Última medición ${formatAge(benchmark.generatedAt)}`
+          : "Sin mediciones todavía"}
+      </p>
+    </section>
   );
 }
 
@@ -514,6 +590,19 @@ export default function Home() {
         <TaskJourney
           task={snapshot?.delegation.latestTask ?? null}
           onNavigate={setSelectedNodeId}
+        />
+        <HermesLab
+          benchmark={snapshot?.delegation.benchmark ?? {
+            state: "unknown",
+            generatedAt: null,
+            model: "Sin benchmark",
+            gpuOffload: 0,
+            total: 0,
+            passed: 0,
+            tokensPerSecond: 0,
+            tests: [],
+          }}
+          computePercent={snapshot?.system.gpuComputePercent ?? null}
         />
         <div className="delegation-strip" aria-label="Estado de delegación local">
           <div>

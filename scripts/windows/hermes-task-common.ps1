@@ -4,6 +4,35 @@ function Get-OrchestratorRoot {
     return Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
 
+function Get-HermesExternalRoot {
+    $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+    if (-not $localAppData) {
+        throw 'LOCALAPPDATA is required for isolated Hermes runtime data.'
+    }
+    return Join-Path $localAppData 'local-ai-orchestrator'
+}
+
+function Get-HermesWorktreeRoot {
+    return Join-Path (Get-HermesExternalRoot) 'hermes-worktrees'
+}
+
+function Get-HermesExchangeRoot {
+    return Join-Path (Get-HermesExternalRoot) 'hermes-exchange'
+}
+
+function Get-TaskExchangeDirectory([string]$TaskId) {
+    Assert-TaskId -TaskId $TaskId
+    $root = [IO.Path]::GetFullPath((Get-HermesExchangeRoot)).TrimEnd('\')
+    $resolved = [IO.Path]::GetFullPath((Join-Path $root $TaskId)).TrimEnd('\')
+    if (-not $resolved.StartsWith(
+        $root + '\',
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw 'Resolved exchange directory escaped the Hermes runtime root.'
+    }
+    return $resolved
+}
+
 # Process.Kill(Boolean) is unavailable in Windows PowerShell 5.1.
 function Stop-ProcessTree(
     [int]$ProcessId,
@@ -206,14 +235,24 @@ function Remove-TaskWorktree(
     [string]$WorktreePath
 ) {
     if (-not $WorktreePath) { return }
-    $runtimeRoot = [IO.Path]::GetFullPath(
+    $runtimeRoots = @(
+        [IO.Path]::GetFullPath((Get-HermesWorktreeRoot)).TrimEnd('\'),
+        [IO.Path]::GetFullPath(
         (Join-Path (Get-OrchestratorRoot) 'telemetry\runtime\hermes-worktrees')
-    ).TrimEnd('\')
+        ).TrimEnd('\')
+    )
     $resolved = [IO.Path]::GetFullPath($WorktreePath).TrimEnd('\')
-    if (-not $resolved.StartsWith(
-        $runtimeRoot + '\',
-        [StringComparison]::OrdinalIgnoreCase
-    )) {
+    $insideRuntime = $false
+    foreach ($runtimeRoot in $runtimeRoots) {
+        if ($resolved.StartsWith(
+            $runtimeRoot + '\',
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            $insideRuntime = $true
+            break
+        }
+    }
+    if (-not $insideRuntime) {
         throw 'Refusing to remove a worktree outside the Hermes runtime root.'
     }
 
@@ -258,5 +297,12 @@ function Remove-TaskWorktree(
     }
     if ($pruneExitCode -ne 0) {
         throw 'Git could not prune isolated Hermes worktree metadata.'
+    }
+}
+
+function Remove-TaskExchange([string]$TaskId) {
+    $resolved = Get-TaskExchangeDirectory -TaskId $TaskId
+    if (Test-Path -LiteralPath $resolved) {
+        Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop
     }
 }

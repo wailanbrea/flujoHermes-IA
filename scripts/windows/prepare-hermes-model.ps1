@@ -3,6 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $model = 'qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive'
+$gpuOffload = 0.70
 $loaded = @(& lms.exe ps --json | ConvertFrom-Json)
 $target = $loaded | Where-Object { $_.modelKey -eq $model } | Select-Object -First 1
 
@@ -22,10 +23,10 @@ if ($target) {
     --identifier $model `
     --context-length 65536 `
     --parallel 1 `
-    --gpu 0.6 `
+    --gpu $gpuOffload `
     --no-speculative-draft-mtp `
     --yes
 if ($LASTEXITCODE -ne 0) {
     throw 'LM Studio no pudo cargar el modelo con límites seguros.'
 }
-Write-Output 'Modelo de Hermes cargado con 64K y paralelo 1.'
+Write-Output "Modelo de Hermes cargado con 64K, paralelo 1 y GPU $gpuOffload."

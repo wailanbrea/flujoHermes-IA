@@ -35,6 +35,7 @@ if ($Decision -eq 'Reject') {
     Remove-TaskWorktree `
         -ProjectRoot $project.Path `
         -WorktreePath ([string]$status.worktreePath)
+    Remove-TaskExchange -TaskId $TaskId
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'rejected' `
@@ -68,6 +69,7 @@ elseif ($Decision -eq 'Approve') {
     Remove-TaskWorktree `
         -ProjectRoot $project.Path `
         -WorktreePath ([string]$status.worktreePath)
+    Remove-TaskExchange -TaskId $TaskId
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'validating' `

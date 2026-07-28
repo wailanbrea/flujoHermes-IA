@@ -861,6 +861,127 @@ a {
   text-transform: uppercase;
 }
 
+.hermes-lab {
+  background: #0b1d28;
+  border: 1px solid var(--line);
+  border-top: 0;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(230px, 1.2fr) minmax(320px, 1fr) minmax(220px, 0.8fr);
+  padding: 24px 20px 20px;
+  position: relative;
+}
+
+.lab-intro .eyebrow {
+  margin-bottom: 9px;
+}
+
+.lab-intro h3 {
+  font: 520 25px var(--display);
+  margin: 0;
+}
+
+.lab-intro > p:last-child {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+  max-width: 380px;
+}
+
+.lab-metrics {
+  border: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.lab-metrics > div {
+  min-height: 67px;
+  padding: 11px 13px;
+}
+
+.lab-metrics > div:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+
+.lab-metrics > div:nth-child(-n + 2) {
+  border-bottom: 1px solid var(--line);
+}
+
+.lab-metrics span,
+.lab-metrics strong {
+  display: block;
+}
+
+.lab-metrics span {
+  color: var(--muted);
+  font: 7px var(--data);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lab-metrics strong {
+  font: 520 20px var(--display);
+  margin-top: 7px;
+}
+
+.lab-tests {
+  align-content: start;
+  display: grid;
+  gap: 1px;
+}
+
+.lab-tests article {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.025);
+  display: flex;
+  gap: 10px;
+  min-height: 43px;
+  padding: 8px 10px;
+}
+
+.lab-tests i {
+  background: var(--red);
+  height: 7px;
+  width: 7px;
+}
+
+.lab-tests .lab-pass i {
+  background: var(--aqua);
+}
+
+.lab-tests strong,
+.lab-tests small {
+  display: block;
+}
+
+.lab-tests strong {
+  font: 500 12px var(--display);
+  text-transform: capitalize;
+}
+
+.lab-tests small,
+.lab-tests > p,
+.lab-updated {
+  color: var(--muted);
+  font: 7px/1.4 var(--data);
+  margin: 3px 0 0;
+  text-transform: uppercase;
+}
+
+.lab-tests > p {
+  border: 1px dashed var(--line);
+  line-height: 1.6;
+  margin: 0;
+  padding: 15px;
+}
+
+.lab-updated {
+  bottom: 7px;
+  position: absolute;
+  right: 20px;
+}
+
 .delegation-strip {
   border: 1px solid var(--line);
   border-top: 0;
@@ -1565,6 +1686,14 @@ footer strong {
     min-height: 0;
   }
 
+  .hermes-lab {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lab-intro {
+    grid-column: 1 / -1;
+  }
+
   .graph-intro {
     grid-row: auto;
   }
@@ -1656,6 +1785,20 @@ footer strong {
   .journey-meta {
     line-height: 1.5;
     text-align: left;
+  }
+
+  .hermes-lab {
+    grid-template-columns: 1fr;
+    padding: 22px 15px 30px;
+  }
+
+  .lab-intro {
+    grid-column: auto;
+  }
+
+  .lab-updated {
+    left: 15px;
+    right: auto;
   }
 
   .delegation-strip {

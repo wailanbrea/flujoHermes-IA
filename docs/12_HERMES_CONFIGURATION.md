@@ -10,7 +10,7 @@
 - Carga de LM Studio: `explicit`
 - Esfuerzo de razonamiento: `none`
 - Backend de terminal: `local`
-- Raíz segura de escritura: `C:\AI-Workspace\local-ai-orchestrator`
+- Worktrees y contratos de ejecución: `%LOCALAPPDATA%\local-ai-orchestrator`
 
 El perfil predeterminado preexistente no fue modificado.
 
@@ -48,8 +48,10 @@ Usar siempre:
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-hermes-local.ps1
 ```
 
-El wrapper carga primero el modelo con 64K, paralelo 1, GPU 0.6 y MTP desactivado.
-Con esos límites quedaron aproximadamente 13 GiB de RAM libres.
+El wrapper carga primero el modelo con 64K, paralelo 1, GPU 0.70 y MTP
+desactivado. La línea base local mejoró de 23,49 a 26,85 tokens/s frente a GPU
+0.60. No se aumenta más porque el GGUF ocupa 20,55 GiB y ya usa memoria
+compartida además de los 16 GiB físicos de la RX 9070.
 
 ## Prueba validada
 

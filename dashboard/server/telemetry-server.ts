@@ -11,6 +11,7 @@ import type {
   GraphRepositorySummary,
   HealthState,
   HermesDelegationSummary,
+  HermesBenchmarkSummary,
   HermesTaskSummary,
   KnowledgeGraphSummary,
   ServiceHealth,
@@ -38,6 +39,12 @@ const HERMES_JOBS_PATH = resolve(
   "telemetry",
   "runtime",
   "hermes-jobs",
+);
+const HERMES_BENCHMARK_PATH = resolve(
+  WORKSPACE_ROOT,
+  "telemetry",
+  "runtime",
+  "hermes-benchmark.json",
 );
 const HERMES_SUBMIT_SCRIPT = resolve(
   WORKSPACE_ROOT,
@@ -143,6 +150,26 @@ const hermesTaskSchema = z.object({
   filesChanged: z.number().int().nonnegative().default(0),
   patchBytes: z.number().int().nonnegative().default(0),
   validationPassed: z.boolean().nullable().default(null),
+  lastActivityAt: z.string().nullable().default(null),
+  elapsedSeconds: z.number().int().nonnegative().default(0),
+  noProgressSeconds: z.number().int().nonnegative().default(0),
+  progressKind: z.string().max(40).default("unknown"),
+});
+const hermesBenchmarkSchema = z.object({
+  generatedAt: z.string(),
+  model: z.string(),
+  gpuOffload: z.number().min(0).max(1),
+  total: z.number().int().nonnegative(),
+  passed: z.number().int().nonnegative(),
+  tokensPerSecond: z.number().nonnegative(),
+  tests: z.array(
+    z.object({
+      id: z.string().max(40),
+      passed: z.boolean(),
+      durationMs: z.number().int().nonnegative(),
+      category: z.string().max(40),
+    }),
+  ),
 });
 
 interface Probe {
@@ -157,6 +184,7 @@ interface GraphProbe extends Probe {
 interface GpuProbe extends Probe {
   dedicatedUsedGiB: number | null;
   sharedUsedGiB: number | null;
+  computePercent: number | null;
 }
 
 interface HermesBrokerProbe extends Probe {
@@ -225,6 +253,34 @@ async function readProjectCatalog() {
     return projectCatalogSchema.parse(JSON.parse(body.replace(/^\uFEFF/, "")));
   } catch {
     return { projects: [] };
+  }
+}
+
+const emptyHermesBenchmark = (): HermesBenchmarkSummary => ({
+  state: "unknown",
+  generatedAt: null,
+  model: "Sin benchmark",
+  gpuOffload: 0,
+  total: 0,
+  passed: 0,
+  tokensPerSecond: 0,
+  tests: [],
+});
+
+async function readHermesBenchmark(): Promise<HermesBenchmarkSummary> {
+  try {
+    const body = await readFile(HERMES_BENCHMARK_PATH, "utf8");
+    const benchmark = hermesBenchmarkSchema.parse(
+      JSON.parse(body.replace(/^\uFEFF/, "")),
+    );
+    return {
+      state: benchmark.total > 0 && benchmark.passed === benchmark.total
+        ? "healthy"
+        : "degraded",
+      ...benchmark,
+    };
+  } catch {
+    return emptyHermesBenchmark();
   }
 }
 
@@ -622,10 +678,12 @@ async function probeGraphify(): Promise<GraphProbe> {
 async function probeGpu(): Promise<GpuProbe> {
   const start = performance.now();
   const script = [
-    "$samples=(Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage','\\GPU Adapter Memory(*)\\Shared Usage').CounterSamples",
+    "$samples=(Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage','\\GPU Adapter Memory(*)\\Shared Usage','\\GPU Engine(*engtype_Compute*)\\Utilization Percentage').CounterSamples",
     "$dedicated=@($samples|Where-Object {$_.Path -like '*dedicated usage'}|Sort-Object CookedValue -Descending)[0].CookedValue",
     "$shared=@($samples|Where-Object {$_.Path -like '*shared usage'}|Sort-Object CookedValue -Descending)[0].CookedValue",
-    "[pscustomobject]@{dedicatedGiB=[math]::Round($dedicated/1GB,2);sharedGiB=[math]::Round($shared/1GB,2)}|ConvertTo-Json -Compress",
+    "$computeSample=@($samples|Where-Object {$_.Path -like '*engtype_compute*'}|Sort-Object CookedValue -Descending)[0]",
+    "$compute=if($computeSample){$computeSample.CookedValue}else{0}",
+    "[pscustomobject]@{dedicatedGiB=[math]::Round($dedicated/1GB,2);sharedGiB=[math]::Round($shared/1GB,2);computePercent=[math]::Round($compute,1)}|ConvertTo-Json -Compress",
   ].join("; ");
   try {
     const output = await run("powershell.exe", [
@@ -635,24 +693,30 @@ async function probeGpu(): Promise<GpuProbe> {
       script,
     ]);
     const metrics = z
-      .object({ dedicatedGiB: z.number(), sharedGiB: z.number() })
+      .object({
+        dedicatedGiB: z.number(),
+        sharedGiB: z.number(),
+        computePercent: z.number(),
+      })
       .parse(JSON.parse(output));
     const state: HealthState = metrics.sharedGiB > 0.25 ? "degraded" : "healthy";
     return {
       protocol: "Windows GPU counters",
       dedicatedUsedGiB: metrics.dedicatedGiB,
       sharedUsedGiB: metrics.sharedGiB,
+      computePercent: metrics.computePercent,
       service: {
         id: "rx9070",
         name: "Radeon RX 9070",
         role: "Cómputo principal",
         state,
-        detail: `${metrics.dedicatedGiB.toFixed(2)} GiB VRAM · ${metrics.sharedGiB.toFixed(2)} GiB compartida`,
+        detail: `${metrics.computePercent.toFixed(1)}% compute · ${metrics.dedicatedGiB.toFixed(2)} GiB VRAM · ${metrics.sharedGiB.toFixed(2)} GiB compartida`,
         latencyMs: latency(start),
         checkedAt: checkedAt(),
         metrics: {
           dedicatedUsedGiB: metrics.dedicatedGiB,
           sharedUsedGiB: metrics.sharedGiB,
+          computePercent: metrics.computePercent,
         },
       },
     };
@@ -668,6 +732,7 @@ async function probeGpu(): Promise<GpuProbe> {
       ),
       dedicatedUsedGiB: null,
       sharedUsedGiB: null,
+      computePercent: null,
     };
   }
 }
@@ -721,11 +786,13 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     completedCount: 0,
     failedCount: 0,
     latestTask: null,
+    benchmark: emptyHermesBenchmark(),
   };
   try {
     if (!(await pathExists(HERMES_SUBMIT_SCRIPT))) {
       throw new Error("puente local no instalado");
     }
+    const benchmark = await readHermesBenchmark();
     let directories: string[] = [];
     try {
       directories = (await readdir(HERMES_JOBS_PATH, { withFileTypes: true }))
@@ -780,6 +847,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
         tasks.filter((task) => failedStates.has(task.state)).length +
         invalidTaskCount,
       latestTask,
+      benchmark,
     };
     return {
       protocol: "Cola JSON local",
@@ -797,6 +865,9 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
           activeTasks: delegation.activeCount,
           awaitingReview: delegation.awaitingReviewCount,
           completedTasks: delegation.completedCount,
+          benchmarkPassed: benchmark.passed,
+          benchmarkTotal: benchmark.total,
+          tokensPerSecond: benchmark.tokensPerSecond,
         },
       },
     };
@@ -1148,6 +1219,7 @@ async function collect(): Promise<TelemetrySnapshot> {
       uptimeSeconds: Math.round(uptime()),
       gpuDedicatedUsedGiB: gpuProbe.dedicatedUsedGiB,
       gpuSharedUsedGiB: gpuProbe.sharedUsedGiB,
+      gpuComputePercent: gpuProbe.computePercent,
     },
     privacy: { capturesContent: false, binding: "127.0.0.1" },
   };

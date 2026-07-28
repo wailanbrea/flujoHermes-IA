@@ -33,6 +33,9 @@ param(
     [ValidateRange(60, 3600)]
     [int]$TimeoutSeconds = 1200,
 
+    [ValidateRange(60, 900)]
+    [int]$NoProgressTimeoutSeconds = 180,
+
     [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
     [string]$RequestedBy = 'Codex',
 
@@ -82,6 +85,7 @@ $contract = [ordered]@{
     modificationAuthorized = $ModificationAuthorized.IsPresent
     maxTurns = $MaxTurns
     timeoutSeconds = $TimeoutSeconds
+    noProgressTimeoutSeconds = $NoProgressTimeoutSeconds
     toolsets = @('terminal', 'file', 'skills', 'todo')
     executionPolicy = [ordered]@{
         externalNetwork = 'denied'
@@ -116,6 +120,10 @@ Set-TaskStatus `
         attempt = 0
         maxAttempts = 1
         errorCode = $null
+        lastActivityAt = $null
+        elapsedSeconds = 0
+        noProgressSeconds = 0
+        progressKind = 'queued'
     }
 
 $worker = Join-Path $PSScriptRoot 'invoke-hermes-task.ps1'

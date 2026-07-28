@@ -87,7 +87,7 @@ finally {
 }
 
 $orchestratorRoot = Get-OrchestratorRoot
-$worktreeRoot = Join-Path $orchestratorRoot 'telemetry\runtime\hermes-worktrees'
+$worktreeRoot = Get-HermesWorktreeRoot
 $residualPath = Join-Path $worktreeRoot (
     'cleanup-test-' + [Guid]::NewGuid().ToString('N')
 )
@@ -120,5 +120,25 @@ catch {
 Assert-Condition `
     -Condition $outsideRejected `
     -Message 'Worktree cleanup accepted a path outside its runtime root.'
+
+$exchangeId = 'hermes-20260728-010000-abcdef12'
+$exchangePath = Get-TaskExchangeDirectory -TaskId $exchangeId
+New-Item -ItemType Directory -Path $exchangePath -Force | Out-Null
+[IO.File]::WriteAllText(
+    (Join-Path $exchangePath 'marker.txt'),
+    'test',
+    [Text.UTF8Encoding]::new($false)
+)
+Remove-TaskExchange -TaskId $exchangeId
+Assert-Condition `
+    -Condition (-not (Test-Path -LiteralPath $exchangePath)) `
+    -Message 'Exchange cleanup left a residual directory.'
+
+Assert-Condition `
+    -Condition (-not $worktreeRoot.StartsWith(
+        $orchestratorRoot,
+        [StringComparison]::OrdinalIgnoreCase
+    )) `
+    -Message 'Hermes worktrees still live under the source repository.'
 
 'Hermes task lifecycle tests passed.'

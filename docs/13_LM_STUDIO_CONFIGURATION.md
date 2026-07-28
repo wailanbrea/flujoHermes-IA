@@ -13,12 +13,17 @@
 - Cuantización: Q4_K_M
 - Contexto: 65.536
 - Paralelismo: 1
-- GPU offload: 0.6
+- GPU offload: 0.70
 - MTP especulativo: desactivado
 - Razonamiento de API: `reasoning_effort=none`
 
 El contexto de 64K no es opcional: Hermes rechaza ventanas inferiores. El
 paralelismo 1 es una protección de memoria para este equipo.
+
+La prueba local de 256 tokens midió 23,49 tokens/s con offload 0.60 y 26,85
+tokens/s con 0.70. La utilización compute no representa por sí sola el
+rendimiento: este modelo es MoE 35B-A3B y activa una fracción de los parámetros
+por token.
 
 ## Modelo alternativo
 

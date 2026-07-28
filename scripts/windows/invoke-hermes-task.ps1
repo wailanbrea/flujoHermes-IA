@@ -26,6 +26,8 @@ if ($project.Id -ne $contract.projectId) {
 }
 
 $worktreePath = $null
+$exchangeDirectory = $null
+$stalled = $false
 try {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
@@ -47,11 +49,6 @@ try {
         throw 'Graphify could not prepare bounded project context.'
     }
     $utf8 = [Text.UTF8Encoding]::new($false)
-    [IO.File]::WriteAllText(
-        (Join-Path $taskDirectory 'graph-context.txt'),
-        (($graphContext | Out-String).Trim()),
-        $utf8
-    )
 
     $gitRoot = (& git.exe -C $project.Path rev-parse --show-toplevel).Trim()
     if ($LASTEXITCODE -ne 0) {
@@ -64,9 +61,7 @@ try {
     )) {
         throw 'Hermes delegation refuses inherited or nested Git roots.'
     }
-    $worktreeRoot = Join-Path (
-        Get-OrchestratorRoot
-    ) 'telemetry\runtime\hermes-worktrees'
+    $worktreeRoot = Get-HermesWorktreeRoot
     New-Item -ItemType Directory -Path $worktreeRoot -Force | Out-Null
     $worktreePath = Join-Path $worktreeRoot $TaskId
     $previousErrorPreference = $ErrorActionPreference
@@ -83,12 +78,20 @@ try {
         throw 'Git could not create the isolated Hermes worktree.'
     }
     $executionRoot = $worktreePath
+    $exchangeDirectory = Get-TaskExchangeDirectory -TaskId $TaskId
+    New-Item -ItemType Directory -Path $exchangeDirectory -Force | Out-Null
+    $graphContextPath = Join-Path $exchangeDirectory 'graph-context.txt'
+    [IO.File]::WriteAllText(
+        $graphContextPath,
+        (($graphContext | Out-String).Trim()),
+        $utf8
+    )
 
     $executionContract = [ordered]@{
         taskId = $contract.taskId
         projectId = $contract.projectId
         workspacePath = $executionRoot
-        graphContextPath = Join-Path $taskDirectory 'graph-context.txt'
+        graphContextPath = $graphContextPath
         objective = $contract.objective
         acceptanceCriteria = @($contract.acceptanceCriteria)
         constraints = @($contract.constraints)
@@ -101,23 +104,31 @@ try {
             'Residual risks'
         )
     }
+    $executionContractPath = Join-Path $exchangeDirectory 'execution-contract.json'
     Write-JsonAtomic `
-        -Path (Join-Path $taskDirectory 'execution-contract.json') `
+        -Path $executionContractPath `
         -Value $executionContract
 
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'executing' `
         -Message 'Hermes esta trabajando con LM Studio.' `
-        -Fields @{ worktreeActive = $true }
+        -Fields @{
+            worktreeActive = $true
+            lastActivityAt = [DateTime]::UtcNow.ToString('o')
+            elapsedSeconds = 0
+            noProgressSeconds = 0
+            progressKind = 'starting'
+        }
 
     $prompt = 'Read and execute the local task contract at "' +
-        (Join-Path $taskDirectory 'execution-contract.json') +
+        $executionContractPath +
         '". Obey every boundary. Use the provided Graphify context before files. ' +
         'Your exact writable workspace is workspacePath; never use the source ' +
         'repository path. The contract and graph context are the only permitted ' +
         'read-only paths outside workspacePath. Do not access secrets, networks, ' +
         'databases, deployments, or any other external path. Do not commit. ' +
+        'Do not inspect .git metadata or infer any source repository path. ' +
         'Finish with the required concise report.'
     $stdoutPath = Join-Path $taskDirectory 'hermes-final.txt'
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
@@ -125,7 +136,7 @@ try {
         $prompt.Replace('"', '\"') +
         '" -Q -t terminal,file,skills,todo --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
-        ' --source tool --no-restore-cwd'
+        ' --source tool --no-restore-cwd --ignore-rules'
     $processInfo = [Diagnostics.ProcessStartInfo]::new()
     $processInfo.FileName = 'hermes.exe'
     $processInfo.Arguments = $argumentLine
@@ -144,9 +155,57 @@ try {
     $completedInTime = $false
     $hermesExitCode = $null
     try {
-        $completedInTime = $process.WaitForExit(
-            [int]$contract.timeoutSeconds * 1000
-        )
+        $startedAt = [DateTime]::UtcNow
+        $lastActivityAt = $startedAt
+        $lastCpu = [TimeSpan]::Zero
+        $workspaceFingerprint = ''
+        $absoluteDeadline = $startedAt.AddSeconds([int]$contract.timeoutSeconds)
+        $noProgressLimit = [int]$contract.noProgressTimeoutSeconds
+        while (-not $process.WaitForExit(5000)) {
+            $now = [DateTime]::UtcNow
+            $process.Refresh()
+            $cpu = $process.TotalProcessorTime
+            $progressKind = 'waiting-model'
+            if (($cpu - $lastCpu).TotalMilliseconds -ge 100) {
+                $lastActivityAt = $now
+                $lastCpu = $cpu
+                $progressKind = 'agent-cpu'
+            }
+            $currentFingerprint = (
+                @(& git.exe -C $executionRoot status --porcelain) -join "`n"
+            ) + '|' + (
+                @(& git.exe -C $executionRoot diff --numstat HEAD) -join "`n"
+            )
+            if ($currentFingerprint -ne $workspaceFingerprint) {
+                $workspaceFingerprint = $currentFingerprint
+                if ($currentFingerprint) {
+                    $lastActivityAt = $now
+                    $progressKind = 'workspace-change'
+                }
+            }
+            $elapsedSeconds = [int][Math]::Floor(($now - $startedAt).TotalSeconds)
+            $noProgressSeconds = [int][Math]::Floor(
+                ($now - $lastActivityAt).TotalSeconds
+            )
+            Set-TaskStatus `
+                -TaskDirectory $taskDirectory `
+                -State 'executing' `
+                -Message 'Hermes esta trabajando con LM Studio.' `
+                -Fields @{
+                    lastActivityAt = $lastActivityAt.ToString('o')
+                    elapsedSeconds = $elapsedSeconds
+                    noProgressSeconds = $noProgressSeconds
+                    progressKind = $progressKind
+                }
+            if ($noProgressSeconds -ge $noProgressLimit) {
+                $stalled = $true
+                break
+            }
+            if ($now -ge $absoluteDeadline) {
+                break
+            }
+        }
+        $completedInTime = $process.HasExited
         if (-not $completedInTime) {
             Stop-ProcessTree -ProcessId $process.Id
             if (-not $process.WaitForExit(5000)) {
@@ -164,6 +223,9 @@ try {
     $utf8NoBom = [Text.UTF8Encoding]::new($false)
     [IO.File]::WriteAllText($stdoutPath, $stdoutText, $utf8NoBom)
     [IO.File]::WriteAllText($stderrPath, $stderrText, $utf8NoBom)
+    if ($stalled) {
+        throw 'Hermes execution stalled without observable progress.'
+    }
     if (-not $completedInTime) {
         throw 'Hermes execution timed out.'
     }
@@ -210,12 +272,25 @@ try {
             patchBytes = $patchBytes
             worktreePath = $worktreePath
             errorCode = $null
+            progressKind = 'awaiting-review'
+            elapsedSeconds = [int][Math]::Floor(
+                ([DateTime]::UtcNow - $startedAt).TotalSeconds
+            )
+            noProgressSeconds = 0
         }
 }
 catch {
     $originalError = $_
     $safeMessage = $originalError.Exception.Message -replace
         [regex]::Escape([string]$contract.projectRoot), '[project]'
+    if ($exchangeDirectory) {
+        $safeMessage = $safeMessage -replace
+            [regex]::Escape([string]$exchangeDirectory), '[exchange]'
+    }
+    if ($worktreePath) {
+        $safeMessage = $safeMessage -replace
+            [regex]::Escape([string]$worktreePath), '[workspace]'
+    }
     $safeMessage = ($safeMessage -replace '[\r\n\t]+', ' ').Substring(
         0,
         [Math]::Min(180, ($safeMessage -replace '[\r\n\t]+', ' ').Length)
@@ -228,6 +303,7 @@ catch {
             finishedAt = [DateTime]::UtcNow.ToString('o')
             errorCode = $safeMessage
             worktreePath = $worktreePath
+            progressKind = if ($stalled) { 'stalled' } else { 'failed' }
         }
     Write-Error $safeMessage
     exit 1
