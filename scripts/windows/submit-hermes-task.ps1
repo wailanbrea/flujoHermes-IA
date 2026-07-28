@@ -27,6 +27,9 @@ param(
     [ValidateSet('analysis', 'execute')]
     [string]$Mode = 'analysis',
 
+    [ValidateSet('plan', 'edit', 'browser')]
+    [string]$Phase,
+
     [ValidateRange(5, 80)]
     [int]$MaxTurns = 30,
 
@@ -58,6 +61,20 @@ if ($LASTEXITCODE -ne 0) {
 if ($projectStatus.Count -gt 0) {
     throw 'Hermes delegation requires a clean target worktree.'
 }
+if (-not $Phase) {
+    $Phase = if ($Mode -eq 'execute') { 'edit' } else { 'plan' }
+}
+if ($Phase -eq 'edit' -and $Mode -ne 'execute') {
+    throw 'The edit phase requires execute mode.'
+}
+if ($Phase -ne 'edit' -and $Mode -ne 'analysis') {
+    throw 'Plan and browser phases require analysis mode.'
+}
+$toolsets = switch ($Phase) {
+    'browser' { @('playwright') }
+    default { @('file') }
+}
+
 if ($Mode -eq 'execute') {
     if (-not $ModificationAuthorized) {
         throw 'Execute mode requires -ModificationAuthorized.'
@@ -82,11 +99,12 @@ $contract = [ordered]@{
     acceptanceCriteria = @($AcceptanceCriteria)
     constraints = @($Constraints)
     mode = $Mode
+    phase = $Phase
     modificationAuthorized = $ModificationAuthorized.IsPresent
     maxTurns = $MaxTurns
     timeoutSeconds = $TimeoutSeconds
     noProgressTimeoutSeconds = $NoProgressTimeoutSeconds
-    toolsets = @('file', 'playwright')
+    toolsets = @($toolsets)
     executionPolicy = [ordered]@{
         externalNetwork = 'denied'
         loopbackBrowser = '127.0.0.1:4310,127.0.0.1:4311'
@@ -112,6 +130,7 @@ Set-TaskStatus `
         projectName = $project.Name
         requestedBy = $RequestedBy
         mode = $Mode
+        phase = $Phase
         createdAt = $contract.createdAt
         startedAt = $null
         finishedAt = $null

@@ -143,7 +143,9 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(submit, /RequestedBy/);
   assert.match(submit, /Codex.*Claude.*Antigravity.*OpenCode/s);
   assert.match(submit, /GitScope -ne 'own'/);
-  assert.match(submit, /toolsets = @\('file', 'playwright'\)/);
+  assert.match(submit, /ValidateSet\('plan', 'edit', 'browser'\)/);
+  assert.match(submit, /\$toolsets = switch \(\$Phase\)/);
+  assert.match(submit, /phase = \$Phase/);
   assert.match(submit, /loopbackBrowser/);
   assert.match(worker, /graphify\.exe query/);
   assert.match(worker, /worktree add --detach/);
@@ -158,7 +160,9 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /noProgressTimeoutSeconds/);
   assert.match(worker, /Get-TaskExchangeDirectory/);
   assert.match(worker, /--ignore-rules/);
-  assert.match(worker, /-t file,playwright/);
+  assert.match(worker, /\$expectedToolset = switch \(\$phase\)/);
+  assert.match(worker, /\$toolsetArgument/);
+  assert.doesNotMatch(worker, /-t file,playwright/);
   assert.match(worker, /agentLogLength/);
   assert.match(worker, /HERMES_WRITE_SAFE_ROOT/);
   assert.match(worker, /export-hermes-insights\.ps1/);

@@ -20,6 +20,22 @@ if ($status.state -ne 'queued') {
     throw 'Hermes worker only accepts queued tasks.'
 }
 
+$phase = [string]$contract.phase
+$toolsets = @($contract.toolsets)
+$expectedToolset = switch ($phase) {
+    'plan' { 'file' }
+    'edit' { 'file' }
+    'browser' { 'playwright' }
+    default { throw 'Task contract contains an invalid execution phase.' }
+}
+if ($toolsets.Count -ne 1 -or $toolsets[0] -ne $expectedToolset) {
+    throw 'Task contract toolsets do not match the execution phase.'
+}
+if (($phase -eq 'edit') -ne ($contract.mode -eq 'execute')) {
+    throw 'Task contract phase and mode are inconsistent.'
+}
+$toolsetArgument = $expectedToolset
+
 $project = Get-AuthorizedProject -ProjectPath $contract.projectRoot
 if ($project.Id -ne $contract.projectId) {
     throw 'Task project identity no longer matches the authorized catalog.'
@@ -122,6 +138,8 @@ try {
         acceptanceCriteria = @($contract.acceptanceCriteria)
         constraints = @($contract.constraints)
         mode = $contract.mode
+        phase = $phase
+        toolsets = @($toolsets)
         policies = $contract.executionPolicy
         requiredFinalReport = @(
             'Outcome: PASS, FAIL, or BLOCKED',
@@ -147,6 +165,13 @@ try {
             progressKind = 'starting'
         }
 
+    $toolInstruction = if ($toolsetArgument -eq 'playwright') {
+        'Use only Playwright tools at http://127.0.0.1:4310 and ' +
+        'http://127.0.0.1:4311; do not navigate elsewhere. '
+    }
+    else {
+        'Use only file tools inside workspacePath; do not browse any URL. '
+    }
     $prompt = "Apply these mandatory operating rules before the contract:`n`n" +
         $operatingPrompt.Trim() +
         "`n`nRead and execute the local task contract at `"" +
@@ -154,20 +179,20 @@ try {
         '". Obey every boundary. Use the provided Graphify context before files. ' +
         'Your exact writable workspace is workspacePath; never use the source ' +
         'repository path. The contract and graph context are the only permitted ' +
-        'read-only paths outside workspacePath. Browser access is allowed only ' +
-        'to http://127.0.0.1:4310 and http://127.0.0.1:4311 for local visual ' +
-        'validation. Do not access secrets, external networks, ' +
-        'databases, deployments, or any other external path. Do not commit. ' +
-        'Do not inspect .git metadata or infer any source repository path. ' +
-        'Use only the file and Playwright tools provided. Do not attempt terminal ' +
-        'commands; ' +
+        'read-only paths outside workspacePath. ' +
+        $toolInstruction +
+        'Do not access secrets, external networks, databases, deployments, or ' +
+        'any other external path. Do not commit. Do not inspect .git metadata or ' +
+        'infer any source repository path. Do not attempt terminal commands; ' +
         'the director runs validation independently. ' +
         'Finish with the required concise report.'
     $stdoutPath = Join-Path $taskDirectory 'hermes-final.txt'
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
     $argumentLine = 'chat -q "' +
         $prompt.Replace('"', '\"') +
-        '" -Q -t file,playwright --checkpoints --max-turns ' +
+        '" -Q -t ' +
+        $toolsetArgument +
+        ' --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
         ' --source tool --no-restore-cwd --ignore-rules'
     $processInfo = [Diagnostics.ProcessStartInfo]::new()
