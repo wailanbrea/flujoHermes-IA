@@ -20,6 +20,12 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(page, /graph\.openCodeIntegrated/);
   assert.match(page, /El mapa que ya construiste está conectado/);
   assert.match(page, /snapshot\.workflow\.nodes/);
+  assert.match(page, /aria-pressed=\{selected\}/);
+  assert.match(page, /workflow-inspector/);
+  assert.match(page, /selectedEdges/);
+  assert.match(page, /TaskJourney/);
+  assert.match(page, /Recorrido de la última tarea Hermes/);
+  assert.match(page, /validation-failed/);
   assert.match(page, /Herramientas observadas/);
   assert.match(page, /no captura/);
 });

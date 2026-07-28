@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   HealthState,
+  HermesTaskState,
+  HermesTaskSummary,
   ServiceHealth,
   TelemetrySnapshot,
   WorkflowEdge,
@@ -22,6 +24,39 @@ const evidenceLabels: Record<WorkflowEdge["evidence"], string> = {
   configured: "Configurada",
   indexed: "Indexada",
 };
+
+const taskStateLabels: Record<HermesTaskState, string> = {
+  queued: "En cola",
+  preparing: "Preparando",
+  executing: "Ejecutando",
+  "awaiting-review": "Esperando revisión",
+  validating: "Validando",
+  completed: "Completada",
+  rejected: "Rechazada",
+  failed: "Fallida",
+  blocked: "Bloqueada",
+  "validation-failed": "Validación fallida",
+};
+
+const taskStages: Array<{
+  state: HermesTaskState;
+  label: string;
+  nodeId: string;
+}> = [
+  { state: "queued", label: "Contrato", nodeId: "hermes-broker" },
+  { state: "preparing", label: "Contexto", nodeId: "graphify" },
+  { state: "executing", label: "Ejecución", nodeId: "hermes" },
+  { state: "awaiting-review", label: "Revisión", nodeId: "director-review" },
+  { state: "validating", label: "Validación", nodeId: "director-review" },
+  { state: "completed", label: "Cierre", nodeId: "director-review" },
+];
+
+const unsuccessfulTaskStates = new Set<HermesTaskState>([
+  "rejected",
+  "failed",
+  "blocked",
+  "validation-failed",
+]);
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("es-DO", {
@@ -87,80 +122,237 @@ function ServiceNode({
 function WorkflowMap({
   nodes,
   edges,
+  selectedNodeId,
+  onSelectNode,
 }: {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string | null) => void;
 }) {
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
+  const selectedEdges = selectedNode
+    ? edges.filter(
+        (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id,
+      )
+    : [];
+  const relatedNodeIds = new Set<string>([selectedNodeId ?? ""]);
+  for (const edge of selectedEdges) {
+    relatedNodeIds.add(edge.source);
+    relatedNodeIds.add(edge.target);
+  }
+
   return (
-    <div className="workflow-scroll">
-      <div className="workflow-canvas" aria-label="Flujo de trabajo real">
-        <svg
-          className="workflow-links"
-          viewBox="0 0 1000 520"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <defs>
-            <marker
-              id="arrow"
-              markerWidth="8"
-              markerHeight="8"
-              refX="7"
-              refY="4"
-              orient="auto"
-            >
-              <path d="M0,0 L8,4 L0,8 Z" />
-            </marker>
-          </defs>
-          {edges.map((edge, index) => {
-            const source = byId.get(edge.source);
-            const target = byId.get(edge.target);
-            if (!source || !target) return null;
-            const x1 = source.x * 10;
-            const y1 = source.y * 5.2;
-            const x2 = target.x * 10;
-            const y2 = target.y * 5.2;
-            const bend = Math.max(24, Math.abs(x2 - x1) * 0.42);
-            const path = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
-            return (
-              <g
-                key={edge.id}
-                className={`flow-edge evidence-${edge.evidence} state-stroke-${edge.state}`}
+    <div className="workflow-explorer">
+      <div className="workflow-scroll">
+        <div className="workflow-canvas" aria-label="Flujo de trabajo real">
+          <svg
+            className="workflow-links"
+            viewBox="0 0 1000 520"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <marker
+                id="arrow"
+                markerWidth="8"
+                markerHeight="8"
+                refX="7"
+                refY="4"
+                orient="auto"
               >
-                <path d={path} markerEnd="url(#arrow)" />
-                {edge.evidence === "observed" && (
-                  <circle r="3.6">
-                    <animateMotion
-                      dur={`${2.8 + (index % 3) * 0.45}s`}
-                      repeatCount="indefinite"
-                      path={path}
-                    />
-                  </circle>
-                )}
-              </g>
+                <path d="M0,0 L8,4 L0,8 Z" />
+              </marker>
+            </defs>
+            {edges.map((edge, index) => {
+              const source = byId.get(edge.source);
+              const target = byId.get(edge.target);
+              if (!source || !target) return null;
+              const x1 = source.x * 10;
+              const y1 = source.y * 5.2;
+              const x2 = target.x * 10;
+              const y2 = target.y * 5.2;
+              const bend = Math.max(24, Math.abs(x2 - x1) * 0.42);
+              const path = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+              const connected = selectedEdges.some((item) => item.id === edge.id);
+              return (
+                <g
+                  key={edge.id}
+                  className={`flow-edge evidence-${edge.evidence} state-stroke-${edge.state}${
+                    selectedNode ? (connected ? " edge-selected" : " edge-dimmed") : ""
+                  }`}
+                >
+                  <path d={path} markerEnd="url(#arrow)" />
+                  {edge.evidence === "observed" && (
+                    <circle r="3.6">
+                      <animateMotion
+                        dur={`${2.8 + (index % 3) * 0.45}s`}
+                        repeatCount="indefinite"
+                        path={path}
+                      />
+                    </circle>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {nodes.map((node) => {
+            const selected = node.id === selectedNodeId;
+            const dimmed = selectedNode && !relatedNodeIds.has(node.id);
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className={`workflow-node node-kind-${node.kind} state-border-${node.state}${
+                  selected ? " node-selected" : ""
+                }${dimmed ? " node-dimmed" : ""}`}
+                style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                aria-pressed={selected}
+                aria-controls="workflow-inspector"
+                onClick={() => onSelectNode(selected ? null : node.id)}
+              >
+                <span className="workflow-role">{node.role}</span>
+                <strong>{node.label}</strong>
+                <small>{node.detail}</small>
+              </button>
             );
           })}
-        </svg>
-
-        {nodes.map((node) => (
-          <article
-            key={node.id}
-            className={`workflow-node node-kind-${node.kind} state-border-${node.state}`}
-            style={{ left: `${node.x}%`, top: `${node.y}%` }}
-          >
-            <span className="workflow-role">{node.role}</span>
-            <strong>{node.label}</strong>
-            <small>{node.detail}</small>
-          </article>
-        ))}
+        </div>
       </div>
+
+      <aside
+        className={`workflow-inspector${selectedNode ? " inspector-open" : ""}`}
+        id="workflow-inspector"
+        aria-live="polite"
+      >
+        {selectedNode ? (
+          <>
+            <div className="inspector-heading">
+              <div>
+                <span>{selectedNode.role}</span>
+                <h3>{selectedNode.label}</h3>
+              </div>
+              <button
+                type="button"
+                className="inspector-close"
+                onClick={() => onSelectNode(null)}
+                aria-label="Cerrar detalle del nodo"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="inspector-summary">
+              <StatePill state={selectedNode.state} />
+              <p>{selectedNode.detail}</p>
+            </div>
+            <div className="inspector-connections">
+              {selectedEdges.length > 0 ? (
+                selectedEdges.map((edge) => {
+                  const outgoing = edge.source === selectedNode.id;
+                  const peer = byId.get(outgoing ? edge.target : edge.source);
+                  return (
+                    <article key={edge.id}>
+                      <span>{outgoing ? "Salida" : "Entrada"}</span>
+                      <strong>
+                        {outgoing ? "→" : "←"} {peer?.label ?? "Nodo desconocido"}
+                      </strong>
+                      <p>{edge.label}</p>
+                      <small>
+                        {evidenceLabels[edge.evidence]} · {stateLabels[edge.state]} ·{" "}
+                        {formatAge(edge.lastObservedAt)}
+                      </small>
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="inspector-empty">Este nodo no tiene conexiones registradas.</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="inspector-placeholder">
+            <span>Explorar el circuito</span>
+            <p>Selecciona un nodo para ver qué recibe, qué entrega y cuándo se observó.</p>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function TaskJourney({
+  task,
+  onNavigate,
+}: {
+  task: HermesTaskSummary | null;
+  onNavigate: (nodeId: string) => void;
+}) {
+  const currentIndex = task
+    ? taskStages.findIndex((stage) => stage.state === task.state)
+    : -1;
+  const unsuccessful = task ? unsuccessfulTaskStates.has(task.state) : false;
+
+  return (
+    <div className="task-journey" aria-label="Recorrido de la última tarea Hermes">
+      <div className="journey-heading">
+        <div>
+          <span>Recorrido de tarea</span>
+          <strong>
+            {task
+              ? `${task.requestedBy} → ${task.projectName}`
+              : "Sin tareas registradas"}
+          </strong>
+        </div>
+        <span className={`journey-state${unsuccessful ? " journey-state-error" : ""}`}>
+          {task ? taskStateLabels[task.state] : "En espera"}
+        </span>
+      </div>
+      <ol className="journey-stages">
+        {taskStages.map((stage, index) => {
+          const active = task?.state === stage.state;
+          const complete = currentIndex >= 0 && index < currentIndex;
+          return (
+            <li
+              key={stage.state}
+              className={`${active ? "stage-active" : ""}${
+                complete ? "stage-complete" : ""
+              }`}
+            >
+              <button type="button" onClick={() => onNavigate(stage.nodeId)}>
+                <i aria-hidden="true">{complete ? "✓" : index + 1}</i>
+                <span>{stage.label}</span>
+                <small>
+                  {active ? taskStateLabels[stage.state] : complete ? "Lista" : "Pendiente"}
+                </small>
+              </button>
+            </li>
+          );
+        })}
+        {unsuccessful && task && (
+          <li className="stage-active stage-error">
+            <button type="button" onClick={() => onNavigate("director-review")}>
+              <i aria-hidden="true">!</i>
+              <span>Incidencia</span>
+              <small>{taskStateLabels[task.state]}</small>
+            </button>
+          </li>
+        )}
+      </ol>
+      {task && (
+        <p className="journey-meta">
+          {task.filesChanged} archivos · {task.patchBytes.toLocaleString("es-DO")} bytes
+          de parche · actualizado {formatAge(task.updatedAt)}
+        </p>
+      )}
     </div>
   );
 }
 
 export default function Home() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<
     "connecting" | "live" | "retrying"
   >("connecting");
@@ -189,12 +381,18 @@ export default function Home() {
     };
   }, []);
 
-  const healthyCount = useMemo(
-    () =>
-      snapshot?.services.filter((service) => service.state === "healthy").length ??
-      0,
-    [snapshot],
-  );
+  useEffect(() => {
+    if (
+      selectedNodeId &&
+      snapshot &&
+      !snapshot.workflow.nodes.some((node) => node.id === selectedNodeId)
+    ) {
+      setSelectedNodeId(null);
+    }
+  }, [selectedNodeId, snapshot]);
+
+  const healthyCount =
+    snapshot?.services.filter((service) => service.state === "healthy").length ?? 0;
 
   const activityCount =
     snapshot?.connections.reduce(
@@ -304,10 +502,19 @@ export default function Home() {
           </div>
         </div>
         {snapshot ? (
-          <WorkflowMap nodes={snapshot.workflow.nodes} edges={snapshot.workflow.edges} />
+          <WorkflowMap
+            nodes={snapshot.workflow.nodes}
+            edges={snapshot.workflow.edges}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={setSelectedNodeId}
+          />
         ) : (
           <div className="workflow-loading">Construyendo el circuito local…</div>
         )}
+        <TaskJourney
+          task={snapshot?.delegation.latestTask ?? null}
+          onNavigate={setSelectedNodeId}
+        />
         <div className="delegation-strip" aria-label="Estado de delegación local">
           <div>
             <span>Cola</span>
