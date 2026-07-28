@@ -145,6 +145,90 @@ export interface HermesBenchmarkSummary {
   }>;
 }
 
+export interface HermesModelPerformance {
+  model: string;
+  displayName: string;
+  role: "primary" | "fallback";
+  contextLength: number;
+  parallel: number;
+  gpuOffload: string;
+  mtpEnabled: boolean;
+  tokensPerSecond: number;
+  gpuComputeAveragePercent: number;
+  gpuComputePeakPercent: number;
+  dedicatedMemoryGiB: number;
+  sharedMemoryGiB: number;
+  fullAgentPassSeconds: number;
+}
+
+export interface HermesInsightsSummary {
+  state: HealthState;
+  generatedAt: string | null;
+  days: number;
+  pricing: {
+    referenceModel: string;
+    tier: string;
+    inputPerMillionUsd: number;
+    outputPerMillionUsd: number;
+    localInputPerMillionUsd: number;
+    localOutputPerMillionUsd: number;
+    source: string;
+    checkedAt: string;
+  };
+  overview: {
+    sessions: number;
+    messages: number;
+    userMessages: number;
+    assistantMessages: number;
+    toolMessages: number;
+    toolCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    activeHours: number;
+    averageSessionSeconds: number;
+    averageMessagesPerSession: number;
+    avoidedCloudTokens: number;
+    localCostUsd: number;
+    avoidedGpt56SolCostUsd: number;
+  };
+  models: Array<{
+    model: string;
+    sessions: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    reasoningTokens: number;
+    apiCalls: number;
+    toolCalls: number;
+    localCostUsd: number;
+    avoidedGpt56SolCostUsd: number;
+  }>;
+  platforms: Array<{
+    platform: string;
+    sessions: number;
+    messages: number;
+    totalTokens: number;
+    toolCalls: number;
+  }>;
+  tools: Array<{ tool: string; calls: number; percentage: number }>;
+  skills: {
+    totalLoads: number;
+    totalEdits: number;
+    distinct: number;
+    top: Array<{ skill: string; loads: number; edits: number; total: number }>;
+  };
+  activity: {
+    byDay: Array<{ day: string; count: number }>;
+    byHour: Array<{ hour: number; count: number }>;
+    busiestDay: string;
+    busiestHour: number;
+    activeDays: number;
+    maxStreak: number;
+  };
+  topSessions: Array<{ label: string; value: string; date: string }>;
+}
+
 export interface HermesDelegationSummary {
   state: HealthState;
   checkedAt: string;
@@ -156,6 +240,8 @@ export interface HermesDelegationSummary {
   failedCount: number;
   latestTask: HermesTaskSummary | null;
   benchmark: HermesBenchmarkSummary;
+  modelPerformance: HermesModelPerformance[];
+  insights: HermesInsightsSummary;
 }
 
 export interface TelemetrySnapshot {

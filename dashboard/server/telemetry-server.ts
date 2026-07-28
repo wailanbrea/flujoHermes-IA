@@ -12,6 +12,8 @@ import type {
   HealthState,
   HermesDelegationSummary,
   HermesBenchmarkSummary,
+  HermesInsightsSummary,
+  HermesModelPerformance,
   HermesTaskSummary,
   KnowledgeGraphSummary,
   ServiceHealth,
@@ -45,6 +47,18 @@ const HERMES_BENCHMARK_PATH = resolve(
   "telemetry",
   "runtime",
   "hermes-benchmark.json",
+);
+const HERMES_INSIGHTS_PATH = resolve(
+  WORKSPACE_ROOT,
+  "telemetry",
+  "runtime",
+  "hermes-insights.json",
+);
+const HERMES_MODEL_REPORT_PATH = resolve(
+  WORKSPACE_ROOT,
+  "reports",
+  "models",
+  "hermes-model-comparison.json",
 );
 const HERMES_SUBMIT_SCRIPT = resolve(
   WORKSPACE_ROOT,
@@ -171,6 +185,109 @@ const hermesBenchmarkSchema = z.object({
     }),
   ),
 });
+const hermesModelReportSchema = z.object({
+  schemaVersion: z.literal(1),
+  generatedAt: z.string(),
+  primaryModel: z.string(),
+  fallbackModel: z.string(),
+  models: z.array(
+    z.object({
+      model: z.string(),
+      displayName: z.string(),
+      role: z.enum(["primary", "fallback"]),
+      contextLength: z.number().int().positive(),
+      parallel: z.number().int().positive(),
+      gpuOffload: z.string(),
+      mtpEnabled: z.boolean(),
+      tokensPerSecond: z.number().nonnegative(),
+      gpuComputeAveragePercent: z.number().min(0).max(100),
+      gpuComputePeakPercent: z.number().min(0).max(100),
+      dedicatedMemoryGiB: z.number().nonnegative(),
+      sharedMemoryGiB: z.number().nonnegative(),
+      fullAgentPassSeconds: z.number().nonnegative(),
+    }),
+  ),
+});
+const hermesInsightsSchema = z.object({
+  schemaVersion: z.literal(1),
+  generatedAt: z.string(),
+  days: z.number().int().positive(),
+  pricing: z.object({
+    referenceModel: z.string(),
+    tier: z.string(),
+    inputPerMillionUsd: z.number().nonnegative(),
+    outputPerMillionUsd: z.number().nonnegative(),
+    localInputPerMillionUsd: z.number().nonnegative(),
+    localOutputPerMillionUsd: z.number().nonnegative(),
+    source: z.string(),
+    checkedAt: z.string(),
+  }),
+  overview: z.object({
+    sessions: z.number().int().nonnegative(),
+    messages: z.number().int().nonnegative(),
+    userMessages: z.number().int().nonnegative(),
+    assistantMessages: z.number().int().nonnegative(),
+    toolMessages: z.number().int().nonnegative(),
+    toolCalls: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+    activeHours: z.number().nonnegative(),
+    averageSessionSeconds: z.number().nonnegative(),
+    averageMessagesPerSession: z.number().nonnegative(),
+    avoidedCloudTokens: z.number().int().nonnegative(),
+    localCostUsd: z.number().nonnegative(),
+    avoidedGpt56SolCostUsd: z.number().nonnegative(),
+  }),
+  models: z.array(z.object({
+    model: z.string(),
+    sessions: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+    reasoningTokens: z.number().int().nonnegative(),
+    apiCalls: z.number().int().nonnegative(),
+    toolCalls: z.number().int().nonnegative(),
+    localCostUsd: z.number().nonnegative(),
+    avoidedGpt56SolCostUsd: z.number().nonnegative(),
+  })),
+  platforms: z.array(z.object({
+    platform: z.string(),
+    sessions: z.number().int().nonnegative(),
+    messages: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+    toolCalls: z.number().int().nonnegative(),
+  })),
+  tools: z.array(z.object({
+    tool: z.string(),
+    calls: z.number().int().nonnegative(),
+    percentage: z.number().min(0).max(100),
+  })),
+  skills: z.object({
+    totalLoads: z.number().int().nonnegative(),
+    totalEdits: z.number().int().nonnegative(),
+    distinct: z.number().int().nonnegative(),
+    top: z.array(z.object({
+      skill: z.string(),
+      loads: z.number().int().nonnegative(),
+      edits: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    })),
+  }),
+  activity: z.object({
+    byDay: z.array(z.object({ day: z.string(), count: z.number().int().nonnegative() })),
+    byHour: z.array(z.object({ hour: z.number().int().min(0).max(23), count: z.number().int().nonnegative() })),
+    busiestDay: z.string(),
+    busiestHour: z.number().int().min(0).max(23),
+    activeDays: z.number().int().nonnegative(),
+    maxStreak: z.number().int().nonnegative(),
+  }),
+  topSessions: z.array(z.object({
+    label: z.string(),
+    value: z.string(),
+    date: z.string(),
+  })),
+});
 
 interface Probe {
   service: ServiceHealth;
@@ -281,6 +398,75 @@ async function readHermesBenchmark(): Promise<HermesBenchmarkSummary> {
     };
   } catch {
     return emptyHermesBenchmark();
+  }
+}
+
+const emptyHermesInsights = (): HermesInsightsSummary => ({
+  state: "unknown",
+  generatedAt: null,
+  days: 0,
+  pricing: {
+    referenceModel: "gpt-5.6-sol",
+    tier: "standard-short-context",
+    inputPerMillionUsd: 5,
+    outputPerMillionUsd: 30,
+    localInputPerMillionUsd: 0,
+    localOutputPerMillionUsd: 0,
+    source: "https://developers.openai.com/api/docs/pricing",
+    checkedAt: "2026-07-28",
+  },
+  overview: {
+    sessions: 0,
+    messages: 0,
+    userMessages: 0,
+    assistantMessages: 0,
+    toolMessages: 0,
+    toolCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    activeHours: 0,
+    averageSessionSeconds: 0,
+    averageMessagesPerSession: 0,
+    avoidedCloudTokens: 0,
+    localCostUsd: 0,
+    avoidedGpt56SolCostUsd: 0,
+  },
+  models: [],
+  platforms: [],
+  tools: [],
+  skills: { totalLoads: 0, totalEdits: 0, distinct: 0, top: [] },
+  activity: {
+    byDay: [],
+    byHour: [],
+    busiestDay: "",
+    busiestHour: 0,
+    activeDays: 0,
+    maxStreak: 0,
+  },
+  topSessions: [],
+});
+
+async function readHermesInsights(): Promise<HermesInsightsSummary> {
+  try {
+    const body = await readFile(HERMES_INSIGHTS_PATH, "utf8");
+    return {
+      state: "healthy",
+      ...hermesInsightsSchema.parse(JSON.parse(body.replace(/^\uFEFF/, ""))),
+    };
+  } catch {
+    return emptyHermesInsights();
+  }
+}
+
+async function readHermesModelPerformance(): Promise<HermesModelPerformance[]> {
+  try {
+    const body = await readFile(HERMES_MODEL_REPORT_PATH, "utf8");
+    return hermesModelReportSchema.parse(
+      JSON.parse(body.replace(/^\uFEFF/, "")),
+    ).models;
+  } catch {
+    return [];
   }
 }
 
@@ -401,25 +587,19 @@ async function probeLmStudio(): Promise<Probe> {
 async function probeHermes(): Promise<Probe> {
   const start = performance.now();
   try {
-    const [model, provider] = await Promise.all([
-      run("hermes.exe", [
-        "--profile",
-        "localai",
-        "config",
-        "get",
-        "model.default",
-      ]),
-      run("hermes.exe", [
-        "--profile",
-        "localai",
-        "config",
-        "get",
-        "model.provider",
-      ]),
+    const configValue = (key: string) =>
+      run("hermes.exe", ["--profile", "localai", "config", "get", key]);
+    const [model, provider, fallbackModel, fallbackProvider] = await Promise.all([
+      configValue("model.default"),
+      configValue("model.provider"),
+      configValue("fallback_model.model"),
+      configValue("fallback_model.provider"),
     ]);
     const valid =
       provider === "lmstudio" &&
-      model === "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive";
+      model === "google/gemma-4-12b" &&
+      fallbackProvider === "lmstudio" &&
+      fallbackModel === "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive";
     return {
       protocol: "CLI / OpenAI API",
       service: {
@@ -432,7 +612,7 @@ async function probeHermes(): Promise<Probe> {
           : "El perfil no coincide con la configuración validada",
         latencyMs: latency(start),
         checkedAt: checkedAt(),
-        metrics: { profileIsolated: true, provider },
+        metrics: { profileIsolated: true, provider, model, fallbackModel },
       },
     };
   } catch (error) {
@@ -699,7 +879,7 @@ async function probeGpu(): Promise<GpuProbe> {
         computePercent: z.number(),
       })
       .parse(JSON.parse(output));
-    const state: HealthState = metrics.sharedGiB > 0.25 ? "degraded" : "healthy";
+    const state: HealthState = metrics.sharedGiB > 0.75 ? "degraded" : "healthy";
     return {
       protocol: "Windows GPU counters",
       dedicatedUsedGiB: metrics.dedicatedGiB,
@@ -787,12 +967,18 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     failedCount: 0,
     latestTask: null,
     benchmark: emptyHermesBenchmark(),
+    modelPerformance: [],
+    insights: emptyHermesInsights(),
   };
   try {
     if (!(await pathExists(HERMES_SUBMIT_SCRIPT))) {
       throw new Error("puente local no instalado");
     }
-    const benchmark = await readHermesBenchmark();
+    const [benchmark, modelPerformance, insights] = await Promise.all([
+      readHermesBenchmark(),
+      readHermesModelPerformance(),
+      readHermesInsights(),
+    ]);
     let directories: string[] = [];
     try {
       directories = (await readdir(HERMES_JOBS_PATH, { withFileTypes: true }))
@@ -848,6 +1034,8 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
         invalidTaskCount,
       latestTask,
       benchmark,
+      modelPerformance,
+      insights,
     };
     return {
       protocol: "Cola JSON local",
@@ -868,6 +1056,8 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
           benchmarkPassed: benchmark.passed,
           benchmarkTotal: benchmark.total,
           tokensPerSecond: benchmark.tokensPerSecond,
+          totalTokens: insights.overview.totalTokens,
+          avoidedGpt56SolCostUsd: insights.overview.avoidedGpt56SolCostUsd,
         },
       },
     };

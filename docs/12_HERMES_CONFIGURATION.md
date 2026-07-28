@@ -3,8 +3,9 @@
 ## Perfil aislado
 
 - Perfil: `localai`
-- Proveedor: `lmstudio`
-- Modelo: `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive`
+- Proveedor principal: `lmstudio`
+- Modelo principal: `google/gemma-4-12b`
+- Fallback: `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive` mediante `lmstudio`
 - Base URL: `http://127.0.0.1:1234/v1`
 - Contexto declarado: `65536`
 - Carga de LM Studio: `explicit`
@@ -25,15 +26,19 @@ El perfil predeterminado preexistente no fue modificado.
 - Corte por denegaciones: 3
 
 El worker headless no recibe la herramienta `terminal`. Esto evita esperas de
-60 segundos por aprobaciones que no pueden responderse sin TTY y reduce el
-prompt de herramientas. Las compilaciones y pruebas siguen siendo obligación
-del director después de revisar el parche.
+aprobación sin TTY. Las compilaciones y pruebas siguen siendo obligación del
+director después de revisar el parche.
 
-Cada proceso delegado usa un `HERMES_HOME` efimero dentro del intercambio de la
-tarea. El worker copia solo el `config.yaml` de `localai` y genera un `.env` sin
-credenciales con `HERMES_WRITE_SAFE_ROOT=workspacePath`. Esto evita que el
-`.env` compartido sobrescriba la raiz por tarea y mantiene las herramientas de
-archivo dentro del worktree externo.
+Cada proceso delegado usa un `HERMES_HOME` efímero dentro del intercambio de la
+tarea. El worker copia sólo `config.yaml` de `localai` y genera un `.env` sin
+credenciales con `HERMES_WRITE_SAFE_ROOT=workspacePath`.
+
+## Prompt operativo
+
+El worker antepone `config/hermes-operating-prompt.md` al contrato. Las reglas
+limitan reintentos, detienen errores de esquema, exigen editar temprano y obligan
+a terminar con evidencia concreta. El mismo bloque está incluido condicionalmente
+en el preset `Laravel y kotlin Promt` de LM Studio.
 
 ## Checkpoints
 
@@ -45,14 +50,9 @@ archivo dentro del worktree externo.
 ## Modos prohibidos
 
 No usar `--oneshot`, `-z` ni `--yolo`. En esta versión, `--oneshot` activa
-internamente `HERMES_YOLO_MODE=1` y omite aprobaciones. El wrapper local rechaza
-estos argumentos antes de preparar el modelo.
+internamente `HERMES_YOLO_MODE=1` y omite aprobaciones.
 
 ## Arranque seguro
-
-No se debe iniciar Hermes directamente después de reiniciar el equipo. El cargador
-automático de LM Studio puede elegir 262K de contexto y 4 ranuras, lo que dejó
-solo 1,54 GiB de RAM libre durante la prueba.
 
 Usar siempre:
 
@@ -60,13 +60,18 @@ Usar siempre:
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-hermes-local.ps1
 ```
 
-El wrapper carga primero el modelo con 64K, paralelo 1, GPU 0.70 y MTP
-desactivado. La línea base local mejoró de 23,49 a 26,85 tokens/s frente a GPU
-0.60. No se aumenta más porque el GGUF ocupa 20,55 GiB y ya usa memoria
-compartida además de los 16 GiB físicos de la RX 9070.
+El cargador prepara Gemma por defecto con 64K, paralelo 1, GPU máxima y MTP
+desactivado. Para preparar manualmente el fallback:
 
-## Prueba validada
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\prepare-hermes-model.ps1 -Model qwen
+```
 
-Hermes respondió `HERMES_EXPLICIT_OK` desde el perfil aislado con una llamada
-local, costo externo cero y el modelo cargado a 65.536 tokens. El piloto PHP
-terminó con prueba reproducible, aunque su resumen requirió corrección humana.
+Qwen usa GPU 0.50 para mantener la memoria compartida cerca de 0,40 GiB.
+
+## Insights
+
+`export-hermes-insights.ps1` usa las APIs oficiales `SessionDB` e
+`InsightsEngine`. Sólo exporta contadores y etiquetas agregadas a
+`telemetry/runtime/hermes-insights.json`; no exporta prompts, respuestas, IDs ni
+argumentos. El worker refresca este archivo al terminar una sesión.

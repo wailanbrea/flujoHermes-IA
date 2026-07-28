@@ -101,6 +101,11 @@ try {
         "HERMES_WRITE_SAFE_ROOT=$executionRoot`n",
         $utf8
     )
+    $operatingPromptPath = Join-Path (Get-OrchestratorRoot) 'config\hermes-operating-prompt.md'
+    if (-not (Test-Path -LiteralPath $operatingPromptPath -PathType Leaf)) {
+        throw 'The versioned Hermes operating prompt is missing.'
+    }
+    $operatingPrompt = [IO.File]::ReadAllText($operatingPromptPath, $utf8)
     $graphContextPath = Join-Path $exchangeDirectory 'graph-context.txt'
     [IO.File]::WriteAllText(
         $graphContextPath,
@@ -142,7 +147,9 @@ try {
             progressKind = 'starting'
         }
 
-    $prompt = 'Read and execute the local task contract at "' +
+    $prompt = "Apply these mandatory operating rules before the contract:`n`n" +
+        $operatingPrompt.Trim() +
+        "`n`nRead and execute the local task contract at `"" +
         $executionContractPath +
         '". Obey every boundary. Use the provided Graphify context before files. ' +
         'Your exact writable workspace is workspacePath; never use the source ' +
@@ -261,6 +268,14 @@ try {
     $utf8NoBom = [Text.UTF8Encoding]::new($false)
     [IO.File]::WriteAllText($stdoutPath, $stdoutText, $utf8NoBom)
     [IO.File]::WriteAllText($stderrPath, $stderrText, $utf8NoBom)
+    try {
+        & (Join-Path $PSScriptRoot 'export-hermes-insights.ps1') `
+            -Days 3650 |
+            Out-Null
+    }
+    catch {
+        Write-Warning 'Hermes Insights telemetry could not be refreshed.'
+    }
     if ($stalled) {
         throw 'Hermes execution stalled without observable progress.'
     }

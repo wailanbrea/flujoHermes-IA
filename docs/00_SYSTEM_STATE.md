@@ -40,19 +40,14 @@ no se cargaron modelos y no se modificó ningún proyecto existente.
 ## LM Studio
 
 - Escucha sólo en `127.0.0.1:1234`.
-- `/v1/models` y `/api/v0/models` respondieron correctamente.
-- Ningún modelo estaba cargado durante la auditoría.
-- Modelos locales:
-  - `qwen3.6-27b-mtp`, Q3_K_S, 14.42 GB, tool use, no probado.
-  - `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive`, Q4_K_M,
-    22.07 GB, tool use, no probado.
-  - `text-embedding-nomic-embed-text-v1.5`, Q4_K_M, 84.11 MB.
-- El máximo anunciado de 262144 tokens describe capacidad del artefacto, no una
-  configuración operativa segura. Se mantiene la propuesta conservadora de 22000
-  tokens hasta benchmark reproducible.
-- RAM, VRAM, tokens/s, tool calling real y recuperación tras error:
-  REQUIERE VERIFICACIÓN porque no se cargó ni se invocó un modelo.
-
+- Modelo principal validado: `google/gemma-4-12b`, Q4_K_M, 65.536 tokens,
+  paralelo 1, GPU máxima y MTP desactivado.
+- Fallback validado: `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive`,
+  Q4_K_M, 65.536 tokens, paralelo 1, GPU 0.50 y MTP desactivado.
+- Embeddings disponibles: `text-embedding-nomic-embed-text-v1.5`.
+- Gemma midió 59,51 tok/s y 11,02/0,39 GiB de memoria dedicada/compartida.
+- Qwen midió 25,81 tok/s y 14,13/0,40 GiB con offload 0.50.
+- No se descargaron modelos durante esta fase.
 ## Hermes
 
 Hermes responde como CLI y ofrece `dashboard`, `status`, `doctor`, `checkpoints`,

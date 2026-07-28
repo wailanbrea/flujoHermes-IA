@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-28T15:59:43Z",
+  "primaryModel": "google/gemma-4-12b",
+  "fallbackModel": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+  "models": [
+    {
+      "model": "google/gemma-4-12b",
+      "displayName": "Gemma 4 12B",
+      "role": "primary",
+      "contextLength": 65536,
+      "parallel": 1,
+      "gpuOffload": "max",
+      "mtpEnabled": false,
+      "tokensPerSecond": 59.51,
+      "gpuComputeAveragePercent": 67.3,
+      "gpuComputePeakPercent": 91.3,
+      "dedicatedMemoryGiB": 11.02,
+      "sharedMemoryGiB": 0.39,
+      "fullAgentPassSeconds": 8.91
+    },
+    {
+      "model": "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+      "displayName": "Qwen3.6 35B-A3B",
+      "role": "fallback",
+      "contextLength": 65536,
+      "parallel": 1,
+      "gpuOffload": "0.50",
+      "mtpEnabled": false,
+      "tokensPerSecond": 25.81,
+      "gpuComputeAveragePercent": 11.0,
+      "gpuComputePeakPercent": 12.6,
+      "dedicatedMemoryGiB": 14.13,
+      "sharedMemoryGiB": 0.40,
+      "fullAgentPassSeconds": 15.68
+    }
+  ]
+}

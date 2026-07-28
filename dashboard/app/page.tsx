@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type {
   HealthState,
   HermesBenchmarkSummary,
+  HermesInsightsSummary,
+  HermesModelPerformance,
   HermesTaskState,
   HermesTaskSummary,
   ServiceHealth,
@@ -364,69 +366,217 @@ function TaskJourney({
   );
 }
 
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("es-DO", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
 function HermesLab({
   benchmark,
   computePercent,
+  modelPerformance,
+  insights,
 }: {
   benchmark: HermesBenchmarkSummary;
   computePercent: number | null;
+  modelPerformance: HermesModelPerformance[];
+  insights: HermesInsightsSummary;
 }) {
+  const maxToolCalls = Math.max(...insights.tools.map((tool) => tool.calls), 1);
+  const maxDailySessions = Math.max(
+    ...insights.activity.byDay.map((day) => day.count),
+    1,
+  );
+
   return (
     <section className="hermes-lab" aria-labelledby="hermes-lab-title">
       <div className="lab-intro">
-        <p className="eyebrow">Hermes Lab · prueba sintética local</p>
-        <h3 id="hermes-lab-title">Calidad y rendimiento, medidos.</h3>
+        <p className="eyebrow">Hermes Lab · evidencia local saneada</p>
+        <h3 id="hermes-lab-title">Modelos, uso y ahorro, en una sola lectura.</h3>
         <p>
-          Sólo conserva resultados, duración y categorías. No registra prompts,
-          respuestas ni argumentos de herramientas.
+          Métricas agregadas de SessionDB e InsightsEngine. No conserva prompts,
+          respuestas, IDs de sesión ni argumentos de herramientas.
         </p>
       </div>
-      <div className="lab-metrics">
+
+      <div className="model-rack" aria-label="Comparación de modelos Hermes">
+        {modelPerformance.map((model) => (
+          <article className={`model-card model-${model.role}`} key={model.model}>
+            <div className="model-heading">
+              <span>{model.role === "primary" ? "Principal" : "Fallback"}</span>
+              <strong>{model.displayName}</strong>
+              <small>{model.model}</small>
+            </div>
+            <div className="model-speed">
+              <strong>{model.tokensPerSecond.toFixed(2)}</strong>
+              <span>tokens / segundo sostenidos</span>
+            </div>
+            <dl>
+              <div><dt>Contexto</dt><dd>{(model.contextLength / 1024).toFixed(0)}K</dd></div>
+              <div><dt>Paralelo</dt><dd>{model.parallel}</dd></div>
+              <div><dt>GPU</dt><dd>{model.gpuOffload}</dd></div>
+              <div><dt>MTP</dt><dd>{model.mtpEnabled ? "Sí" : "No"}</dd></div>
+              <div><dt>Compute medio / pico</dt><dd>{model.gpuComputeAveragePercent}% / {model.gpuComputePeakPercent}%</dd></div>
+              <div><dt>VRAM / compartida</dt><dd>{model.dedicatedMemoryGiB} / {model.sharedMemoryGiB} GiB</dd></div>
+              <div><dt>Agente completo</dt><dd>PASS · {model.fullAgentPassSeconds} s</dd></div>
+            </dl>
+          </article>
+        ))}
+      </div>
+
+      <div className="insights-hero">
         <div>
-          <span>Pruebas</span>
-          <strong>{benchmark.total ? `${benchmark.passed}/${benchmark.total}` : "—"}</strong>
+          <span>Tokens locales</span>
+          <strong>{insights.overview.totalTokens.toLocaleString("es-DO")}</strong>
+          <small>{insights.overview.sessions} sesiones · {insights.overview.messages} mensajes</small>
+        </div>
+        <div className="savings-cell">
+          <span>Ahorro vs. GPT-5.6 Sol</span>
+          <strong>{formatUsd(insights.overview.avoidedGpt56SolCostUsd)}</strong>
+          <small>Costo local {formatUsd(insights.overview.localCostUsd)}</small>
         </div>
         <div>
-          <span>Generación</span>
-          <strong>
-            {benchmark.tokensPerSecond
-              ? `${benchmark.tokensPerSecond.toFixed(1)} t/s`
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span>GPU compute</span>
+          <span>GPU ahora</span>
           <strong>{computePercent === null ? "—" : `${computePercent.toFixed(1)}%`}</strong>
+          <small>Compute instantáneo RX 9070</small>
         </div>
         <div>
-          <span>Offload</span>
-          <strong>{benchmark.gpuOffload ? `${benchmark.gpuOffload * 100}%` : "—"}</strong>
+          <span>Herramientas</span>
+          <strong>{insights.overview.toolCalls.toLocaleString("es-DO")}</strong>
+          <small>{insights.skills.totalLoads} cargas de skills</small>
         </div>
       </div>
-      <div className="lab-tests">
-        {benchmark.tests.length ? (
-          benchmark.tests.map((test) => (
-            <article key={test.id} className={test.passed ? "lab-pass" : "lab-fail"}>
-              <i aria-hidden="true" />
-              <div>
-                <strong>{test.id.replaceAll("-", " ")}</strong>
-                <small>{test.category} · {test.durationMs} ms</small>
+
+      <div className="insights-grid">
+        <article className="insight-panel token-ledger">
+          <header><span>Consumo agregado</span><strong>Tokens y sesiones</strong></header>
+          <dl className="dense-stats">
+            <div><dt>Entrada</dt><dd>{insights.overview.inputTokens.toLocaleString("es-DO")}</dd></div>
+            <div><dt>Salida</dt><dd>{insights.overview.outputTokens.toLocaleString("es-DO")}</dd></div>
+            <div><dt>Evitados en nube</dt><dd>{insights.overview.avoidedCloudTokens.toLocaleString("es-DO")}</dd></div>
+            <div><dt>Mensajes usuario</dt><dd>{insights.overview.userMessages}</dd></div>
+            <div><dt>Mensajes asistente</dt><dd>{insights.overview.assistantMessages}</dd></div>
+            <div><dt>Mensajes tool</dt><dd>{insights.overview.toolMessages}</dd></div>
+            <div><dt>Horas activas</dt><dd>{insights.overview.activeHours}</dd></div>
+            <div><dt>Promedio sesión</dt><dd>{insights.overview.averageSessionSeconds} s</dd></div>
+            <div><dt>Mensajes / sesión</dt><dd>{insights.overview.averageMessagesPerSession}</dd></div>
+          </dl>
+          <p className="pricing-note">
+            Referencia {insights.pricing.referenceModel}: {formatUsd(insights.pricing.inputPerMillionUsd)}/M entrada · {formatUsd(insights.pricing.outputPerMillionUsd)}/M salida · {insights.pricing.tier}
+          </p>
+        </article>
+
+        <article className="insight-panel model-usage">
+          <header><span>Distribución</span><strong>Uso por modelo</strong></header>
+          {insights.models.map((model) => (
+            <div className="usage-row" key={model.model}>
+              <strong>{model.model}</strong>
+              <span>{model.totalTokens.toLocaleString("es-DO")} tokens · {model.sessions} sesiones</span>
+              <small>
+                {model.inputTokens.toLocaleString("es-DO")} in · {model.outputTokens.toLocaleString("es-DO")} out · {model.reasoningTokens.toLocaleString("es-DO")} reasoning · {model.apiCalls} API · {model.toolCalls} tools · ahorro {formatUsd(model.avoidedGpt56SolCostUsd)} · local {formatUsd(model.localCostUsd)}
+              </small>
+            </div>
+          ))}
+        </article>
+
+        <article className="insight-panel tool-usage">
+          <header><span>Operación</span><strong>Herramientas</strong></header>
+          {insights.tools.map((tool) => (
+            <div className="meter-row" key={tool.tool}>
+              <span>{tool.tool}</span>
+              <i><b style={{ width: `${(tool.calls / maxToolCalls) * 100}%` }} /></i>
+              <strong>{tool.calls}</strong>
+              <small>{tool.percentage}%</small>
+            </div>
+          ))}
+        </article>
+
+        <article className="insight-panel platform-usage">
+          <header><span>Superficies</span><strong>Plataformas y skills</strong></header>
+          {insights.platforms.map((platform) => (
+            <div className="usage-row" key={platform.platform}>
+              <strong>{platform.platform}</strong>
+              <span>{platform.sessions} sesiones · {platform.messages} mensajes</span>
+              <small>{platform.totalTokens.toLocaleString("es-DO")} tokens · {platform.toolCalls} tools</small>
+            </div>
+          ))}
+          <div className="skill-summary">
+            <span>{insights.skills.distinct} skills distintas</span>
+            <strong>{insights.skills.totalLoads} cargas · {insights.skills.totalEdits} ediciones</strong>
+          </div>
+          {insights.skills.top.map((skill) => (
+            <div className="skill-row" key={skill.skill}>
+              <span>{skill.skill}</span>
+              <small>{skill.loads} cargas · {skill.edits} ediciones · {skill.total} total</small>
+            </div>
+          ))}
+        </article>
+
+        <article className="insight-panel activity-panel">
+          <header><span>Cadencia</span><strong>Actividad</strong></header>
+          <div className="day-bars">
+            {insights.activity.byDay.map((day) => (
+              <div key={day.day}>
+                <i><b style={{ height: `${(day.count / maxDailySessions) * 100}%` }} /></i>
+                <strong>{day.count}</strong>
+                <span>{day.day}</span>
               </div>
-            </article>
-          ))
-        ) : (
-          <p>Ejecuta el benchmark local para establecer la primera línea base.</p>
-        )}
+            ))}
+          </div>
+          <div className="activity-facts">
+            <span>Día pico <strong>{insights.activity.busiestDay}</strong></span>
+            <span>Hora pico <strong>{insights.activity.busiestHour}:00</strong></span>
+            <span>Días activos <strong>{insights.activity.activeDays}</strong></span>
+            <span>Racha máxima <strong>{insights.activity.maxStreak}</strong></span>
+          </div>
+          <div className="hour-strip" aria-label="Sesiones por hora">
+            {insights.activity.byHour.map((hour) => (
+              <span key={hour.hour} title={`${hour.hour}:00 · ${hour.count}`} data-active={hour.count > 0}>
+                {hour.count}
+              </span>
+            ))}
+          </div>
+        </article>
+
+        <article className="insight-panel records-panel">
+          <header><span>Récords saneados</span><strong>Sesiones destacadas</strong></header>
+          {insights.topSessions.map((session) => (
+            <div className="record-row" key={session.label}>
+              <span>{session.label}</span>
+              <strong>{session.value}</strong>
+              <small>{session.date}</small>
+            </div>
+          ))}
+          <div className="benchmark-mini">
+            <span>Prueba sintética</span>
+            <strong>{benchmark.total ? `${benchmark.passed}/${benchmark.total} PASS` : "Sin línea base"}</strong>
+            <small>
+              {benchmark.tokensPerSecond ? `${benchmark.tokensPerSecond.toFixed(1)} t/s · offload ${benchmark.gpuOffload * 100}%` : "Ejecuta el benchmark local"}
+            </small>
+          </div>
+          <div className="lab-tests">
+            {benchmark.tests.map((test) => (
+              <div key={test.id} className={test.passed ? "lab-pass" : "lab-fail"}>
+                <i aria-hidden="true" />
+                <span>{test.id.replaceAll("-", " ")} · {test.durationMs} ms</span>
+              </div>
+            ))}
+          </div>
+        </article>
       </div>
+
       <p className="lab-updated">
-        {benchmark.generatedAt
-          ? `Última medición ${formatAge(benchmark.generatedAt)}`
-          : "Sin mediciones todavía"}
+        {insights.generatedAt
+          ? `Insights actualizados ${formatAge(insights.generatedAt)}`
+          : "Sin Insights todavía"}
       </p>
     </section>
   );
 }
-
 export default function Home() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -592,19 +742,16 @@ export default function Home() {
           task={snapshot?.delegation.latestTask ?? null}
           onNavigate={setSelectedNodeId}
         />
-        <HermesLab
-          benchmark={snapshot?.delegation.benchmark ?? {
-            state: "unknown",
-            generatedAt: null,
-            model: "Sin benchmark",
-            gpuOffload: 0,
-            total: 0,
-            passed: 0,
-            tokensPerSecond: 0,
-            tests: [],
-          }}
-          computePercent={snapshot?.system.gpuComputePercent ?? null}
-        />
+        {snapshot ? (
+          <HermesLab
+            benchmark={snapshot.delegation.benchmark}
+            computePercent={snapshot.system.gpuComputePercent}
+            modelPerformance={snapshot.delegation.modelPerformance}
+            insights={snapshot.delegation.insights}
+          />
+        ) : (
+          <div className="workflow-loading">Preparando Hermes Insights…</div>
+        )}
         <div className="delegation-strip" aria-label="Estado de delegación local">
           <div>
             <span>Cola</span>

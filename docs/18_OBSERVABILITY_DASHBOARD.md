@@ -35,12 +35,15 @@ actividad animada se limita a enlaces observados.
 - Proyectos, nodos, relaciones y comunidades del grafo.
 - Contadores de comprobaciones y cambios de estado.
 - Uso de RAM y tiempo activo del equipo.
+- Comparación sostenida de Gemma y Qwen: velocidad, GPU, memoria y agente completo.
+- Hermes Insights agregados: tokens por modelo, sesiones, herramientas, skills y actividad.
+- Costo local $0 y ahorro frente a GPT-5.6 Sol con tarifa documentada.
 
 ## Datos prohibidos
 
 - Prompts, respuestas y argumentos de herramientas.
 - Contenido de archivos o nodos.
-- Tokens, claves, secretos o rutas personales.
+- Claves, secretos o rutas personales.
 - Historial del perfil Hermes predeterminado.
 
 ## Operación
@@ -53,3 +56,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-dashboard.ps1
 
 Si un servicio está detenido se muestra sin conexión; no se simulan estados
 saludables. El dashboard es observador y no ejecuta cambios sobre los proyectos.
+
+Los Insights se refrescan con:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\export-hermes-insights.ps1 -Days 3650
+```

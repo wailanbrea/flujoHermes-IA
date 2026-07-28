@@ -25,7 +25,10 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(page, /selectedEdges/);
   assert.match(page, /TaskJourney/);
   assert.match(page, /HermesLab/);
-  assert.match(page, /Hermes Lab · prueba sintética local/);
+  assert.match(page, /Hermes Lab · evidencia local saneada/);
+  assert.match(page, /Ahorro vs\. GPT-5\.6 Sol/);
+  assert.match(page, /Uso por modelo/);
+  assert.match(page, /Plataformas y skills/);
   assert.match(page, /Recorrido de la última tarea Hermes/);
   assert.match(page, /validation-failed/);
   assert.match(page, /Herramientas observadas/);
@@ -53,6 +56,9 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(server, /projectCatalogSchema/);
   assert.match(server, /probeHermesBroker/);
   assert.match(server, /HERMES_JOBS_PATH/);
+  assert.match(server, /HERMES_INSIGHTS_PATH/);
+  assert.match(server, /HERMES_MODEL_REPORT_PATH/);
+  assert.match(server, /hermesInsightsSchema/);
   assert.match(server, /buildWorkflow/);
   assert.match(server, /Graph JSON local/);
   assert.match(server, /Windows GPU counters/);
@@ -99,7 +105,7 @@ test("catalogs the authorized project roots without changing project source", as
 });
 
 test("delegates Hermes work through a bounded review gate", async () => {
-  const [submit, worker, common, review, benchmark] = await Promise.all([
+  const [submit, worker, common, review, benchmark, exporter, operatingPrompt] = await Promise.all([
     readFile(
       new URL("../../scripts/windows/submit-hermes-task.ps1", import.meta.url),
       "utf8",
@@ -118,6 +124,14 @@ test("delegates Hermes work through a bounded review gate", async () => {
     ),
     readFile(
       new URL("../../scripts/benchmarks/test-hermes-local.ps1", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../scripts/windows/export-hermes-insights.ps1", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../config/hermes-operating-prompt.md", import.meta.url),
       "utf8",
     ),
   ]);
@@ -139,6 +153,14 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /-t file/);
   assert.match(worker, /agentLogLength/);
   assert.match(worker, /HERMES_WRITE_SAFE_ROOT/);
+  assert.match(worker, /export-hermes-insights\.ps1/);
+  assert.match(worker, /hermes-operating-prompt\.md/);
+  assert.match(worker, /Join-Path \(Get-OrchestratorRoot\)/);
+  assert.match(exporter, /InsightsEngine/);
+  assert.match(exporter, /SessionDB/);
+  assert.match(exporter, /avoidedGpt56SolCostUsd/);
+  assert.doesNotMatch(exporter, /session_id|message_content|tool_arguments/);
+  assert.match(operatingPrompt, /Never repeat the same invalid call/);
   assert.doesNotMatch(worker, /-t terminal/);
   assert.doesNotMatch(worker, /\.Kill\(\$true\)/);
   assert.match(common, /taskkill\.exe/);

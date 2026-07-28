@@ -25,3 +25,16 @@ Fecha: 27 de julio de 2026. No se descargaron modelos.
 
 Los informes de uso se encuentran en `reports/models/`. No contienen prompts,
 respuestas ni credenciales.
+## Comparación sostenida para Hermes (28 de julio de 2026)
+
+| Rol | Modelo | GPU | Generación sostenida | Compute medio / pico | VRAM dedicada / compartida | Agente completo |
+|---|---|---:|---:|---:|---:|---:|
+| Principal | Gemma 4 12B Q4_K_M | máximo | 59,51 tok/s | 67,3% / 91,3% | 11,02 / 0,39 GiB | PASS en 8,91 s |
+| Fallback | Qwen3.6 35B-A3B Q4_K_M | 0.50 | 25,81 tok/s | 11,0% / 12,6% | 14,13 / 0,40 GiB | PASS en 15,68 s |
+
+Ambos modelos se probaron con 65.536 tokens, paralelo 1 y MTP desactivado.
+Gemma queda como principal por rendimiento, menor memoria y mejor tiempo de agente.
+Qwen queda como fallback con offload 0.50; valores mayores aumentaron la memoria
+compartida a 1,20 GiB (0.55/0.60) y 2,96 GiB (0.70) sin justificar el riesgo.
+La evidencia estructurada está en
+`reports/models/hermes-model-comparison.json`.
