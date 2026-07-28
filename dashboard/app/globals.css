@@ -1425,6 +1425,45 @@ a {
 .dense-stats dd {
   font-size: 15px;
 }
+.efficiency-strip {
+  border: 1px solid var(--line);
+  border-top: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.efficiency-strip > div {
+  border-right: 1px solid var(--line);
+  min-height: 76px;
+  padding: 14px 16px;
+}
+
+.efficiency-strip > div:last-child {
+  border-right: 0;
+}
+
+.efficiency-strip span,
+.efficiency-strip strong,
+.efficiency-strip small {
+  display: block;
+}
+
+.efficiency-strip span,
+.efficiency-strip small {
+  color: var(--muted);
+  font: 9px/1.4 var(--data);
+  text-transform: uppercase;
+}
+
+.efficiency-strip strong {
+  color: var(--aqua);
+  font: 520 22px var(--display);
+  margin-top: 7px;
+}
+
+.efficiency-strip small {
+  margin-top: 4px;
+}
 .delegation-strip {
   border: 1px solid var(--line);
   border-top: 0;
@@ -2384,8 +2423,17 @@ footer strong {
 .dense-stats dd {
   font-size: 15px;
 }
-.delegation-strip {
+.efficiency-strip,
+  .delegation-strip {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .efficiency-strip > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .efficiency-strip > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
   }
 
   .delegation-strip > div {

@@ -30,6 +30,19 @@ param(
     [ValidateSet('plan', 'edit', 'browser')]
     [string]$Phase,
 
+    [string[]]$AllowedFiles = @(),
+
+    [ValidateRange(1, 10000)]
+    [int]$MaxAddedLines = 400,
+
+    [ValidateRange(0, 10000)]
+    [int]$MaxRemovedLines = 200,
+
+    [ValidateRange(1024, 10485760)]
+    [int]$MaxPatchBytes = 262144,
+
+    [switch]$ForbidLiteralEscapedNewlines,
+
     [ValidateRange(5, 80)]
     [int]$MaxTurns = 30,
 
@@ -74,6 +87,29 @@ $toolsets = switch ($Phase) {
     'browser' { @('playwright') }
     default { @('file') }
 }
+$normalizedAllowedFiles = @($AllowedFiles | ForEach-Object {
+    $candidate = ([string]$_).Trim().Replace('\', '/')
+    $segments = @($candidate.Split('/'))
+    if (
+        -not $candidate -or
+        $candidate.StartsWith('/') -or
+        $candidate -match '^[A-Za-z]:' -or
+        $candidate -match '[*?]' -or
+        $segments -contains '..' -or
+        $segments -contains '.' -or
+        $candidate -eq '.git' -or
+        $candidate.StartsWith('.git/')
+    ) {
+        throw 'AllowedFiles contains an unsafe project-relative path.'
+    }
+    $candidate
+} | Sort-Object -Unique)
+if ($Phase -eq 'edit' -and $normalizedAllowedFiles.Count -eq 0) {
+    throw 'The edit phase requires at least one allowed file.'
+}
+if ($Phase -ne 'edit' -and $normalizedAllowedFiles.Count -gt 0) {
+    throw 'Only the edit phase accepts allowed files.'
+}
 
 if ($Mode -eq 'execute') {
     if (-not $ModificationAuthorized) {
@@ -105,6 +141,13 @@ $contract = [ordered]@{
     timeoutSeconds = $TimeoutSeconds
     noProgressTimeoutSeconds = $NoProgressTimeoutSeconds
     toolsets = @($toolsets)
+    patchPolicy = [ordered]@{
+        allowedFiles = @($normalizedAllowedFiles)
+        maxAddedLines = $MaxAddedLines
+        maxRemovedLines = $MaxRemovedLines
+        maxPatchBytes = $MaxPatchBytes
+        forbidLiteralEscapedNewlines = $ForbidLiteralEscapedNewlines.IsPresent
+    }
     executionPolicy = [ordered]@{
         externalNetwork = 'denied'
         loopbackBrowser = '127.0.0.1:4310,127.0.0.1:4311'

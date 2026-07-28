@@ -148,6 +148,7 @@ const hermesTaskSchema = z.object({
     .enum(["Codex", "Claude", "Antigravity", "OpenCode"])
     .default("Codex"),
   mode: z.enum(["analysis", "execute"]),
+  phase: z.enum(["plan", "edit", "browser"]).default("plan"),
   state: z.enum([
     "queued",
     "preparing",
@@ -168,6 +169,13 @@ const hermesTaskSchema = z.object({
   elapsedSeconds: z.number().int().nonnegative().default(0),
   noProgressSeconds: z.number().int().nonnegative().default(0),
   progressKind: z.string().max(40).default("unknown"),
+  addedLines: z.number().int().nonnegative().default(0),
+  removedLines: z.number().int().nonnegative().default(0),
+  patchPolicyPassed: z.boolean().nullable().default(null),
+  taskUsageCaptured: z.boolean().default(false),
+  localTokens: z.number().int().nonnegative().default(0),
+  avoidedGpt56SolCostUsd: z.number().nonnegative().default(0),
+  errorCode: z.string().nullable().default(null),
 });
 const hermesBenchmarkSchema = z.object({
   generatedAt: z.string(),
@@ -969,6 +977,15 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     benchmark: emptyHermesBenchmark(),
     modelPerformance: [],
     insights: emptyHermesInsights(),
+    efficiency: {
+      capturedTasks: 0,
+      localTokens: 0,
+      avoidedGpt56SolCostUsd: 0,
+      reviewedTasks: 0,
+      acceptedTasks: 0,
+      acceptanceRate: 0,
+      schemaFailures: 0,
+    },
   };
   try {
     if (!(await pathExists(HERMES_SUBMIT_SCRIPT))) {
@@ -1019,6 +1036,30 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
       (latestTask && failedStates.has(latestTask.state))
         ? "degraded"
         : "healthy";
+    const reviewedTasks = tasks.filter((task) =>
+      ["completed", "rejected", "validation-failed"].includes(task.state),
+    );
+    const acceptedTasks = reviewedTasks.filter(
+      (task) => task.state === "completed",
+    ).length;
+    const capturedTasks = tasks.filter((task) => task.taskUsageCaptured);
+    const efficiency = {
+      capturedTasks: capturedTasks.length,
+      localTokens: capturedTasks.reduce((sum, task) => sum + task.localTokens, 0),
+      avoidedGpt56SolCostUsd: Number(
+        capturedTasks
+          .reduce((sum, task) => sum + task.avoidedGpt56SolCostUsd, 0)
+          .toFixed(6),
+      ),
+      reviewedTasks: reviewedTasks.length,
+      acceptedTasks,
+      acceptanceRate: reviewedTasks.length
+        ? Number(((acceptedTasks / reviewedTasks.length) * 100).toFixed(1))
+        : 0,
+      schemaFailures: tasks.filter((task) =>
+        /schema|tool_call|missing required argument/i.test(task.errorCode ?? ""),
+      ).length,
+    };
     const delegation: HermesDelegationSummary = {
       state,
       checkedAt: checked,
@@ -1036,6 +1077,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
       benchmark,
       modelPerformance,
       insights,
+      efficiency,
     };
     return {
       protocol: "Cola JSON local",
@@ -1058,6 +1100,9 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
           tokensPerSecond: benchmark.tokensPerSecond,
           totalTokens: insights.overview.totalTokens,
           avoidedGpt56SolCostUsd: insights.overview.avoidedGpt56SolCostUsd,
+          delegatedLocalTokens: efficiency.localTokens,
+          delegatedAvoidedCostUsd: efficiency.avoidedGpt56SolCostUsd,
+          acceptanceRate: efficiency.acceptanceRate,
         },
       },
     };

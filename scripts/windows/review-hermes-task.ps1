@@ -50,8 +50,22 @@ elseif ($Decision -eq 'Approve') {
     if ($status.state -ne 'awaiting-review') {
         throw 'Only an awaiting-review task can be approved.'
     }
+    $patchValidationPath = Join-Path $taskDirectory 'patch-validation.json'
+    if (-not (Test-Path -LiteralPath $patchValidationPath -PathType Leaf)) {
+        throw 'Hermes patch validation evidence is missing.'
+    }
+    $patchValidation = Read-JsonFile -Path $patchValidationPath
+    if (-not [bool]$patchValidation.passed) {
+        throw 'Hermes patch policy did not pass.'
+    }
     $patchPath = Join-Path $taskDirectory 'changes.patch'
     if ($status.patchBytes -gt 0) {
+        if (
+            -not (Test-Path -LiteralPath $patchPath -PathType Leaf) -or
+            (Get-Item -LiteralPath $patchPath).Length -ne [int64]$patchValidation.patchBytes
+        ) {
+            throw 'Hermes patch no longer matches its validation evidence.'
+        }
         & git.exe -C $project.Path apply --check $patchPath
         if ($LASTEXITCODE -ne 0) {
             Set-TaskStatus `

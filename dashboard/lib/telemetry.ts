@@ -118,6 +118,7 @@ export interface HermesTaskSummary {
   projectName: string;
   requestedBy: "Codex" | "Claude" | "Antigravity" | "OpenCode";
   mode: "analysis" | "execute";
+  phase: "plan" | "edit" | "browser";
   state: HermesTaskState;
   updatedAt: string;
   filesChanged: number;
@@ -127,6 +128,13 @@ export interface HermesTaskSummary {
   elapsedSeconds: number;
   noProgressSeconds: number;
   progressKind: string;
+  errorCode: string | null;
+  addedLines: number;
+  removedLines: number;
+  patchPolicyPassed: boolean | null;
+  taskUsageCaptured: boolean;
+  localTokens: number;
+  avoidedGpt56SolCostUsd: number;
 }
 
 export interface HermesBenchmarkSummary {
@@ -242,6 +250,15 @@ export interface HermesDelegationSummary {
   benchmark: HermesBenchmarkSummary;
   modelPerformance: HermesModelPerformance[];
   insights: HermesInsightsSummary;
+  efficiency: {
+    capturedTasks: number;
+    localTokens: number;
+    avoidedGpt56SolCostUsd: number;
+    reviewedTasks: number;
+    acceptedTasks: number;
+    acceptanceRate: number;
+    schemaFailures: number;
+  };
 }
 
 export interface TelemetrySnapshot {

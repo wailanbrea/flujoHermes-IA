@@ -31,6 +31,8 @@ test("builds the finished local observability dashboard", async () => {
   assert.match(page, /HermesLab/);
   assert.match(page, /Hermes Lab · evidencia local saneada/);
   assert.match(page, /Ahorro vs\. GPT-5\.6 Sol/);
+  assert.match(page, /Eficiencia de delegación local/);
+  assert.match(page, /Tokens delegados/);
   assert.match(page, /Uso por modelo/);
   assert.match(page, /Plataformas y skills/);
   assert.match(page, /Recorrido de la última tarea Hermes/);
@@ -146,6 +148,9 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(submit, /ValidateSet\('plan', 'edit', 'browser'\)/);
   assert.match(submit, /\$toolsets = switch \(\$Phase\)/);
   assert.match(submit, /phase = \$Phase/);
+  assert.match(submit, /AllowedFiles/);
+  assert.match(submit, /patchPolicy/);
+  assert.match(submit, /MaxPatchBytes/);
   assert.match(submit, /loopbackBrowser/);
   assert.match(worker, /graphify\.exe query/);
   assert.match(worker, /worktree add --detach/);
@@ -166,6 +171,9 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /agentLogLength/);
   assert.match(worker, /HERMES_WRITE_SAFE_ROOT/);
   assert.match(worker, /export-hermes-insights\.ps1/);
+  assert.match(worker, /patch-validation\.json/);
+  assert.match(worker, /file-outside-allowlist/);
+  assert.match(worker, /Per-task Hermes usage telemetry/);
   assert.match(worker, /hermes-operating-prompt\.md/);
   assert.match(worker, /Join-Path \(Get-OrchestratorRoot\)/);
   assert.match(exporter, /InsightsEngine/);
@@ -186,6 +194,7 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.doesNotMatch(benchmark, /api[_-]?key|https:\/\//i);
   assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
   assert.match(review, /apply --check/);
+  assert.match(review, /patchValidation/);
   assert.match(review, /ReviewedBy/);
   assert.match(review, /ensure-project-graph\.ps1/);
 });

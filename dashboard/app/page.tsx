@@ -357,7 +357,7 @@ function TaskJourney({
       </ol>
       {task && (
         <p className="journey-meta">
-          {task.filesChanged} archivos · {task.patchBytes.toLocaleString("es-DO")} bytes
+          {task.phase} · {task.filesChanged} archivos · {task.patchBytes.toLocaleString("es-DO")} bytes
           de parche · {progressLabels[task.progressKind] ?? task.progressKind} ·{" "}
           {task.elapsedSeconds} s · actualizado {formatAge(task.updatedAt)}
         </p>
@@ -752,6 +752,25 @@ export default function Home() {
         ) : (
           <div className="workflow-loading">Preparando Hermes Insights…</div>
         )}
+        <div className="efficiency-strip" aria-label="Eficiencia de delegación local">
+          <div>
+            <span>Tokens delegados</span>
+            <strong>{snapshot?.delegation.efficiency.localTokens.toLocaleString("es-DO") ?? "—"}</strong>
+          </div>
+          <div>
+            <span>Ahorro delegado</span>
+            <strong>{snapshot ? formatUsd(snapshot.delegation.efficiency.avoidedGpt56SolCostUsd) : "—"}</strong>
+          </div>
+          <div>
+            <span>Aceptación</span>
+            <strong>{snapshot ? `${snapshot.delegation.efficiency.acceptanceRate}%` : "—"}</strong>
+          </div>
+          <div>
+            <span>Uso capturado</span>
+            <strong>{snapshot?.delegation.efficiency.capturedTasks ?? "—"}</strong>
+            <small>{snapshot?.delegation.efficiency.schemaFailures ?? "—"} fallos de esquema</small>
+          </div>
+        </div>
         <div className="delegation-strip" aria-label="Estado de delegación local">
           <div>
             <span>Cola</span>

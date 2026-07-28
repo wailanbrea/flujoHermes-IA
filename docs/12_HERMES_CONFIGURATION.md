@@ -76,3 +76,28 @@ Qwen usa GPU 0.50 para mantener la memoria compartida cerca de 0,40 GiB.
 `InsightsEngine`. Sólo exporta contadores y etiquetas agregadas a
 `telemetry/runtime/hermes-insights.json`; no exporta prompts, respuestas, IDs ni
 argumentos. El worker refresca este archivo al terminar una sesión.
+## Ejecución por fases
+
+El contrato separa herramientas para reducir tokens y errores de esquema:
+
+- `plan`: modo análisis y toolset `file`.
+- `edit`: modo ejecución y toolset `file`; exige `AllowedFiles`.
+- `browser`: modo análisis y toolset `playwright` únicamente.
+
+El worker vuelve a validar fase y toolset antes de iniciar Hermes. Un contrato no
+puede habilitar terminal ni combinar edición con los 23 esquemas de Playwright.
+
+## Guardián de parches
+
+Las tareas `edit` declaran archivos permitidos y límites de líneas añadidas,
+eliminadas y bytes. Antes de revisión, el worker calcula `git diff --numstat`,
+rechaza binarios, rutas fuera de whitelist y, cuando se solicita, secuencias
+literales `\n` en líneas añadidas. La evidencia saneada se conserva en
+`patch-validation.json` y el revisor comprueba que coincida con el parche.
+
+## Uso por tarea
+
+Antes de eliminar el `HERMES_HOME` efímero, el worker ejecuta
+`export-hermes-insights.ps1` contra ese perfil y guarda `usage.json` en el
+directorio persistente de la tarea. TRAMA agrega tokens locales, costo evitado,
+tareas capturadas, tasa de aceptación y fallos de esquema.

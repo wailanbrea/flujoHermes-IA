@@ -35,6 +35,21 @@ if (($phase -eq 'edit') -ne ($contract.mode -eq 'execute')) {
     throw 'Task contract phase and mode are inconsistent.'
 }
 $toolsetArgument = $expectedToolset
+$patchPolicy = $contract.patchPolicy
+$allowedFiles = @($patchPolicy.allowedFiles)
+if ($phase -eq 'edit') {
+    if (
+        $allowedFiles.Count -eq 0 -or
+        [int]$patchPolicy.maxAddedLines -lt 1 -or
+        [int]$patchPolicy.maxRemovedLines -lt 0 -or
+        [int]$patchPolicy.maxPatchBytes -lt 1024
+    ) {
+        throw 'Task contract contains an invalid patch policy.'
+    }
+}
+elseif ($allowedFiles.Count -gt 0) {
+    throw 'Non-edit phases cannot contain an allowed file list.'
+}
 
 $project = Get-AuthorizedProject -ProjectPath $contract.projectRoot
 if ($project.Id -ne $contract.projectId) {
@@ -44,6 +59,9 @@ if ($project.Id -ne $contract.projectId) {
 $worktreePath = $null
 $exchangeDirectory = $null
 $stalled = $false
+$taskUsageCaptured = $false
+$taskUsageTokens = 0
+$taskUsageAvoidedCostUsd = 0.0
 try {
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
@@ -140,6 +158,7 @@ try {
         mode = $contract.mode
         phase = $phase
         toolsets = @($toolsets)
+        patchPolicy = $patchPolicy
         policies = $contract.executionPolicy
         requiredFinalReport = @(
             'Outcome: PASS, FAIL, or BLOCKED',
@@ -297,12 +316,21 @@ try {
     [IO.File]::WriteAllText($stdoutPath, $stdoutText, $utf8NoBom)
     [IO.File]::WriteAllText($stderrPath, $stderrText, $utf8NoBom)
     try {
+        $taskUsagePath = Join-Path $taskDirectory 'usage.json'
         & (Join-Path $PSScriptRoot 'export-hermes-insights.ps1') `
-            -Days 3650 |
+            -Days 3650 `
+            -HermesHome $isolatedHermesHome `
+            -OutputPath $taskUsagePath |
             Out-Null
+        $taskUsage = Read-JsonFile -Path $taskUsagePath
+        $taskUsageTokens = [int64]$taskUsage.overview.totalTokens
+        $taskUsageAvoidedCostUsd = [double](
+            $taskUsage.overview.avoidedGpt56SolCostUsd
+        )
+        $taskUsageCaptured = $true
     }
     catch {
-        Write-Warning 'Hermes Insights telemetry could not be refreshed.'
+        Write-Warning 'Per-task Hermes usage telemetry could not be captured.'
     }
     if ($stalled) {
         throw 'Hermes execution stalled without observable progress.'
@@ -321,16 +349,50 @@ try {
 
     $filesChanged = 0
     $patchBytes = 0
+    $addedLines = 0
+    $removedLines = 0
+    $violations = [Collections.Generic.List[string]]::new()
     & git.exe -C $executionRoot add -N -- . 2>$null
     $changedFiles = @(
         & git.exe -C $executionRoot diff --name-only HEAD 2>$null
     )
-    $filesChanged = $changedFiles.Count
+    $normalizedChangedFiles = @($changedFiles | ForEach-Object {
+        ([string]$_).Trim().Replace('\', '/')
+    })
+    $filesChanged = $normalizedChangedFiles.Count
     if ($contract.mode -eq 'analysis' -and $filesChanged -gt 0) {
         throw 'Hermes modified files during an analysis-only task.'
     }
     if ($contract.mode -eq 'execute') {
-        $patch = & git.exe -C $executionRoot diff --binary --no-ext-diff HEAD
+        if ($filesChanged -eq 0) {
+            $violations.Add('no-files-changed')
+        }
+        foreach ($changedFile in $normalizedChangedFiles) {
+            if ($changedFile -notin $allowedFiles) {
+                $violations.Add('file-outside-allowlist')
+            }
+        }
+        $numstat = @(& git.exe -C $executionRoot diff --numstat HEAD 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Git could not calculate patch line metrics.'
+        }
+        foreach ($line in $numstat) {
+            $parts = @(([string]$line) -split "`t", 3)
+            if ($parts.Count -lt 3 -or $parts[0] -eq '-' -or $parts[1] -eq '-') {
+                $violations.Add('binary-change')
+                continue
+            }
+            $addedLines += [int]$parts[0]
+            $removedLines += [int]$parts[1]
+        }
+        if ($addedLines -gt [int]$patchPolicy.maxAddedLines) {
+            $violations.Add('added-lines-limit')
+        }
+        if ($removedLines -gt [int]$patchPolicy.maxRemovedLines) {
+            $violations.Add('removed-lines-limit')
+        }
+
+        $patch = @(& git.exe -C $executionRoot diff --binary --no-ext-diff HEAD)
         if ($LASTEXITCODE -ne 0) {
             throw 'Git could not capture the Hermes patch.'
         }
@@ -341,8 +403,35 @@ try {
             $utf8
         )
         $patchBytes = (Get-Item -LiteralPath $patchPath).Length
+        if ($patchBytes -gt [int]$patchPolicy.maxPatchBytes) {
+            $violations.Add('patch-bytes-limit')
+        }
+        if ([bool]$patchPolicy.forbidLiteralEscapedNewlines) {
+            $hasEscapedNewline = @($patch | Where-Object {
+                $_ -match '^\+(?!\+\+)' -and $_.Substring(1).Contains('\n')
+            }).Count -gt 0
+            if ($hasEscapedNewline) {
+                $violations.Add('literal-escaped-newline')
+            }
+        }
     }
 
+    $uniqueViolations = @($violations | Sort-Object -Unique)
+    $patchValidation = [ordered]@{
+        schemaVersion = 1
+        passed = $uniqueViolations.Count -eq 0
+        files = @($normalizedChangedFiles)
+        additions = $addedLines
+        removals = $removedLines
+        patchBytes = $patchBytes
+        violations = $uniqueViolations
+    }
+    Write-JsonAtomic `
+        -Path (Join-Path $taskDirectory 'patch-validation.json') `
+        -Value $patchValidation
+    if (-not $patchValidation.passed) {
+        throw "Hermes patch policy failed: $($uniqueViolations -join ', ')."
+    }
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'awaiting-review' `
@@ -351,6 +440,12 @@ try {
             finishedAt = [DateTime]::UtcNow.ToString('o')
             filesChanged = $filesChanged
             patchBytes = $patchBytes
+            addedLines = $addedLines
+            removedLines = $removedLines
+            patchPolicyPassed = $true
+            taskUsageCaptured = $taskUsageCaptured
+            localTokens = $taskUsageTokens
+            avoidedGpt56SolCostUsd = $taskUsageAvoidedCostUsd
             worktreePath = $worktreePath
             errorCode = $null
             progressKind = 'awaiting-review'
@@ -384,6 +479,9 @@ catch {
             finishedAt = [DateTime]::UtcNow.ToString('o')
             errorCode = $safeMessage
             worktreePath = $worktreePath
+            taskUsageCaptured = $taskUsageCaptured
+            localTokens = $taskUsageTokens
+            avoidedGpt56SolCostUsd = $taskUsageAvoidedCostUsd
             progressKind = if ($stalled) { 'stalled' } else { 'failed' }
         }
     Write-Error $safeMessage
