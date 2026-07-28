@@ -169,6 +169,8 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(exporter, /avoidedGpt56SolCostUsd/);
   assert.doesNotMatch(exporter, /session_id|message_content|tool_arguments/);
   assert.match(operatingPrompt, /Never repeat the same invalid call/);
+  assert.match(operatingPrompt, /mcp__playwright__browser_resize/);
+  assert.match(operatingPrompt, /never emit a generic `tool_call`/);
   assert.doesNotMatch(worker, /-t terminal/);
   assert.doesNotMatch(worker, /\.Kill\(\$true\)/);
   assert.match(common, /taskkill\.exe/);
