@@ -139,6 +139,8 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(submit, /RequestedBy/);
   assert.match(submit, /Codex.*Claude.*Antigravity.*OpenCode/s);
   assert.match(submit, /GitScope -ne 'own'/);
+  assert.match(submit, /toolsets = @\('file', 'browser'\)/);
+  assert.match(submit, /loopbackBrowser/);
   assert.match(worker, /graphify\.exe query/);
   assert.match(worker, /worktree add --detach/);
   assert.match(worker, /--source tool --no-restore-cwd/);
