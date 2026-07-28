@@ -11,6 +11,7 @@
 - Esfuerzo de razonamiento: `none`
 - Backend de terminal: `local`
 - Worktrees y contratos de ejecución: `%LOCALAPPDATA%\local-ai-orchestrator`
+- Toolset del worker: `file` únicamente; el director ejecuta las validaciones
 
 El perfil predeterminado preexistente no fue modificado.
 
@@ -22,6 +23,11 @@ El perfil predeterminado preexistente no fue modificado.
 - Recarga MCP: requiere confirmación
 - Comandos destructivos: requieren confirmación
 - Corte por denegaciones: 3
+
+El worker headless no recibe la herramienta `terminal`. Esto evita esperas de
+60 segundos por aprobaciones que no pueden responderse sin TTY y reduce el
+prompt de herramientas. Las compilaciones y pruebas siguen siendo obligación
+del director después de revisar el parche.
 
 ## Checkpoints
 

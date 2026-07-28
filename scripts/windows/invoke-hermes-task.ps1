@@ -129,12 +129,14 @@ try {
         'read-only paths outside workspacePath. Do not access secrets, networks, ' +
         'databases, deployments, or any other external path. Do not commit. ' +
         'Do not inspect .git metadata or infer any source repository path. ' +
+        'Use only the file tools provided. Do not attempt terminal commands; ' +
+        'the director runs validation independently. ' +
         'Finish with the required concise report.'
     $stdoutPath = Join-Path $taskDirectory 'hermes-final.txt'
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
     $argumentLine = '--profile localai chat -q "' +
         $prompt.Replace('"', '\"') +
-        '" -Q -t terminal,file,skills,todo --checkpoints --max-turns ' +
+        '" -Q -t file --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
         ' --source tool --no-restore-cwd --ignore-rules'
     $processInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -159,6 +161,13 @@ try {
         $lastActivityAt = $startedAt
         $lastCpu = [TimeSpan]::Zero
         $workspaceFingerprint = ''
+        $agentLogPath = Join-Path (
+            [Environment]::GetFolderPath('LocalApplicationData')
+        ) 'hermes\profiles\localai\logs\agent.log'
+        $lastAgentLogLength = if (Test-Path -LiteralPath $agentLogPath) {
+            (Get-Item -LiteralPath $agentLogPath).Length
+        }
+        else { 0 }
         $absoluteDeadline = $startedAt.AddSeconds([int]$contract.timeoutSeconds)
         $noProgressLimit = [int]$contract.noProgressTimeoutSeconds
         while (-not $process.WaitForExit(5000)) {
@@ -170,6 +179,14 @@ try {
                 $lastActivityAt = $now
                 $lastCpu = $cpu
                 $progressKind = 'agent-cpu'
+            }
+            if (Test-Path -LiteralPath $agentLogPath) {
+                $agentLogLength = (Get-Item -LiteralPath $agentLogPath).Length
+                if ($agentLogLength -gt $lastAgentLogLength) {
+                    $lastAgentLogLength = $agentLogLength
+                    $lastActivityAt = $now
+                    $progressKind = 'agent-event'
+                }
             }
             $currentFingerprint = (
                 @(& git.exe -C $executionRoot status --porcelain) -join "`n"

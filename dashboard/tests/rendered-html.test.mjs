@@ -136,6 +136,9 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /noProgressTimeoutSeconds/);
   assert.match(worker, /Get-TaskExchangeDirectory/);
   assert.match(worker, /--ignore-rules/);
+  assert.match(worker, /-t file/);
+  assert.match(worker, /agentLogLength/);
+  assert.doesNotMatch(worker, /-t terminal/);
   assert.doesNotMatch(worker, /\.Kill\(\$true\)/);
   assert.match(common, /taskkill\.exe/);
   assert.match(common, /LocalApplicationData/);

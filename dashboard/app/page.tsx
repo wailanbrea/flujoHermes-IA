@@ -64,6 +64,7 @@ const progressLabels: Record<string, string> = {
   starting: "Iniciando agente",
   "waiting-model": "Esperando al modelo",
   "agent-cpu": "Procesando localmente",
+  "agent-event": "Interactuando con el modelo",
   "workspace-change": "Editando el workspace",
   "awaiting-review": "Listo para revisión",
   stalled: "Sin progreso",
