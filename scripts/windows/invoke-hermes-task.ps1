@@ -141,22 +141,32 @@ try {
     }
     $stdoutRead = $process.StandardOutput.ReadToEndAsync()
     $stderrRead = $process.StandardError.ReadToEndAsync()
-    $completedInTime = $process.WaitForExit(
-        [int]$contract.timeoutSeconds * 1000
-    )
-    if (-not $completedInTime) {
-        $process.Kill($true)
+    $completedInTime = $false
+    $hermesExitCode = $null
+    try {
+        $completedInTime = $process.WaitForExit(
+            [int]$contract.timeoutSeconds * 1000
+        )
+        if (-not $completedInTime) {
+            Stop-ProcessTree -ProcessId $process.Id
+            if (-not $process.WaitForExit(5000)) {
+                throw 'Hermes did not exit after its process tree was terminated.'
+            }
+        }
+        $process.WaitForExit()
+        $hermesExitCode = $process.ExitCode
+        $stdoutText = $stdoutRead.GetAwaiter().GetResult()
+        $stderrText = $stderrRead.GetAwaiter().GetResult()
     }
-    $process.WaitForExit()
-    $stdoutText = $stdoutRead.GetAwaiter().GetResult()
-    $stderrText = $stderrRead.GetAwaiter().GetResult()
+    finally {
+        $process.Dispose()
+    }
     $utf8NoBom = [Text.UTF8Encoding]::new($false)
     [IO.File]::WriteAllText($stdoutPath, $stdoutText, $utf8NoBom)
     [IO.File]::WriteAllText($stderrPath, $stderrText, $utf8NoBom)
     if (-not $completedInTime) {
         throw 'Hermes execution timed out.'
     }
-    $hermesExitCode = $process.ExitCode
     if ($hermesExitCode -ne 0) {
         throw "Hermes returned exit code $hermesExitCode."
     }

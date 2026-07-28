@@ -91,13 +91,17 @@ test("catalogs the authorized project roots without changing project source", as
 });
 
 test("delegates Hermes work through a bounded review gate", async () => {
-  const [submit, worker, review] = await Promise.all([
+  const [submit, worker, common, review] = await Promise.all([
     readFile(
       new URL("../../scripts/windows/submit-hermes-task.ps1", import.meta.url),
       "utf8",
     ),
     readFile(
       new URL("../../scripts/windows/invoke-hermes-task.ps1", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../scripts/windows/hermes-task-common.ps1", import.meta.url),
       "utf8",
     ),
     readFile(
@@ -116,6 +120,10 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /--checkpoints/);
   assert.match(worker, /--max-turns/);
   assert.match(worker, /diff --binary --no-ext-diff HEAD/);
+  assert.match(worker, /Stop-ProcessTree/);
+  assert.doesNotMatch(worker, /\.Kill\(\$true\)/);
+  assert.match(common, /taskkill\.exe/);
+  assert.match(common, /Remove-Item -LiteralPath \$resolved -Recurse -Force/);
   assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
   assert.match(review, /apply --check/);
   assert.match(review, /ReviewedBy/);

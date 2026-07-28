@@ -4,6 +4,58 @@ function Get-OrchestratorRoot {
     return Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
 
+# Process.Kill(Boolean) is unavailable in Windows PowerShell 5.1.
+function Stop-ProcessTree(
+    [int]$ProcessId,
+    [int]$TimeoutMilliseconds = 10000
+) {
+    if ($ProcessId -le 0) {
+        throw 'Stop-ProcessTree requires a positive process identifier.'
+    }
+    if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = 'taskkill.exe'
+    $startInfo.Arguments = "/PID $ProcessId /T /F"
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $taskkill = [Diagnostics.Process]::new()
+    $taskkill.StartInfo = $startInfo
+    try {
+        if (-not $taskkill.Start()) {
+            throw 'taskkill.exe could not be started.'
+        }
+        if (-not $taskkill.WaitForExit($TimeoutMilliseconds)) {
+            $taskkill.Kill()
+            $taskkill.WaitForExit()
+            throw 'taskkill.exe did not finish within the cleanup timeout.'
+        }
+        $stdout = $taskkill.StandardOutput.ReadToEnd().Trim()
+        $stderr = $taskkill.StandardError.ReadToEnd().Trim()
+        $exitCode = $taskkill.ExitCode
+    }
+    finally {
+        $taskkill.Dispose()
+    }
+
+    if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
+        $detail = @($stderr, $stdout) |
+            Where-Object { $_ } |
+            Select-Object -First 1
+        if ($detail) {
+            $detail = ($detail -replace '[\r\n\t]+', ' ').Substring(
+                0,
+                [Math]::Min(120, ($detail -replace '[\r\n\t]+', ' ').Length)
+            )
+        }
+        throw "Could not stop process tree $ProcessId (taskkill exit $exitCode): $detail"
+    }
+}
+
 function Get-HermesRuntimeRoot {
     return Join-Path (Get-OrchestratorRoot) 'telemetry\runtime\hermes-jobs'
 }
@@ -164,11 +216,47 @@ function Remove-TaskWorktree(
     )) {
         throw 'Refusing to remove a worktree outside the Hermes runtime root.'
     }
+
     if (Test-Path -LiteralPath $resolved) {
-        & git.exe -C $ProjectRoot worktree remove --force $resolved 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Git could not remove the isolated Hermes worktree.'
+        $previousErrorPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & git.exe -C $ProjectRoot worktree remove --force $resolved 2>$null
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorPreference
+        }
+
+        if (Test-Path -LiteralPath $resolved) {
+            $lastError = $null
+            foreach ($attempt in 1..4) {
+                try {
+                    Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop
+                    break
+                }
+                catch {
+                    $lastError = $_.Exception.Message
+                    if ($attempt -lt 4) {
+                        Start-Sleep -Milliseconds 500
+                    }
+                }
+            }
+            if (Test-Path -LiteralPath $resolved) {
+                throw "Could not remove the isolated Hermes worktree after 4 attempts: $lastError"
+            }
         }
     }
-    & git.exe -C $ProjectRoot worktree prune 2>$null
+
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & git.exe -C $ProjectRoot worktree prune 2>$null
+        $pruneExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorPreference
+    }
+    if ($pruneExitCode -ne 0) {
+        throw 'Git could not prune isolated Hermes worktree metadata.'
+    }
 }
