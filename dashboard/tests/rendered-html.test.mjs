@@ -3,15 +3,19 @@ import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 test("builds the finished local observability dashboard", async () => {
-  const [html, page, assets] = await Promise.all([
+  const [html, page, css, assets] = await Promise.all([
     readFile(new URL("../dist/index.html", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readdir(new URL("../dist/assets/", import.meta.url)),
   ]);
   assert.match(html, /<title>TRAMA · Observador local de IA<\/title>/i);
   assert.match(html, /<div id="root"><\/div>/);
   assert.ok(assets.some((name) => name.endsWith(".js")));
   assert.match(page, /Flujo de trabajo real/);
+  assert.match(css, /@media \(min-width: 1600px\)/);
+  assert.match(css, /margin-left: 32px/);
+  assert.match(css, /padding-left: 64px/);
   assert.match(page, /Estado de delegación local/);
   assert.match(page, /Revisión del director/);
   assert.match(page, /requestedBy/);

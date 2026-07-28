@@ -2100,6 +2100,23 @@ footer strong {
   }
 }
 
+@media (min-width: 1600px) {
+  .masthead,
+  .signal-room,
+  .workflow-field,
+  .lower-grid,
+  footer {
+    margin-left: 32px;
+    margin-right: 32px;
+    max-width: none;
+  }
+
+  .graph-field,
+  .service-field {
+    padding-left: 64px;
+    padding-right: 64px;
+  }
+}
 @media (max-width: 1000px) {
   .model-rack {
     grid-template-columns: 1fr;
