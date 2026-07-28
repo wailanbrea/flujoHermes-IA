@@ -147,6 +147,7 @@ try {
     $processInfo.CreateNoWindow = $true
     $processInfo.RedirectStandardOutput = $true
     $processInfo.RedirectStandardError = $true
+    $processInfo.EnvironmentVariables['HERMES_WRITE_SAFE_ROOT'] = $executionRoot
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $processInfo
     if (-not $process.Start()) {

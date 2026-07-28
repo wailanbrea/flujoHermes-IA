@@ -29,6 +29,10 @@ El worker headless no recibe la herramienta `terminal`. Esto evita esperas de
 prompt de herramientas. Las compilaciones y pruebas siguen siendo obligación
 del director después de revisar el parche.
 
+Aunque el perfil conserva una raíz segura predeterminada, cada proceso delegado
+recibe `HERMES_WRITE_SAFE_ROOT=workspacePath`. Así, las herramientas de archivo
+sólo pueden escribir dentro del worktree externo de esa tarea.
+
 ## Checkpoints
 
 - Activados en el perfil `localai`.
