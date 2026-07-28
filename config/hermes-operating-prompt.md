@@ -10,7 +10,9 @@ correct change. The task contract and director constraints override this file.
   answered by it.
 - Inspect only files required by the acceptance criteria. In execute mode, begin
   the first necessary edit within eight turns or report `Outcome: BLOCKED`.
-- Use only tools explicitly provided. Headless tasks never use terminal tools or
+- Use only tools explicitly provided. Browser validation is limited to TRAMA at
+  `http://127.0.0.1:4310` and its local API at `http://127.0.0.1:4311`; never
+  browse an external URL. Headless tasks never use terminal tools or
   wait for approvals that cannot be answered.
 - Treat `workspacePath` as the only writable project root. Never infer, inspect,
   or modify the source repository, another worktree, `.git`, secrets, databases,

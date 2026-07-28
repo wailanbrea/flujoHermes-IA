@@ -12,7 +12,7 @@
 - Esfuerzo de razonamiento: `none`
 - Backend de terminal: `local`
 - Worktrees y contratos de ejecución: `%LOCALAPPDATA%\local-ai-orchestrator`
-- Toolset del worker: `file` únicamente; el director ejecuta las validaciones
+- Toolsets del worker: `file,browser`; browser se limita a TRAMA en `127.0.0.1:4310/4311` y el director repite las validaciones
 
 El perfil predeterminado preexistente no fue modificado.
 
@@ -25,7 +25,8 @@ El perfil predeterminado preexistente no fue modificado.
 - Comandos destructivos: requieren confirmación
 - Corte por denegaciones: 3
 
-El worker headless no recibe la herramienta `terminal`. Esto evita esperas de
+El worker headless no recibe la herramienta 	erminal. El navegador integrado se
+usa sólo para validar TRAMA local. Esto evita esperas de
 aprobación sin TTY. Las compilaciones y pruebas siguen siendo obligación del
 director después de revisar el parche.
 

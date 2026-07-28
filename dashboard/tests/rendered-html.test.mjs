@@ -143,6 +143,8 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /worktree add --detach/);
   assert.match(worker, /--source tool --no-restore-cwd/);
   assert.match(worker, /source repository changed/);
+  assert.match(worker, /127\.0\.0\.1:4310/);
+  assert.doesNotMatch(worker, /-t [^\n]*terminal/);
   assert.match(worker, /--checkpoints/);
   assert.match(worker, /--max-turns/);
   assert.match(worker, /diff --binary --no-ext-diff HEAD/);
@@ -150,7 +152,7 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(worker, /noProgressTimeoutSeconds/);
   assert.match(worker, /Get-TaskExchangeDirectory/);
   assert.match(worker, /--ignore-rules/);
-  assert.match(worker, /-t file/);
+  assert.match(worker, /-t file,browser/);
   assert.match(worker, /agentLogLength/);
   assert.match(worker, /HERMES_WRITE_SAFE_ROOT/);
   assert.match(worker, /export-hermes-insights\.ps1/);

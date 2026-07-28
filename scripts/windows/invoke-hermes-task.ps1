@@ -154,17 +154,20 @@ try {
         '". Obey every boundary. Use the provided Graphify context before files. ' +
         'Your exact writable workspace is workspacePath; never use the source ' +
         'repository path. The contract and graph context are the only permitted ' +
-        'read-only paths outside workspacePath. Do not access secrets, networks, ' +
+        'read-only paths outside workspacePath. Browser access is allowed only ' +
+        'to http://127.0.0.1:4310 and http://127.0.0.1:4311 for local visual ' +
+        'validation. Do not access secrets, external networks, ' +
         'databases, deployments, or any other external path. Do not commit. ' +
         'Do not inspect .git metadata or infer any source repository path. ' +
-        'Use only the file tools provided. Do not attempt terminal commands; ' +
+        'Use only the file and browser tools provided. Do not attempt terminal ' +
+        'commands; ' +
         'the director runs validation independently. ' +
         'Finish with the required concise report.'
     $stdoutPath = Join-Path $taskDirectory 'hermes-final.txt'
     $stderrPath = Join-Path $taskDirectory 'hermes-error.txt'
     $argumentLine = 'chat -q "' +
         $prompt.Replace('"', '\"') +
-        '" -Q -t file --checkpoints --max-turns ' +
+        '" -Q -t file,browser --checkpoints --max-turns ' +
         [int]$contract.maxTurns +
         ' --source tool --no-restore-cwd --ignore-rules'
     $processInfo = [Diagnostics.ProcessStartInfo]::new()
