@@ -397,9 +397,14 @@ try {
             throw 'Git could not capture the Hermes patch.'
         }
         $patchPath = Join-Path $taskDirectory 'changes.patch'
+        $patchText = (
+            @($patch | ForEach-Object {
+                ([string]$_).TrimEnd([char]13)
+            }) -join "`n"
+        ).TrimEnd() + "`n"
         [IO.File]::WriteAllText(
             $patchPath,
-            (($patch | Out-String).TrimEnd() + [Environment]::NewLine),
+            $patchText,
             $utf8
         )
         $patchBytes = (Get-Item -LiteralPath $patchPath).Length
