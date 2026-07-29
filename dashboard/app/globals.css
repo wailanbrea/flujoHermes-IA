@@ -2563,6 +2563,172 @@ footer strong {
   max-width: 960px;
   height: auto;
   display: block;
+  touch-action: none;
+}
+
+.flowchart-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.flowchart-hint {
+  color: var(--muted);
+  font: 11px var(--data);
+  letter-spacing: 0.04em;
+}
+
+.flowchart-spread {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font: 11px var(--data);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.flowchart-spread input[type="range"] {
+  width: 132px;
+  accent-color: var(--aqua);
+  cursor: pointer;
+}
+
+.flowchart-spread output {
+  min-width: 38px;
+  color: var(--aqua);
+  text-align: right;
+}
+
+.flowchart-reset {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: 11px var(--data);
+  letter-spacing: 0.06em;
+  padding: 5px 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.flowchart-reset:hover:not(:disabled) {
+  border-color: var(--aqua);
+  color: var(--aqua);
+}
+
+.flowchart-reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Nodes are dragged by pointer, so the whole group is the grab target. */
+.gov-node {
+  cursor: grab;
+}
+
+.gov-node.node-dragging {
+  cursor: grabbing;
+}
+
+.gov-node rect {
+  fill: #102936;
+  stroke: #315463;
+  stroke-width: 1.5;
+  transition: fill 160ms ease, stroke 160ms ease;
+}
+
+.gov-node:focus-visible {
+  outline: none;
+}
+
+.gov-node:focus-visible rect {
+  stroke: var(--aqua);
+  stroke-width: 2.5;
+}
+
+.gov-node-label {
+  fill: #e8efe9;
+  font: bold 13px sans-serif;
+  pointer-events: none;
+}
+
+.gov-node-role {
+  fill: #91a8ae;
+  font: 10px var(--data), monospace;
+  pointer-events: none;
+}
+
+/* Kind drives the accent, matching the palette the static diagram used. */
+.gov-node.node-kind-agent rect { stroke: #f0a36a; stroke-width: 2; fill: #173140; }
+.gov-node.node-kind-agent .gov-node-role { fill: #f0a36a; }
+.gov-node.node-kind-model rect { stroke: #e8c36a; stroke-width: 2; fill: #132a35; }
+.gov-node.node-kind-model .gov-node-role { fill: #e8c36a; }
+.gov-node.node-kind-review rect { stroke: #e8c36a; stroke-dasharray: 4 2; }
+.gov-node.node-kind-queue rect { stroke: #315463; stroke-dasharray: 4 2; }
+.gov-node.node-kind-graph rect { stroke: #f0a36a; }
+.gov-node.node-kind-observer rect { stroke: #69d7d1; fill: #0e2533; }
+.gov-node.node-kind-observer .gov-node-role { fill: #69d7d1; }
+.gov-node.node-kind-workspace rect { stroke: #e8c36a; }
+.gov-node.node-kind-project rect { stroke: #69d7d1; fill: #13232d; }
+.gov-node.node-kind-compute rect { stroke: #91a8ae; }
+
+.gov-node.node-selected rect {
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 8px rgba(105, 215, 209, 0.5));
+}
+
+.gov-node.node-dimmed {
+  opacity: 0.32;
+}
+
+.gov-edge path {
+  fill: none;
+  stroke: #69d7d1;
+  stroke-width: 2;
+}
+
+.gov-edge.evidence-configured path {
+  stroke: #91a8ae;
+  stroke-dasharray: 4 4;
+  stroke-width: 1.5;
+}
+
+.gov-edge.evidence-indexed path {
+  stroke: #f0a36a;
+  stroke-dasharray: 6 3;
+  stroke-width: 1.5;
+}
+
+.gov-edge.state-stroke-degraded path { stroke: #e8c36a; }
+.gov-edge.state-stroke-offline path { stroke: #d97767; }
+.gov-edge.state-stroke-unknown path { stroke: #91a8ae; }
+
+.gov-edge-pulse {
+  fill: #69d7d1;
+  filter: drop-shadow(0 0 6px #69d7d1);
+}
+
+.gov-edge-label {
+  fill: #0e2533;
+  stroke: #284653;
+  stroke-width: 1;
+}
+
+.gov-edge-text {
+  fill: #91a8ae;
+  font: 11px sans-serif;
+  pointer-events: none;
+}
+
+.gov-edge.edge-selected path {
+  stroke-width: 3;
+}
+
+.gov-edge.edge-dimmed {
+  opacity: 0.22;
 }
 
 @media (prefers-reduced-motion: reduce) {

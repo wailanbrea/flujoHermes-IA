@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   HealthState,
   HermesBenchmarkSummary,
@@ -134,168 +134,6 @@ function ServiceNode({
   );
 }
 
-function WorkflowMap({
-  nodes,
-  edges,
-  selectedNodeId,
-  onSelectNode,
-}: {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  selectedNodeId: string | null;
-  onSelectNode: (nodeId: string | null) => void;
-}) {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
-  const selectedEdges = selectedNode
-    ? edges.filter(
-        (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id,
-      )
-    : [];
-  const relatedNodeIds = new Set<string>([selectedNodeId ?? ""]);
-  for (const edge of selectedEdges) {
-    relatedNodeIds.add(edge.source);
-    relatedNodeIds.add(edge.target);
-  }
-
-  return (
-    <div className="workflow-explorer">
-      <div className="workflow-scroll">
-        <div className="workflow-canvas" aria-label="Flujo de trabajo real">
-          <svg
-            className="workflow-links"
-            viewBox="0 0 1000 520"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <defs>
-              <marker
-                id="arrow"
-                markerWidth="8"
-                markerHeight="8"
-                refX="7"
-                refY="4"
-                orient="auto"
-              >
-                <path d="M0,0 L8,4 L0,8 Z" />
-              </marker>
-            </defs>
-            {edges.map((edge, index) => {
-              const source = byId.get(edge.source);
-              const target = byId.get(edge.target);
-              if (!source || !target) return null;
-              const x1 = source.x * 10;
-              const y1 = source.y * 5.2;
-              const x2 = target.x * 10;
-              const y2 = target.y * 5.2;
-              const bend = Math.max(24, Math.abs(x2 - x1) * 0.42);
-              const path = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
-              const connected = selectedEdges.some((item) => item.id === edge.id);
-              return (
-                <g
-                  key={edge.id}
-                  className={`flow-edge evidence-${edge.evidence} state-stroke-${edge.state}${
-                    selectedNode ? (connected ? " edge-selected" : " edge-dimmed") : ""
-                  }`}
-                >
-                  <path d={path} markerEnd="url(#arrow)" />
-                  {edge.evidence === "observed" && (
-                    <circle r="3.6">
-                      <animateMotion
-                        dur={`${2.8 + (index % 3) * 0.45}s`}
-                        repeatCount="indefinite"
-                        path={path}
-                      />
-                    </circle>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
-
-          {nodes.map((node) => {
-            const selected = node.id === selectedNodeId;
-            const dimmed = selectedNode && !relatedNodeIds.has(node.id);
-            return (
-              <button
-                key={node.id}
-                type="button"
-                className={`workflow-node node-kind-${node.kind} state-border-${node.state}${
-                  selected ? " node-selected" : ""
-                }${dimmed ? " node-dimmed" : ""}`}
-                style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                aria-pressed={selected}
-                aria-controls="workflow-inspector"
-                onClick={() => onSelectNode(selected ? null : node.id)}
-              >
-                <span className="workflow-role">{node.role}</span>
-                <strong>{node.label}</strong>
-                <small>{node.detail}</small>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <aside
-        className={`workflow-inspector${selectedNode ? " inspector-open" : ""}`}
-        id="workflow-inspector"
-        aria-live="polite"
-      >
-        {selectedNode ? (
-          <>
-            <div className="inspector-heading">
-              <div>
-                <span>{selectedNode.role}</span>
-                <h3>{selectedNode.label}</h3>
-              </div>
-              <button
-                type="button"
-                className="inspector-close"
-                onClick={() => onSelectNode(null)}
-                aria-label="Cerrar detalle del nodo"
-              >
-                Cerrar
-              </button>
-            </div>
-            <div className="inspector-summary">
-              <StatePill state={selectedNode.state} />
-              <p>{selectedNode.detail}</p>
-            </div>
-            <div className="inspector-connections">
-              {selectedEdges.length > 0 ? (
-                selectedEdges.map((edge) => {
-                  const outgoing = edge.source === selectedNode.id;
-                  const peer = byId.get(outgoing ? edge.target : edge.source);
-                  return (
-                    <article key={edge.id}>
-                      <span>{outgoing ? "Salida" : "Entrada"}</span>
-                      <strong>
-                        {outgoing ? "→" : "←"} {peer?.label ?? "Nodo desconocido"}
-                      </strong>
-                      <p>{edge.label}</p>
-                      <small>
-                        {evidenceLabels[edge.evidence]} · {stateLabels[edge.state]} ·{" "}
-                        {formatAge(edge.lastObservedAt)}
-                      </small>
-                    </article>
-                  );
-                })
-              ) : (
-                <p className="inspector-empty">Este nodo no tiene conexiones registradas.</p>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="inspector-placeholder">
-            <span>Explorar el circuito</span>
-            <p>Selecciona un nodo para ver qué recibe, qué entrega y cuándo se observó.</p>
-          </div>
-        )}
-      </aside>
-    </div>
-  );
-}
 
 function TaskJourney({
   task,
@@ -578,23 +416,429 @@ function HermesLab({
   );
 }
 
-function ExactFlowchartDiagram() {
+const DIAGRAM_WIDTH = 960;
+const DIAGRAM_HEIGHT = 670;
+// The telemetry layout places nodes on the same row 16% of the width apart, so a
+// box wider than that fraction of the drawable area would overlap its neighbour.
+const NODE_WIDTH = 120;
+const NODE_HEIGHT = 54;
+// Half a node plus a margin, so a node at x=6 or x=89 is not clipped by the edge.
+const PAD_X = NODE_WIDTH / 2 + 10;
+const PAD_Y = NODE_HEIGHT / 2 + 10;
+// Below this, a pointer gesture is a click that selects rather than a drag.
+const DRAG_THRESHOLD = 4;
+
+type DiagramPoint = { x: number; y: number };
+
+// The canvas grows with the spread control while the boxes keep their size, so
+// raising it genuinely pushes nodes apart instead of just scaling the picture.
+const SPREAD_MIN = 1;
+const SPREAD_MAX = 2;
+
+// WorkflowNode.x and .y are percentages of the canvas, the convention the
+// telemetry server already emits. Keeping the stored layout in percentages means
+// a reordered diagram survives both a resize and a change of spread. The
+// percentages map into an inset region so a node can never hang off the edge.
+function toCanvas(
+  point: DiagramPoint,
+  width: number,
+  height: number,
+): DiagramPoint {
+  return {
+    x: PAD_X + (point.x / 100) * (width - PAD_X * 2),
+    y: PAD_Y + (point.y / 100) * (height - PAD_Y * 2),
+  };
+}
+
+function toPercent(
+  point: DiagramPoint,
+  width: number,
+  height: number,
+): DiagramPoint {
+  return {
+    x: ((point.x - PAD_X) / (width - PAD_X * 2)) * 100,
+    y: ((point.y - PAD_Y) / (height - PAD_Y * 2)) * 100,
+  };
+}
+
+type DiagramBox = { x: number; y: number; w: number; h: number };
+
+const LABEL_HEIGHT = 22;
+
+function labelWidthFor(text: string): number {
+  return Math.min(198, Math.max(60, text.length * 6.1 + 14));
+}
+
+function boxesOverlap(a: DiagramBox, b: DiagramBox): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+// SVG has no text wrapping. Rather than truncate a node name, condense it to the
+// box width, which keeps every label readable and complete.
+function fitTextLength(text: string, fontSize: number): number | undefined {
+  const estimated = text.length * fontSize * 0.55;
+  const available = NODE_WIDTH - 14;
+  return estimated > available ? available : undefined;
+}
+
+// Anchors an edge on the node's border rather than its centre, so the arrowhead
+// meets the box from whichever side the node was dragged to.
+function anchorOnBorder(from: DiagramPoint, toward: DiagramPoint): DiagramPoint {
+  const dx = toward.x - from.x;
+  const dy = toward.y - from.y;
+  if (dx === 0 && dy === 0) return from;
+  const scale = Math.min(
+    dx === 0 ? Number.POSITIVE_INFINITY : NODE_WIDTH / 2 / Math.abs(dx),
+    dy === 0 ? Number.POSITIVE_INFINITY : NODE_HEIGHT / 2 / Math.abs(dy),
+  );
+  return { x: from.x + dx * scale, y: from.y + dy * scale };
+}
+
+function edgeGeometry(
+  source: DiagramPoint,
+  target: DiagramPoint,
+): { path: string; mid: DiagramPoint; label: DiagramPoint } {
+  const a = anchorOnBorder(source, target);
+  const b = anchorOnBorder(target, source);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  // Bending along the dominant axis keeps the curve readable whether the flow
+  // runs down the page or across it.
+  const vertical = Math.abs(dy) >= Math.abs(dx);
+  const bend = Math.max(28, Math.abs(vertical ? dy : dx) * 0.4);
+  const c1 = vertical ? { x: a.x, y: a.y + bend } : { x: a.x + bend, y: a.y };
+  const c2 = vertical ? { x: b.x, y: b.y - bend } : { x: b.x - bend, y: b.y };
+  // Cubic Bezier at t=0.5, so the anchor sits on the curve rather than on the
+  // straight line between node centres, which often ran through a third node.
+  const mid = {
+    x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8,
+    y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8,
+  };
+  // Neighbouring boxes are only ~16% of the width apart, so a label centred on
+  // the curve would cover them. Offsetting along the curve's normal moves it
+  // into the empty band between rows instead.
+  const tx =
+    0.75 * (c1.x - a.x) + 1.5 * (c2.x - c1.x) + 0.75 * (b.x - c2.x);
+  const ty =
+    0.75 * (c1.y - a.y) + 1.5 * (c2.y - c1.y) + 0.75 * (b.y - c2.y);
+  const length = Math.hypot(tx, ty) || 1;
+  let nx = -ty / length;
+  let ny = tx / length;
+  // Always take the upward normal, so labels read consistently above their edge.
+  if (ny > 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  // A near-horizontal edge runs between two boxes on the same row, so its label
+  // has to clear half a box plus its own height. A near-vertical edge only needs
+  // to step aside from the line itself.
+  const offset = 21 + Math.abs(ny) * 20;
+  return {
+    path: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,
+    mid,
+    label: { x: mid.x + nx * offset, y: mid.y + ny * offset },
+  };
+}
+
+function GovernanceDiagram({
+  nodes,
+  edges,
+  selectedNodeId,
+  onSelectNode,
+}: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string | null) => void;
+}) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // Only nodes the user actually moved are stored, so incoming telemetry keeps
+  // driving every node that has not been repositioned by hand.
+  const [layout, setLayout] = useState<Record<string, DiagramPoint>>({});
+  const [spread, setSpread] = useState(1);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const canvasWidth = Math.round(DIAGRAM_WIDTH * spread);
+  const canvasHeight = Math.round(DIAGRAM_HEIGHT * spread);
+  const dragRef = useRef<{
+    id: string;
+    offsetX: number;
+    offsetY: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+
+  const placed = nodes.map((node) => {
+    const override = layout[node.id];
+    return {
+      node,
+      point: toCanvas(
+        override ?? { x: node.x, y: node.y },
+        canvasWidth,
+        canvasHeight,
+      ),
+    };
+  });
+  const pointById = new Map(placed.map((item) => [item.node.id, item.point]));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  // A single deterministic pass that nudges each label further along its normal
+  // until it clears the nodes and the labels already placed. Automatic layout
+  // cannot hand-place labels the way the original static drawing did, so this is
+  // what keeps a dense diagram legible.
+  const labelPositions = (() => {
+    const obstacles: DiagramBox[] = placed.map(({ point }) => ({
+      x: point.x - NODE_WIDTH / 2,
+      y: point.y - NODE_HEIGHT / 2,
+      w: NODE_WIDTH,
+      h: NODE_HEIGHT,
+    }));
+    const positions = new Map<string, DiagramPoint>();
+    for (const edge of edges) {
+      const source = pointById.get(edge.source);
+      const target = pointById.get(edge.target);
+      if (!source || !target) continue;
+      const geometry = edgeGeometry(source, target);
+      const width = labelWidthFor(edge.label);
+      const dx = geometry.label.x - geometry.mid.x;
+      const dy = geometry.label.y - geometry.mid.y;
+      const length = Math.hypot(dx, dy) || 1;
+      let position = geometry.label;
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const box = {
+          x: position.x - width / 2,
+          y: position.y - LABEL_HEIGHT / 2,
+          w: width,
+          h: LABEL_HEIGHT,
+        };
+        if (!obstacles.some((obstacle) => boxesOverlap(box, obstacle))) break;
+        position = {
+          x: position.x + (dx / length) * 18,
+          y: position.y + (dy / length) * 18,
+        };
+      }
+      position = {
+        x: Math.min(Math.max(position.x, width / 2), canvasWidth - width / 2),
+        y: Math.min(
+          Math.max(position.y, LABEL_HEIGHT),
+          canvasHeight - LABEL_HEIGHT,
+        ),
+      };
+      obstacles.push({
+        x: position.x - width / 2,
+        y: position.y - LABEL_HEIGHT / 2,
+        w: width,
+        h: LABEL_HEIGHT,
+      });
+      positions.set(edge.id, position);
+    }
+    return positions;
+  })();
+
+  const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
+  const selectedEdges = selectedNode
+    ? edges.filter(
+        (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id,
+      )
+    : [];
+  const relatedNodeIds = new Set<string>([selectedNodeId ?? ""]);
+  for (const edge of selectedEdges) {
+    relatedNodeIds.add(edge.source);
+    relatedNodeIds.add(edge.target);
+  }
+
+  // The SVG preserves its aspect ratio, so one uniform scale converts a client
+  // coordinate into user units without needing the full CTM.
+  const toUserSpace = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const rect = svg.getBoundingClientRect();
+    const scale = rect.width === 0 ? 1 : rect.width / canvasWidth;
+    return {
+      x: (clientX - rect.left) / scale,
+      y: (clientY - rect.top) / scale,
+    };
+  }, [canvasWidth]);
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<SVGGElement>, nodeId: string) => {
+      if (event.button !== 0) return;
+      const point = pointById.get(nodeId);
+      if (!point) return;
+      const pointer = toUserSpace(event.clientX, event.clientY);
+      dragRef.current = {
+        id: nodeId,
+        offsetX: pointer.x - point.x,
+        offsetY: pointer.y - point.y,
+        startX: point.x,
+        startY: point.y,
+        moved: false,
+      };
+      setDraggingId(nodeId);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+    [pointById, toUserSpace],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<SVGGElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const pointer = toUserSpace(event.clientX, event.clientY);
+      const nextX = pointer.x - drag.offsetX;
+      const nextY = pointer.y - drag.offsetY;
+      // Measured against where the node was grabbed, not where it is now, so a
+      // slow drag cannot stay under the threshold forever and register as a click.
+      if (!drag.moved) {
+        const travelled = Math.hypot(nextX - drag.startX, nextY - drag.startY);
+        if (travelled >= DRAG_THRESHOLD) drag.moved = true;
+      }
+      // Keeping the centre inside the canvas stops a node from being dragged
+      // out of view with no way to retrieve it.
+      const clampedX = Math.min(Math.max(nextX, PAD_X), canvasWidth - PAD_X);
+      const clampedY = Math.min(Math.max(nextY, PAD_Y), canvasHeight - PAD_Y);
+      setLayout((current) => ({
+        ...current,
+        [drag.id]: toPercent(
+          { x: clampedX, y: clampedY },
+          canvasWidth,
+          canvasHeight,
+        ),
+      }));
+    },
+    [canvasHeight, canvasWidth, toUserSpace],
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<SVGGElement>) => {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      setDraggingId(null);
+      if (!drag) return;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      // A gesture that never crossed the threshold was a click, not a drag.
+      if (!drag.moved) {
+        onSelectNode(selectedNodeId === drag.id ? null : drag.id);
+      }
+    },
+    [onSelectNode, selectedNodeId],
+  );
+
+  const moveWithKeyboard = useCallback(
+    (nodeId: string, deltaX: number, deltaY: number) => {
+      const point = pointById.get(nodeId);
+      if (!point) return;
+      const nextX = Math.min(
+        Math.max(point.x + deltaX, PAD_X),
+        canvasWidth - PAD_X,
+      );
+      const nextY = Math.min(
+        Math.max(point.y + deltaY, PAD_Y),
+        canvasHeight - PAD_Y,
+      );
+      setLayout((current) => ({
+        ...current,
+        [nodeId]: toPercent({ x: nextX, y: nextY }, canvasWidth, canvasHeight),
+      }));
+    },
+    [canvasHeight, canvasWidth, pointById],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<SVGGElement>, nodeId: string) => {
+      const step = event.shiftKey ? 24 : 8;
+      switch (event.key) {
+        case "Enter":
+        case " ":
+          event.preventDefault();
+          onSelectNode(selectedNodeId === nodeId ? null : nodeId);
+          return;
+        case "ArrowLeft":
+          event.preventDefault();
+          moveWithKeyboard(nodeId, -step, 0);
+          return;
+        case "ArrowRight":
+          event.preventDefault();
+          moveWithKeyboard(nodeId, step, 0);
+          return;
+        case "ArrowUp":
+          event.preventDefault();
+          moveWithKeyboard(nodeId, 0, -step);
+          return;
+        case "ArrowDown":
+          event.preventDefault();
+          moveWithKeyboard(nodeId, 0, step);
+          return;
+        default:
+      }
+    },
+    [moveWithKeyboard, onSelectNode, selectedNodeId],
+  );
+
+  const reordered = Object.keys(layout).length > 0;
+
   return (
     <div className="exact-flowchart-card" aria-label="Diagrama de Flujo Oficial TRAMA">
       <div className="flowchart-header">
         <span className="flow-badge">Arquitectura Oficial</span>
         <h3>Diagrama de Gobernanza: IA Manager ($) → Hermes Worker ($0)</h3>
         <p>Circuito 2D exacto de delegación, consulta AST, revisión y observabilidad privada en tiempo real.</p>
+        <div className="flowchart-controls">
+          <span className="flowchart-hint">
+            Arrastra un nodo para reordenar · flechas para ajustar
+          </span>
+          <label className="flowchart-spread" htmlFor="diagram-spread">
+            <span>Separación</span>
+            <input
+              id="diagram-spread"
+              type="range"
+              min={SPREAD_MIN}
+              max={SPREAD_MAX}
+              step={0.05}
+              value={spread}
+              onChange={(event) => setSpread(Number(event.target.value))}
+            />
+            <output htmlFor="diagram-spread">
+              {Math.round(spread * 100)}%
+            </output>
+          </label>
+          <button
+            type="button"
+            className="flowchart-reset"
+            onClick={() => {
+              setLayout({});
+              setSpread(1);
+            }}
+            disabled={!reordered && spread === 1}
+          >
+            Restablecer orden
+          </button>
+        </div>
+        <div className="flow-legend">
+          {Object.entries(evidenceLabels).map(([evidence, label]) => (
+            <span key={evidence} className={`legend-${evidence}`}>
+              <i />
+              {label}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="svg-canvas-wrapper">
         <svg
-          viewBox="0 0 960 670"
-          className="exact-mermaid-svg"
+          ref={svgRef}
+          viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+          className={`exact-mermaid-svg${draggingId ? " diagram-dragging" : ""}`}
+          // Growing the drawn size with the spread keeps a user unit roughly a
+          // CSS pixel, so separating nodes adds room instead of shrinking text.
+          // The wrapper scrolls when the card is narrower than the canvas.
+          style={{ width: canvasWidth, maxWidth: "none" }}
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            {/* Arrowhead marker for solid lines */}
             <marker
               id="m-arrow-blue"
               markerWidth="8"
@@ -605,7 +849,6 @@ function ExactFlowchartDiagram() {
             >
               <path d="M0,0 L8,4 L0,8 Z" fill="#69d7d1" />
             </marker>
-            {/* Arrowhead marker for dashed lines */}
             <marker
               id="m-arrow-dash"
               markerWidth="8"
@@ -618,209 +861,186 @@ function ExactFlowchartDiagram() {
             </marker>
           </defs>
 
-          {/* Subgraph Container: Observabilidad Privada */}
-          <g className="subgraph-container">
-            <rect
-              x="585"
-              y="60"
-              width="250"
-              height="150"
-              rx="6"
-              fill="#0e2533"
-              stroke="#284653"
-              strokeWidth="1.5"
-            />
-            <text x="600" y="84" fill="#69d7d1" fontSize="11" fontWeight="bold" fontFamily="monospace" letterSpacing="0.1em">
-              OBSERVABILIDAD PRIVADA
-            </text>
+          {edges.map((edge) => {
+            const source = pointById.get(edge.source);
+            const target = pointById.get(edge.target);
+            if (!source || !target) return null;
+            const { path } = edgeGeometry(source, target);
+            const connected = selectedEdges.some((item) => item.id === edge.id);
+            return (
+              <g
+                key={edge.id}
+                className={`gov-edge evidence-${edge.evidence} state-stroke-${edge.state}${
+                  selectedNode ? (connected ? " edge-selected" : " edge-dimmed") : ""
+                }`}
+              >
+                <path
+                  d={path}
+                  markerEnd={`url(#${
+                    edge.evidence === "observed" ? "m-arrow-blue" : "m-arrow-dash"
+                  })`}
+                />
+                {edge.evidence === "observed" && !draggingId && (
+                  <circle key={path} r="3.5" className="gov-edge-pulse">
+                    <animateMotion dur="2.4s" repeatCount="indefinite" path={path} />
+                  </circle>
+                )}
+              </g>
+            );
+          })}
 
-            {/* Dashboard TRAMA Node inside Subgraph */}
-            <rect
-              x="605"
-              y="98"
-              width="210"
-              height="80"
-              rx="4"
-              fill="#173140"
-              stroke="#69d7d1"
-              strokeWidth="1.5"
-            />
-            <text x="710" y="132" textAnchor="middle" fill="#e8efe9" fontSize="15" fontWeight="bold" fontFamily="sans-serif">
-              Dashboard TRAMA
-            </text>
-            <text x="710" y="156" textAnchor="middle" fill="#69d7d1" fontSize="13" fontWeight="bold" fontFamily="monospace">
-              127.0.0.1:4310
-            </text>
-          </g>
+          {placed.map(({ node, point }) => {
+            const selected = node.id === selectedNodeId;
+            const dimmed = selectedNode && !relatedNodeIds.has(node.id);
+            return (
+              <g
+                key={node.id}
+                className={`gov-node node-kind-${node.kind} state-border-${node.state}${
+                  selected ? " node-selected" : ""
+                }${dimmed ? " node-dimmed" : ""}${
+                  draggingId === node.id ? " node-dragging" : ""
+                }`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selected}
+                aria-controls="workflow-inspector"
+                aria-label={`${node.role}: ${node.label}`}
+                onPointerDown={(event) => handlePointerDown(event, node.id)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onKeyDown={(event) => handleKeyDown(event, node.id)}
+              >
+                <rect
+                  x={point.x - NODE_WIDTH / 2}
+                  y={point.y - NODE_HEIGHT / 2}
+                  width={NODE_WIDTH}
+                  height={NODE_HEIGHT}
+                  rx="4"
+                />
+                <text
+                  className="gov-node-label"
+                  x={point.x}
+                  y={point.y - 3}
+                  textAnchor="middle"
+                  textLength={fitTextLength(node.label, 13)}
+                  lengthAdjust="spacingAndGlyphs"
+                >
+                  {node.label}
+                </text>
+                <text
+                  className="gov-node-role"
+                  x={point.x}
+                  y={point.y + 14}
+                  textAnchor="middle"
+                  textLength={fitTextLength(node.role, 10)}
+                  lengthAdjust="spacingAndGlyphs"
+                >
+                  {node.role}
+                </text>
+              </g>
+            );
+          })}
 
-          {/* Node 1: Usuario (Pill Shape) */}
-          <g className="node-usuario">
-            <rect x="300" y="20" width="130" height="42" rx="21" fill="#102936" stroke="#315463" strokeWidth="1.5" />
-            <text x="365" y="46" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="sans-serif">
-              Usuario
-            </text>
-          </g>
-
-          {/* Connector 1: Usuario -> Manager */}
-          <path id="flow-p1" d="M 365 62 L 365 140" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
-            <animateMotion dur="2.2s" repeatCount="indefinite" path="M 365 62 L 365 140" />
-          </circle>
-          {/* Label box: Solicitud */}
-          <rect x="333" y="88" width="64" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="365" y="104" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
-            Solicitud
-          </text>
-
-          {/* Node 2: IA de Pago Manager (Rect) */}
-          <g className="node-manager">
-            <rect x="235" y="140" width="260" height="66" rx="4" fill="#173140" stroke="#f0a36a" strokeWidth="2" />
-            <text x="365" y="167" textAnchor="middle" fill="#e8efe9" fontSize="15" fontWeight="bold" fontFamily="sans-serif">
-              IA de Pago Manager
-            </text>
-            <text x="365" y="188" textAnchor="middle" fill="#f0a36a" fontSize="12" fontFamily="monospace">
-              Antigravity / Codex / Claude
-            </text>
-          </g>
-
-          {/* Branch Left: Manager -> Graphify */}
-          <path id="flow-p2" d="M 300 206 L 300 235 L 140 235 L 140 320" fill="none" stroke="#f0a36a" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#f0a36a" filter="drop-shadow(0 0 6px #f0a36a)">
-            <animateMotion dur="2.8s" repeatCount="indefinite" path="M 300 206 L 300 235 L 140 235 L 140 320" />
-          </circle>
-          {/* Label: 1. Consulta Subgrafo AST */}
-          <rect x="60" y="223" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="140" y="239" textAnchor="middle" fill="#f0a36a" fontSize="11" fontFamily="sans-serif">
-            1. Consulta Subgrafo AST
-          </text>
-          {/* Node: Graphify Local AST */}
-          <rect x="40" y="320" width="200" height="50" rx="4" fill="#102936" stroke="#f0a36a" strokeWidth="1.5" />
-          <text x="140" y="350" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="sans-serif">
-            Graphify Local AST
-          </text>
-
-          {/* Branch Middle: Manager -> submit-hermes-task.ps1 */}
-          <path id="flow-p3" d="M 365 206 L 365 320" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
-            <animateMotion dur="2.2s" repeatCount="indefinite" path="M 365 206 L 365 320" />
-          </circle>
-          {/* Label: 2. Envía Contrato de Tarea */}
-          <rect x="285" y="235" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="365" y="251" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
-            2. Envía Contrato de Tarea
-          </text>
-          {/* Node: submit-hermes-task.ps1 */}
-          <rect x="270" y="320" width="190" height="50" rx="4" fill="#102936" stroke="#315463" strokeWidth="1.5" strokeDasharray="4 2" />
-          <text x="365" y="350" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="monospace">
-            submit-hermes-task.ps1
-          </text>
-
-          {/* Connector: submit-hermes-task.ps1 -> Hermes */}
-          <path id="flow-p4" d="M 365 370 L 365 460" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
-            <animateMotion dur="2.0s" repeatCount="indefinite" path="M 365 370 L 365 460" />
-          </circle>
-          {/* Label: 3. Trabajo Pesado en Worktree */}
-          <rect x="275" y="395" width="180" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="365" y="411" textAnchor="middle" fill="#69d7d1" fontSize="11" fontFamily="sans-serif">
-            3. Trabajo Pesado en Worktree
-          </text>
-          {/* Node: Hermes + LM Studio */}
-          <rect x="250" y="460" width="230" height="66" rx="4" fill="#132a35" stroke="#69d7d1" strokeWidth="2" />
-          <text x="365" y="487" textAnchor="middle" fill="#e8efe9" fontSize="15" fontWeight="bold" fontFamily="sans-serif">
-            Hermes + LM Studio
-          </text>
-          <text x="365" y="508" textAnchor="middle" fill="#e8c36a" fontSize="12" fontFamily="monospace">
-            Qwen 3.6 35B Local
-          </text>
-
-          {/* Connector: Hermes -> changes.patch */}
-          <path id="flow-p5" d="M 365 526 L 365 600" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
-            <animateMotion dur="2.0s" repeatCount="indefinite" path="M 365 526 L 365 600" />
-          </circle>
-          {/* Label: 4. Genera Patch */}
-          <rect x="315" y="546" width="100" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="365" y="562" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
-            4. Genera Patch
-          </text>
-          {/* Node: changes.patch */}
-          <rect x="285" y="600" width="160" height="48" rx="4" fill="#102936" stroke="#e8c36a" strokeWidth="1.5" />
-          <text x="365" y="629" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="monospace">
-            changes.patch
-          </text>
-
-          {/* Branch Right: Manager -> review-hermes-task.ps1 */}
-          <path id="flow-p6" d="M 430 206 L 430 235 L 750 235 L 750 360" fill="none" stroke="#e8c36a" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#e8c36a" filter="drop-shadow(0 0 6px #e8c36a)">
-            <animateMotion dur="2.8s" repeatCount="indefinite" path="M 430 206 L 430 235 L 750 235 L 750 360" />
-          </circle>
-          {/* Label: 5. Revisa Patch y Testea */}
-          <rect x="670" y="223" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="750" y="239" textAnchor="middle" fill="#e8c36a" fontSize="11" fontFamily="sans-serif">
-            5. Revisa Patch y Testea
-          </text>
-          {/* Node: review-hermes-task.ps1 */}
-          <rect x="655" y="360" width="190" height="50" rx="4" fill="#102936" stroke="#e8c36a" strokeWidth="1.5" strokeDasharray="4 2" />
-          <text x="750" y="390" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="monospace">
-            review-hermes-task.ps1
-          </text>
-
-          {/* Connector: review-hermes-task.ps1 -> Repositorio Git */}
-          <path id="flow-p7" d="M 750 410 L 750 500" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
-          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
-            <animateMotion dur="2.0s" repeatCount="indefinite" path="M 750 410 L 750 500" />
-          </circle>
-          {/* Label: 6. Integración y Cierre */}
-          <rect x="670" y="435" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="750" y="451" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
-            6. Integración y Cierre
-          </text>
-          {/* Node: Repositorio Git */}
-          <rect x="670" y="500" width="160" height="48" rx="4" fill="#13232d" stroke="#69d7d1" strokeWidth="1.5" />
-          <text x="750" y="529" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="sans-serif">
-            Repositorio Git
-          </text>
-
-          {/* Dashed Line 1: TRAMA -> Hermes */}
-          <path
-            id="flow-obs1"
-            d="M 605 138 L 520 138 L 520 493 L 480 493"
-            fill="none"
-            stroke="#91a8ae"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-            markerEnd="url(#m-arrow-dash)"
-          />
-          <circle r="3" fill="#69d7d1" opacity="0.85" filter="drop-shadow(0 0 4px #69d7d1)">
-            <animateMotion dur="3.2s" repeatCount="indefinite" path="M 605 138 L 520 138 L 520 493 L 480 493" />
-          </circle>
-          {/* Label: Observa Estados */}
-          <rect x="470" y="320" width="100" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="520" y="336" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
-            Observa Estados
-          </text>
-
-          {/* Dashed Line 2: TRAMA -> review-hermes-task.ps1 */}
-          <path
-            id="flow-obs2"
-            d="M 815 138 L 895 138 L 895 385 L 845 385"
-            fill="none"
-            stroke="#91a8ae"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-            markerEnd="url(#m-arrow-dash)"
-          />
-          <circle r="3" fill="#69d7d1" opacity="0.85" filter="drop-shadow(0 0 4px #69d7d1)">
-            <animateMotion dur="3.2s" begin="1.6s" repeatCount="indefinite" path="M 815 138 L 895 138 L 895 385 L 845 385" />
-          </circle>
-          {/* Label: Observa Colas y Patches */}
-          <rect x="815" y="275" width="135" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
-          <text x="882" y="291" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
-            Observa Colas y Patches
-          </text>
+          {/* Labels are drawn last so a node can never cover the name of the
+              relationship that explains it. */}
+          {edges.map((edge) => {
+            const source = pointById.get(edge.source);
+            const target = pointById.get(edge.target);
+            if (!source || !target) return null;
+            const anchor = labelPositions.get(edge.id);
+            if (!anchor) return null;
+            const connected = selectedEdges.some((item) => item.id === edge.id);
+            const labelWidth = labelWidthFor(edge.label);
+            return (
+              <g
+                key={`label-${edge.id}`}
+                className={`gov-edge-labelling${
+                  selectedNode ? (connected ? "" : " edge-dimmed") : ""
+                }`}
+              >
+                <rect
+                  className="gov-edge-label"
+                  x={anchor.x - labelWidth / 2}
+                  y={anchor.y - 11}
+                  width={labelWidth}
+                  height="22"
+                  rx="3"
+                />
+                <text
+                  className="gov-edge-text"
+                  x={anchor.x}
+                  y={anchor.y + 4}
+                  textAnchor="middle"
+                  textLength={
+                    edge.label.length * 6.1 + 14 > 198 ? 184 : undefined
+                  }
+                  lengthAdjust="spacingAndGlyphs"
+                >
+                  {edge.label}
+                </text>
+              </g>
+            );
+          })}
         </svg>
       </div>
+
+      <aside
+        className={`workflow-inspector${selectedNode ? " inspector-open" : ""}`}
+        id="workflow-inspector"
+        aria-live="polite"
+      >
+        {selectedNode ? (
+          <>
+            <div className="inspector-heading">
+              <div>
+                <span>{selectedNode.role}</span>
+                <h3>{selectedNode.label}</h3>
+              </div>
+              <button
+                type="button"
+                className="inspector-close"
+                onClick={() => onSelectNode(null)}
+                aria-label="Cerrar detalle del nodo"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="inspector-summary">
+              <StatePill state={selectedNode.state} />
+              <p>{selectedNode.detail}</p>
+            </div>
+            <div className="inspector-connections">
+              {selectedEdges.length > 0 ? (
+                selectedEdges.map((edge) => {
+                  const outgoing = edge.source === selectedNode.id;
+                  const peer = byId.get(outgoing ? edge.target : edge.source);
+                  return (
+                    <article key={edge.id}>
+                      <span>{outgoing ? "Salida" : "Entrada"}</span>
+                      <strong>
+                        {outgoing ? "→" : "←"} {peer?.label ?? "Nodo desconocido"}
+                      </strong>
+                      <p>{edge.label}</p>
+                      <small>
+                        {evidenceLabels[edge.evidence]} · {stateLabels[edge.state]} ·{" "}
+                        {formatAge(edge.lastObservedAt)}
+                      </small>
+                    </article>
+                  );
+                })
+              ) : (
+                <p className="inspector-empty">Este nodo no tiene conexiones registradas.</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="inspector-placeholder">
+            <span>Explorar el circuito</span>
+            <p>Selecciona un nodo para ver qué recibe, qué entrega y cuándo se observó.</p>
+          </div>
+        )}
+      </aside>
     </div>
   );
 }
@@ -907,7 +1127,16 @@ export default function Home() {
       </header>
 
       <section className="official-flow-section" id="top" style={{ padding: "20px 24px 0" }}>
-        <ExactFlowchartDiagram />
+        {snapshot ? (
+          <GovernanceDiagram
+            nodes={snapshot.workflow.nodes}
+            edges={snapshot.workflow.edges}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={setSelectedNodeId}
+          />
+        ) : (
+          <div className="workflow-loading">Construyendo el circuito local…</div>
+        )}
       </section>
 
       <section className="signal-room">
@@ -972,25 +1201,7 @@ export default function Home() {
             <p className="eyebrow">Flujo de trabajo real</p>
             <h2 id="workflow-title">De la tarea al proyecto</h2>
           </div>
-          <div className="flow-legend">
-            {Object.entries(evidenceLabels).map(([evidence, label]) => (
-              <span key={evidence} className={`legend-${evidence}`}>
-                <i />
-                {label}
-              </span>
-            ))}
-          </div>
         </div>
-        {snapshot ? (
-          <WorkflowMap
-            nodes={snapshot.workflow.nodes}
-            edges={snapshot.workflow.edges}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
-          />
-        ) : (
-          <div className="workflow-loading">Construyendo el circuito local…</div>
-        )}
         <TaskJourney
           task={snapshot?.delegation.latestTask ?? null}
           onNavigate={setSelectedNodeId}
