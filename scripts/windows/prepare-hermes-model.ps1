@@ -49,6 +49,31 @@ function Remove-LoadedModel(
     }
 }
 
+# `lms.exe load` resolves an unknown key by substring match against whatever is
+# on disk and silently loads that instead - confirmed by loading the alias's
+# old key after its model was removed: it loaded gemma-4-12b-qat while
+# reporting the identifier as the stale key, so `ps --json`'s own modelKey
+# field was the only place the substitution was visible. The API's
+# /api/v0/models endpoint does not expose modelKey at all, so a per-task
+# verification after load cannot detect this. The only reliable point to catch
+# it is here, against the on-disk catalog, before load ever runs.
+$catalogResult = Invoke-NativeCommand -Executable $LmsExecutable -Arguments @('ls', '--json')
+if ($catalogResult.ExitCode -ne 0) {
+    throw 'LM Studio could not list the on-disk model catalog.'
+}
+$catalog = @(ConvertFrom-JsonArray -Json $catalogResult.Output)
+$catalogKeys = @($catalog | ForEach-Object {
+    [string](Get-JsonProperty -Object $_ -Name 'modelKey')
+})
+if ($modelKey -notin $catalogKeys) {
+    $available = if ($catalogKeys.Count -gt 0) { $catalogKeys -join ', ' } else { 'none' }
+    throw (
+        "Model alias '$Model' resolves to '$modelKey', which is not on disk. " +
+        "Available: $available. Update Get-HermesModelKey in " +
+        'hermes-task-common.ps1 or download the model before retrying.'
+    )
+}
+
 $loaded = @(Get-LoadedModels -Executable $LmsExecutable)
 
 # LM Studio omits fields on some entries, and this script now runs under the

@@ -140,10 +140,14 @@ function Invoke-NativeCommand(
 # that was prepared, and any comparison between models would be meaningless.
 function Get-HermesModelKey([string]$Alias) {
     switch ($Alias) {
-        'gemma' { return 'google/gemma-4-12b' }
-        # Quantization-aware trained build: same architecture and a little
-        # smaller, but 4-bit quality holds up far better than a post-training
-        # quantization of the same size.
+        # The plain Q4_K_M build was removed from LM Studio in favour of the
+        # QAT build (equal throughput, smaller footprint, no measured quality
+        # cost), so 'gemma' now resolves to it directly. Do not fall back to
+        # lms.exe's own substring matching for this: it silently resolved the
+        # old key to gemma-qat under the OLD identifier, which would have made
+        # every task, log and telemetry record misreport which model actually
+        # ran.
+        'gemma' { return 'google/gemma-4-12b-qat' }
         'gemma-qat' { return 'google/gemma-4-12b-qat' }
         'qwen' { return 'qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive' }
         default { throw "Unknown Hermes model alias '$Alias'." }
