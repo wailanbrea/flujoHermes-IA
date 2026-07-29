@@ -143,6 +143,7 @@ try {
     Set-HermesProfileModel `
         -ConfigPath $isolatedConfigPath `
         -ModelKey $contractModelKey
+    Disable-HermesProfileLsp -ConfigPath $isolatedConfigPath
     [IO.File]::WriteAllText(
         (Join-Path $isolatedHermesHome '.env'),
         "HERMES_WRITE_SAFE_ROOT=$executionRoot`n",

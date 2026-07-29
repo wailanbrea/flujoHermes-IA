@@ -124,6 +124,42 @@ Assert-Condition `
     'A profile without a model.default entry was accepted as pinnable.'
 Remove-Item -LiteralPath $noDefaultFixture -Force
 
+$lspAbsent = Join-Path ([IO.Path]::GetTempPath()) (
+    'hermes-profile-' + [Guid]::NewGuid().ToString('N') + '.yaml'
+)
+[IO.File]::WriteAllText($lspAbsent, "model:`n  default: a/b`n", $utf8)
+Disable-HermesProfileLsp -ConfigPath $lspAbsent
+$lspAbsentText = [IO.File]::ReadAllText($lspAbsent)
+Assert-Condition `
+    ($lspAbsentText -match '(?m)^lsp:$' -and $lspAbsentText -match '(?m)^  enabled: false$') `
+    'A profile without an lsp block did not get language-server auto-install disabled.'
+Assert-Condition `
+    ($lspAbsentText -match '(?m)^  default: a/b$') `
+    'Disabling the language server disturbed the model settings.'
+Remove-Item -LiteralPath $lspAbsent -Force
+
+$lspPresent = Join-Path ([IO.Path]::GetTempPath()) (
+    'hermes-profile-' + [Guid]::NewGuid().ToString('N') + '.yaml'
+)
+[IO.File]::WriteAllText(
+    $lspPresent,
+    "lsp:`n  enabled: true`n  install_strategy: auto`nagent:`n  verify_on_stop: false`n",
+    $utf8
+)
+Disable-HermesProfileLsp -ConfigPath $lspPresent
+$lspPresentText = [IO.File]::ReadAllText($lspPresent)
+Assert-Condition `
+    ($lspPresentText -match '(?m)^  enabled: false$' -and
+     $lspPresentText -notmatch '(?m)^  enabled: true$') `
+    'An enabled lsp block was not switched off.'
+Assert-Condition `
+    ($lspPresentText -match '(?m)^  install_strategy: none$') `
+    'The language-server install strategy was left on auto.'
+Assert-Condition `
+    ($lspPresentText -match '(?m)^  verify_on_stop: false$') `
+    'Disabling the language server disturbed an unrelated block.'
+Remove-Item -LiteralPath $lspPresent -Force
+
 $rejectedUnloaded = $false
 try { Assert-HermesModelLoaded -ModelKey 'definitely/not-loaded-model' }
 catch { $rejectedUnloaded = $true }

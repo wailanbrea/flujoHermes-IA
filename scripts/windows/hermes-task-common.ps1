@@ -189,6 +189,48 @@ function Set-HermesProfileModel(
     )
 }
 
+# Hermes auto-installs a language server the first time a task touches a file it
+# recognises, which reaches the npm registry. The execution contract declares
+# externalNetwork as denied, so a task must not silently open that connection —
+# and on a TypeScript project the install alone consumed the whole turn budget.
+function Disable-HermesProfileLsp([string]$ConfigPath) {
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    $lines = [Collections.Generic.List[string]]::new()
+    $lines.AddRange([string[]][IO.File]::ReadAllLines($ConfigPath))
+    $blockIndex = -1
+    $block = ''
+    $sawEnabled = $false
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $line = $lines[$index]
+        if ($line -match '^[^\s#]') {
+            $block = ($line -split ':')[0].Trim()
+            if ($block -eq 'lsp') { $blockIndex = $index }
+            continue
+        }
+        if ($block -ne 'lsp') { continue }
+        if ($line -match '^(\s+)enabled:\s') {
+            $lines[$index] = "$($Matches[1])enabled: false"
+            $sawEnabled = $true
+        }
+        elseif ($line -match '^(\s+)install_strategy:\s') {
+            $lines[$index] = "$($Matches[1])install_strategy: none"
+        }
+    }
+    if ($blockIndex -lt 0) {
+        $lines.Add('lsp:')
+        $lines.Add('  enabled: false')
+        $lines.Add('  install_strategy: none')
+    }
+    elseif (-not $sawEnabled) {
+        $lines.Insert($blockIndex + 1, '  enabled: false')
+    }
+    [IO.File]::WriteAllText(
+        $ConfigPath,
+        (($lines -join "`n") + "`n"),
+        $utf8
+    )
+}
+
 # LM Studio is configured for explicit loading and exactly one language model at
 # a time, so a mismatch here means the task would either stall or trigger an
 # unsupervised load with unsafe defaults.
