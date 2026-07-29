@@ -42,6 +42,34 @@ Assert-Condition `
     ($collapsed -eq 'npm test and lint passed') `
     'Control characters and runs of whitespace were not normalised.'
 
+# --- JSON array unrolling -------------------------------------------------
+# The single-element case is the trap: an un-unrolled array still answers
+# property access through member enumeration, so a filter appears to work with
+# one model loaded and silently matches nothing with two.
+Assert-Condition `
+    ((@(ConvertFrom-JsonArray -Json '[]')).Count -eq 0) `
+    'An empty JSON array did not yield an empty collection.'
+Assert-Condition `
+    ((@(ConvertFrom-JsonArray -Json '   ')).Count -eq 0) `
+    'Blank input did not yield an empty collection.'
+
+$single = @(ConvertFrom-JsonArray -Json '[{"type":"llm","modelKey":"a/b"}]')
+Assert-Condition ($single.Count -eq 1) 'A one-element JSON array did not unroll.'
+Assert-Condition `
+    ($single[0] -isnot [object[]]) `
+    'A one-element JSON array stayed wrapped inside another array.'
+Assert-Condition `
+    ((Get-JsonProperty -Object $single[0] -Name 'type') -eq 'llm') `
+    'Properties were unreachable on a one-element JSON array.'
+
+$pair = @(ConvertFrom-JsonArray -Json '[{"type":"llm"},{"type":"vlm"}]')
+Assert-Condition ($pair.Count -eq 2) 'A two-element JSON array did not unroll.'
+Assert-Condition `
+    (@($pair | Where-Object {
+        (Get-JsonProperty -Object $_ -Name 'type') -eq 'llm'
+    }).Count -eq 1) `
+    'Filtering a two-element JSON array did not match the expected entry.'
+
 # --- Model pinning --------------------------------------------------------
 Assert-Condition `
     ((Get-HermesModelKey -Alias 'gemma') -eq 'google/gemma-4-12b') `

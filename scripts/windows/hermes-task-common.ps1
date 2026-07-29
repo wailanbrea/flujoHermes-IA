@@ -96,6 +96,44 @@ function Get-HermesRuntimeRoot {
     return Join-Path (Get-OrchestratorRoot) 'telemetry\runtime\hermes-jobs'
 }
 
+# Windows PowerShell 5.1 writes a deserialized JSON array to the pipeline as one
+# object rather than enumerating it, so `@(cmd | ConvertFrom-Json)` yields an
+# array whose single element is itself the array. Assigning first, then wrapping,
+# is what actually unrolls it. Property access on the un-unrolled form appears to
+# work while exactly one item is present and silently breaks at two.
+# Callers must wrap the result in @(...), matching how this codebase already
+# collects native command output. Assigning first and then wrapping is what
+# unrolls the array; wrapping the ConvertFrom-Json pipeline directly does not.
+function ConvertFrom-JsonArray([string]$Json) {
+    if (-not $Json -or -not $Json.Trim()) { return @() }
+    $parsed = $Json | ConvertFrom-Json
+    if ($null -eq $parsed) { return @() }
+    return @($parsed)
+}
+
+# Windows PowerShell 5.1 turns any stderr output from a native executable into a
+# terminating error while $ErrorActionPreference is 'Stop', even when the command
+# succeeded. lms.exe reports normal progress on stderr, so its exit code is the
+# only trustworthy signal.
+function Invoke-NativeCommand(
+    [string]$Executable,
+    [string[]]$Arguments
+) {
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & $Executable @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = ($output | Out-String).Trim()
+    }
+}
+
 # Single source of truth for the alias-to-model mapping. prepare-hermes-model.ps1
 # loads the model and the worker pins it into the per-task profile; if the two
 # ever disagreed, a task would silently run on a different model than the one

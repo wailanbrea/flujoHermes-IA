@@ -16,10 +16,32 @@ $parallel = 1
 $modelKey = Get-HermesModelKey -Alias $Model
 $gpuOffload = if ($Model -eq 'qwen') { '0.50' } else { 'max' }
 
-$loaded = @(& $LmsExecutable ps --json | ConvertFrom-Json)
-if ($LASTEXITCODE -ne 0) {
-    throw 'LM Studio could not list loaded models.'
+function Get-LoadedModels([string]$Executable) {
+    $result = Invoke-NativeCommand -Executable $Executable -Arguments @('ps', '--json')
+    if ($result.ExitCode -ne 0) {
+        throw 'LM Studio could not list loaded models.'
+    }
+    return @(ConvertFrom-JsonArray -Json $result.Output)
 }
+
+function Remove-LoadedModel(
+    [string]$Executable,
+    [object]$Entry,
+    [string]$FailureMessage
+) {
+    $identifier = [string](Get-JsonProperty -Object $Entry -Name 'identifier')
+    if (-not $identifier) {
+        throw 'A loaded language model has no unload identifier.'
+    }
+    $result = Invoke-NativeCommand `
+        -Executable $Executable `
+        -Arguments @('unload', $identifier)
+    if ($result.ExitCode -ne 0) {
+        throw $FailureMessage
+    }
+}
+
+$loaded = @(Get-LoadedModels -Executable $LmsExecutable)
 
 # LM Studio omits fields on some entries, and this script now runs under the
 # shared strict mode, so every field is read through the tolerant accessor.
@@ -34,41 +56,37 @@ $conflicts = @(
     }
 )
 foreach ($conflict in $conflicts) {
-    $conflictIdentifier = [string]$conflict.identifier
-    if (-not $conflictIdentifier) {
-        throw 'A loaded language model has no unload identifier.'
-    }
-    & $LmsExecutable unload $conflictIdentifier
-    if ($LASTEXITCODE -ne 0) {
-        throw 'LM Studio could not unload a conflicting language model.'
-    }
+    Remove-LoadedModel `
+        -Executable $LmsExecutable `
+        -Entry $conflict `
+        -FailureMessage 'LM Studio could not unload a conflicting language model.'
 }
+# An already-loaded instance of the target is unloaded too: its context length,
+# parallelism and MTP settings are unknown, and `lms load` refuses a duplicate
+# identifier outright.
 foreach ($unsafeTarget in $targets) {
-    $targetIdentifier = [string]$unsafeTarget.identifier
-    if (-not $targetIdentifier) {
-        throw 'The target language model has no unload identifier.'
-    }
-    & $LmsExecutable unload $targetIdentifier
-    if ($LASTEXITCODE -ne 0) {
-        throw 'LM Studio could not unload the unsafe target instance.'
-    }
+    Remove-LoadedModel `
+        -Executable $LmsExecutable `
+        -Entry $unsafeTarget `
+        -FailureMessage 'LM Studio could not unload the unsafe target instance.'
 }
 
-& $LmsExecutable load $modelKey `
-    --identifier $modelKey `
-    --context-length $contextLength `
-    --parallel $parallel `
-    --gpu $gpuOffload `
-    --no-speculative-draft-mtp `
-    --yes
-if ($LASTEXITCODE -ne 0) {
+$loadResult = Invoke-NativeCommand `
+    -Executable $LmsExecutable `
+    -Arguments @(
+        'load', $modelKey,
+        '--identifier', $modelKey,
+        '--context-length', [string]$contextLength,
+        '--parallel', [string]$parallel,
+        '--gpu', $gpuOffload,
+        '--no-speculative-draft-mtp',
+        '--yes'
+    )
+if ($loadResult.ExitCode -ne 0) {
     throw 'LM Studio could not load the selected Hermes model safely.'
 }
 
-$verified = @(& $LmsExecutable ps --json | ConvertFrom-Json)
-if ($LASTEXITCODE -ne 0) {
-    throw 'LM Studio could not verify the loaded Hermes model.'
-}
+$verified = @(Get-LoadedModels -Executable $LmsExecutable)
 $verifiedLlms = @($verified | Where-Object {
     (Get-JsonProperty -Object $_ -Name 'type') -eq 'llm'
 })
