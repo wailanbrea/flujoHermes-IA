@@ -401,7 +401,7 @@ try {
             @($patch | ForEach-Object {
                 ([string]$_).TrimEnd([char]13)
             }) -join "`n"
-        ).TrimEnd() + "`n"
+        ) + "`n"
         [IO.File]::WriteAllText(
             $patchPath,
             $patchText,
