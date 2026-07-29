@@ -19,6 +19,14 @@ correct change. The task contract and director constraints override this file.
   will not match and the edit will fail repeatedly.
 - Patch one region at a time and keep each `old_string` short but unambiguous.
   A large exact block is far more likely to mismatch than a few anchored lines.
+- Never rewrite an existing file wholesale. `write_file` is for files you are
+  creating; on a file that already exists, only `patch` is allowed. Replacing a
+  file you cannot reproduce line for line destroys the parts you were not asked
+  to touch, and reporting that as success is a false claim.
+- If `patch` keeps failing, the cause is the `old_string`, not the tool. Re-read
+  the exact lines you are targeting and shorten the anchor. After three failed
+  attempts on the same region, stop and report `Outcome: BLOCKED` naming the
+  region: a blocked task costs the director far less than a destructive one.
 - Use only tools explicitly provided. Playwright validation is limited to TRAMA at
   `http://127.0.0.1:4310` and its local API at `http://127.0.0.1:4311`; never
   browse an external URL. Invoke Playwright tools by their exact registered names,
