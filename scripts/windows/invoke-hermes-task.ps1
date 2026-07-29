@@ -264,6 +264,13 @@ try {
         else { 0 }
         $absoluteDeadline = $startedAt.AddSeconds([int]$contract.timeoutSeconds)
         $noProgressLimit = [int]$contract.noProgressTimeoutSeconds
+        $readOnlyStallLimit = [Math]::Max(
+            $noProgressLimit,
+            [int](Get-JsonProperty `
+                -Object $contract `
+                -Name 'readOnlyStallSeconds' `
+                -Default 300)
+        )
         $lastWorkspaceChangeAt = $startedAt
         $readOnlyEvents = 0
         # Git ran twice per 5s tick, i.e. ~480 processes over a 20-minute task,
@@ -327,10 +334,14 @@ try {
                 $stalled = $true
                 break
             }
+            # This window used to be a hardcoded 90 seconds, which silently
+            # overrode whatever patience the director had asked for and failed
+            # any model still reading a large file. It now comes from the
+            # contract, and never undercuts noProgressTimeoutSeconds.
             if (
                 $phase -eq 'edit' -and
                 $readOnlyEvents -ge 8 -and
-                ($now - $lastWorkspaceChangeAt).TotalSeconds -ge 90
+                ($now - $lastWorkspaceChangeAt).TotalSeconds -ge $readOnlyStallLimit
             ) {
                 $stalled = $true
                 break

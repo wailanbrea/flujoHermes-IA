@@ -55,6 +55,12 @@ param(
     [ValidateRange(60, 900)]
     [int]$NoProgressTimeoutSeconds = 180,
 
+    # How long an edit-phase task may keep reading before its first write. Reading
+    # refreshes the activity clock, so this needs its own budget, but it must be
+    # generous enough for a slow model to finish reading a large file.
+    [ValidateRange(60, 1800)]
+    [int]$ReadOnlyStallSeconds = 300,
+
     [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
     [string]$RequestedBy = 'Codex',
 
@@ -177,6 +183,7 @@ $contract = [ordered]@{
     maxTurns = $MaxTurns
     timeoutSeconds = $TimeoutSeconds
     noProgressTimeoutSeconds = $NoProgressTimeoutSeconds
+    readOnlyStallSeconds = $ReadOnlyStallSeconds
     toolsets = @($toolsets)
     correctionOf = $CorrectionOf
     attempt = $Attempt
