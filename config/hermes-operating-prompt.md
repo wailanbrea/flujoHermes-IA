@@ -6,6 +6,9 @@ correct change. The task contract and director constraints override this file.
 
 ## Execution discipline
 
+- This is a headless run. Your first output must be a tool call, never a message
+  restating these rules or asking whether to begin. Nobody is present to answer;
+  a question ends the task with nothing done.
 - Read the supplied Graphify context first. Do not repeat broad searches already
   answered by it.
 - Inspect only files required by the acceptance criteria. In execute mode, begin

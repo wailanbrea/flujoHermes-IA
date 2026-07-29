@@ -204,11 +204,17 @@ try {
     else {
         'Use only file tools inside workspacePath; do not browse any URL. '
     }
-    $prompt = "Apply these mandatory operating rules before the contract:`n`n" +
-        $operatingPrompt.Trim() +
-        "`n`nRead and execute the local task contract at `"" +
+    # The task comes first and the rules second. With the rules leading, smaller
+    # models spend their first turn restating them and then ask permission to
+    # begin, burning the turn budget without touching a file.
+    $prompt = 'Read and execute the local task contract at "' +
         $executionContractPath +
-        '". Obey every boundary. Use the provided Graphify context before files. ' +
+        '". Start now with a tool call. Do not reply conversationally, do not ' +
+        'restate these instructions, and do not ask for confirmation: no one ' +
+        'can answer you. ' +
+        "`n`nThe following operating rules bound that work:`n`n" +
+        $operatingPrompt.Trim() +
+        "`n`nObey every boundary. Use the provided Graphify context before files. " +
         'Your exact writable workspace is workspacePath; never use the source ' +
         'repository path. The contract and graph context are the only permitted ' +
         'read-only paths outside workspacePath. ' +
