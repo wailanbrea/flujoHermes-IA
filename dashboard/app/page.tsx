@@ -473,6 +473,57 @@ function boxesOverlap(a: DiagramBox, b: DiagramBox): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
+const LAYOUT_STORAGE_KEY = "trama-diagram-layout";
+
+type StoredArrangement = {
+  layout: Record<string, DiagramPoint>;
+  spread: number;
+};
+
+// Spread is stored beside the layout rather than inside it, so the layout map
+// keeps meaning exactly one thing: node id to position. Everything read back is
+// validated, because the value survives across deploys and can be stale, hand
+// edited, or written by an older build.
+function readStoredArrangement(): StoredArrangement {
+  const empty: StoredArrangement = { layout: {}, spread: 1 };
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!raw) return empty;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return empty;
+    const candidate = parsed as Partial<StoredArrangement>;
+
+    const layout: Record<string, DiagramPoint> = {};
+    for (const [id, point] of Object.entries(candidate.layout ?? {})) {
+      if (
+        point &&
+        typeof point === "object" &&
+        Number.isFinite((point as DiagramPoint).x) &&
+        Number.isFinite((point as DiagramPoint).y)
+      ) {
+        layout[id] = {
+          x: (point as DiagramPoint).x,
+          y: (point as DiagramPoint).y,
+        };
+      }
+    }
+
+    const spread =
+      typeof candidate.spread === "number" &&
+      candidate.spread >= SPREAD_MIN &&
+      candidate.spread <= SPREAD_MAX
+        ? candidate.spread
+        : 1;
+
+    return { layout, spread };
+  } catch {
+    // Storage can be disabled, full, or hold malformed JSON. None of that is a
+    // reason to fail rendering the diagram.
+    return empty;
+  }
+}
+
 // SVG has no text wrapping. Rather than truncate a node name, condense it to the
 // box width, which keeps every label readable and complete.
 function fitTextLength(text: string, fontSize: number): number | undefined {
@@ -554,11 +605,28 @@ function GovernanceDiagram({
   const svgRef = useRef<SVGSVGElement | null>(null);
   // Only nodes the user actually moved are stored, so incoming telemetry keeps
   // driving every node that has not been repositioned by hand.
-  const [layout, setLayout] = useState<Record<string, DiagramPoint>>({});
-  const [spread, setSpread] = useState(1);
+  // Read once on mount and share it, so the two states cannot disagree and
+  // storage is not parsed twice.
+  const [restored] = useState(readStoredArrangement);
+  const [layout, setLayout] = useState<Record<string, DiagramPoint>>(
+    restored.layout,
+  );
+  const [spread, setSpread] = useState(restored.spread);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const canvasWidth = Math.round(DIAGRAM_WIDTH * spread);
   const canvasHeight = Math.round(DIAGRAM_HEIGHT * spread);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        LAYOUT_STORAGE_KEY,
+        JSON.stringify({ layout, spread }),
+      );
+    } catch {
+      // A full or blocked store just means the arrangement is not remembered.
+    }
+  }, [layout, spread]);
   const dragRef = useRef<{
     id: string;
     offsetX: number;
@@ -811,6 +879,13 @@ function GovernanceDiagram({
             onClick={() => {
               setLayout({});
               setSpread(1);
+              if (typeof window !== "undefined") {
+                try {
+                  window.localStorage.removeItem(LAYOUT_STORAGE_KEY);
+                } catch {
+                  // The effect above will overwrite it on the next change.
+                }
+              }
             }}
             disabled={!reordered && spread === 1}
           >
