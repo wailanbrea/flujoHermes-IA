@@ -48,6 +48,12 @@ herramientas salvo que se habilite una captura saneada explícita.
   `scripts/windows/wait-hermes-task.ps1 -TaskId <id>`, que devuelve el resumen acotado
   en una sola llamada. Sondear `status.json` en bucle gasta contexto del director sin
   aportar información nueva.
+- LM Studio carga cada modelo con paralelismo 4 (medido: sin coste de rendimiento
+  con una sola petición en curso, +0,95 GiB dedicados en gemma y +0,13 GiB en qwen,
+  y 1,5x de rendimiento agregado con varias peticiones concurrentes). Esto permite
+  someter hasta dos tareas Hermes a la vez contra el mismo modelo cargado sin
+  degradar la que ya estaba en curso. No someter una tercera: cada tarea añade su
+  propio worktree y su propio consumo de contexto, y no se ha medido más allá de dos.
 - El mismo director debe revisar el resumen de
   `scripts/windows/get-hermes-brief.ps1` —veredicto, violaciones de política, líneas
   por archivo y cabeceras de hunk— y leer `changes.patch` completo sólo cuando ese

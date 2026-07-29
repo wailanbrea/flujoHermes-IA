@@ -9,8 +9,15 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'hermes-task-common.ps1')
 
+# Measured before raising this: at 65536 context, parallel 4 costs +0.95 GiB
+# dedicated VRAM on gemma (10.99 -> 11.94 GiB, still 4 GiB of headroom on the
+# 16 GiB card) and +0.13 GiB on qwen (14.21 -> 14.34 GiB). A single in-flight
+# request is unaffected (59.7 vs 61.3 tok/s, within run-to-run noise), and two
+# or more concurrent Hermes tasks against the same loaded model go from 58.8 to
+# 87.5 aggregate tok/s. Hermes issues one request at a time within a task, so
+# the gain only pays off once the orchestrator runs more than one task at once.
 $contextLength = 65536
-$parallel = 1
+$parallel = 4
 # The key itself comes from the shared map so this script and the task worker can
 # never disagree about which model an alias means.
 $modelKey = Get-HermesModelKey -Alias $Model

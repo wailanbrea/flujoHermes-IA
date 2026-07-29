@@ -83,7 +83,7 @@ exit 8
         ($loaded[0].modelKey -eq 'google/gemma-4-12b') `
         'Gemma 4 12B was not restored.'
     Assert-Condition ([int64]$loaded[0].contextLength -eq 65536) 'Context is unsafe.'
-    Assert-Condition ([int]$loaded[0].parallel -eq 1) 'Parallelism is unsafe.'
+    Assert-Condition ([int]$loaded[0].parallel -eq 4) 'Parallelism default drifted.'
     $calls = @(Get-Content -LiteralPath $logPath)
     foreach ($unload in @($calls | Where-Object { $_ -like 'unload|*' })) {
         Assert-Condition `
