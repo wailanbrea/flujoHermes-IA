@@ -364,8 +364,11 @@ $smallScopeContract = Read-JsonFile -Path (
     Join-Path (Get-TaskDirectory -TaskId $smallScopeResult.taskId) 'contract.json'
 )
 Assert-Condition `
-    ($smallScopeContract.model -eq 'gemma-qat') `
-    'A small-scope contract without an explicit -Model did not default to gemma-qat.'
+    ($smallScopeContract.model -eq 'gemma') `
+    'A small-scope contract without an explicit -Model did not use the default alias.'
+Assert-Condition `
+    ((Get-HermesModelKey -Alias $smallScopeContract.model) -eq 'google/gemma-4-12b-qat') `
+    'The default alias no longer resolves to gemma-qat.'
 
 $rejectedLargeScope = $false
 try {
