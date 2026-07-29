@@ -54,6 +54,18 @@ herramientas salvo que se habilite una captura saneada explícita.
   someter hasta dos tareas Hermes a la vez contra el mismo modelo cargado sin
   degradar la que ya estaba en curso. No someter una tercera: cada tarea añade su
   propio worktree y su propio consumo de contexto, y no se ha medido más allá de dos.
+- Sólo quedan dos modelos locales: `gemma`/`gemma-qat` (misma clave,
+  `google/gemma-4-12b-qat`, oficial de Google) y `qwen`
+  (`qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive`, fine-tune de terceros sin
+  afiliación verificada, con el rechazo del modelo eliminado por "abliteración" y
+  sin documentar el método — licencia Apache 2.0, sin bloqueo legal, pero sin la
+  disciplina de seguridad de un editor oficial). `submit-hermes-task.ps1` elige
+  `gemma` en silencio por debajo de 2 archivos permitidos y un presupuesto de
+  80 líneas (añadidas+eliminadas) combinadas — el mayor alcance que gemma-qat ha
+  completado de forma fiable esta sesión. Por encima de ese umbral exige
+  `-Model` explícito: nunca infraescala en silencio ni escala a qwen sin que el
+  director lo decida a propósito, dado que qwen cuesta ~7x más tiempo y tokens
+  por turno y mostró varianza mucho mayor entre ejecuciones idénticas.
 - El mismo director debe revisar el resumen de
   `scripts/windows/get-hermes-brief.ps1` —veredicto, violaciones de política, líneas
   por archivo y cabeceras de hunk— y leer `changes.patch` completo sólo cuando ese
