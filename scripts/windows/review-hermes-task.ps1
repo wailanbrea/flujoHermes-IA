@@ -119,7 +119,9 @@ function Request-HermesCorrection(
         MaxAddedLines        = [int]$Contract.patchPolicy.maxAddedLines
         MaxRemovedLines      = [int]$Contract.patchPolicy.maxRemovedLines
         MaxPatchBytes        = [int]$Contract.patchPolicy.maxPatchBytes
-        ForbidLiteralEscapedNewlines = $ForbidLiteralEscapedNewlines
+        # The guard is on by default now, so a correction only carries the
+        # opt-out when the parent contract explicitly disabled it.
+        AllowLiteralEscapedNewlines = (-not $ForbidLiteralEscapedNewlines)
         MaxTurns             = $maxTurns
         TimeoutSeconds       = $timeoutSeconds
         NoProgressTimeoutSeconds = $noProgressTimeout

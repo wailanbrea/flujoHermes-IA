@@ -848,7 +848,9 @@ function Get-HermesTaskBrief([string]$TaskId) {
     $nextAction = switch ($state) {
         'awaiting-review' {
             'Review the hunks below; read changes.patch only if they are ' +
-            'insufficient. Then review-hermes-task.ps1 -Decision Approve.'
+            'insufficient. A passing policy is mechanical - allowlist, line and ' +
+            'byte limits, git apply - and does not mean the result compiles. ' +
+            'Then review-hermes-task.ps1 -Decision Approve.'
         }
         'validating' {
             'Run build, linters and tests independently, then ' +

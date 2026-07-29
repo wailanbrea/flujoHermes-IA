@@ -44,7 +44,10 @@ param(
     [ValidateRange(1024, 10485760)]
     [int]$MaxPatchBytes = 32768,
 
-    [switch]$ForbidLiteralEscapedNewlines,
+    # A literal \n outside a quoted string is never valid source, and models
+    # emit them when they lose track of escaping mid-edit. The check was opt-in,
+    # so a contract that forgot it accepted a patch that could not compile.
+    [switch]$AllowLiteralEscapedNewlines,
 
     # The worker clamps this to 18. Accepting more here told a director it had a
     # bigger budget than the run would actually get, so the ceiling is stated
@@ -196,7 +199,7 @@ $contract = [ordered]@{
         maxAddedLines = $MaxAddedLines
         maxRemovedLines = $MaxRemovedLines
         maxPatchBytes = $MaxPatchBytes
-        forbidLiteralEscapedNewlines = $ForbidLiteralEscapedNewlines.IsPresent
+        forbidLiteralEscapedNewlines = -not $AllowLiteralEscapedNewlines.IsPresent
     }
     executionPolicy = [ordered]@{
         externalNetwork = 'denied'
