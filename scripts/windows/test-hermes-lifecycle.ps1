@@ -18,7 +18,8 @@ function Submit-FixtureTask([int]$Attempt = 1) {
         -AllowedFiles @('sample.ps1') `
         -ModificationAuthorized `
         -Attempt $Attempt `
-        -MaxAttempts 3
+        -MaxAttempts 3 `
+        -Model gemma-qat
     $status = $json | ConvertFrom-Json
     $script:taskIds.Add([string]$status.taskId) | Out-Null
     return $status

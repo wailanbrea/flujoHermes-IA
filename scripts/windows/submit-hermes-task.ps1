@@ -151,6 +151,36 @@ if ($Phase -ne 'edit' -and $normalizedAllowedFiles.Count -gt 0) {
     throw 'Only the edit phase accepts allowed files.'
 }
 
+# Evidence-based routing guard, measured this session: gemma-qat completed
+# every task at or under this scope reliably (a 1-line edit inside a
+# 1,471-line file; a 5-hunk, +10/-10 feature) at roughly 60 tok/s. qwen costs
+# roughly 7x the time and tokens per turn and showed far higher run-to-run
+# variance - on the identical contract, one run passed cleanly and another
+# tried to replace the dashboard's toolchain outright, caught only by patch
+# policy. Below the threshold the default model is used silently, since that
+# scope is proven safe; above it, a director must choose -Model explicitly
+# rather than silently getting either an under-powered or a costly, volatile
+# model.
+$smallScopeMaxFiles = 2
+$smallScopeMaxLineBudget = 80
+if (
+    $Phase -eq 'edit' -and
+    -not $PSBoundParameters.ContainsKey('Model') -and
+    (
+        $normalizedAllowedFiles.Count -gt $smallScopeMaxFiles -or
+        ($MaxAddedLines + $MaxRemovedLines) -gt $smallScopeMaxLineBudget
+    )
+) {
+    throw (
+        "This contract's scope ($($normalizedAllowedFiles.Count) file(s), " +
+        "$MaxAddedLines+$MaxRemovedLines line budget) exceeds what gemma-qat " +
+        "has been proven to complete reliably. Pass -Model explicitly: " +
+        'gemma-qat if this task is still small enough despite the budget, or ' +
+        'qwen if it genuinely needs multi-region judgment - and budget qwen at ' +
+        'roughly 7x the time and tokens, with materially higher variance.'
+    )
+}
+
 if ($Mode -eq 'execute') {
     if (-not $ModificationAuthorized) {
         throw 'Execute mode requires -ModificationAuthorized.'

@@ -107,12 +107,20 @@ function Request-HermesCorrection(
     if ($null -ne $Contract.modificationAuthorized) {
         $modificationAuthorized = [bool]$Contract.modificationAuthorized
     }
+    # Without this, a correction silently fell back to submit-hermes-task.ps1's
+    # own default model instead of staying on the one the parent task actually
+    # ran on - a qwen task's retry would have silently downgraded to gemma-qat.
+    $model = 'gemma'
+    if ($Contract.model) {
+        $model = [string]$Contract.model
+    }
 
     $submitParams = [ordered]@{
         ProjectPath          = $Contract.projectRoot
         Objective            = $Contract.objective
         AcceptanceCriteria   = @($Contract.acceptanceCriteria)
         Constraints          = $combinedConstraints
+        Model                = $model
         Mode                 = $Contract.mode
         Phase                = $Contract.phase
         AllowedFiles         = @($Contract.patchPolicy.allowedFiles)

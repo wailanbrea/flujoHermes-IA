@@ -343,6 +343,72 @@ finally {
     }
 }
 
+# --- Model routing guard ---------------------------------------------------
+# submit-hermes-task.ps1 requires an explicit -Model above a proven-safe scope
+# rather than silently under-scoping to gemma-qat or over-escalating to qwen.
+# -DeferWorker keeps these calls from ever starting a real Hermes process; only
+# contract.json and status.json are written.
+$submitScript = Join-Path $PSScriptRoot 'submit-hermes-task.ps1'
+$routingFixtureIds = [Collections.Generic.List[string]]::new()
+
+$smallScopeResult = & $submitScript `
+    -ProjectPath (Get-OrchestratorRoot) `
+    -Objective 'Routing guard test: scope within the proven-safe threshold.' `
+    -AcceptanceCriteria @('n/a') `
+    -AllowedFiles @('README.md') `
+    -MaxAddedLines 10 -MaxRemovedLines 10 `
+    -Mode execute -Phase edit -ModificationAuthorized -DeferWorker |
+    ConvertFrom-Json
+$routingFixtureIds.Add($smallScopeResult.taskId)
+$smallScopeContract = Read-JsonFile -Path (
+    Join-Path (Get-TaskDirectory -TaskId $smallScopeResult.taskId) 'contract.json'
+)
+Assert-Condition `
+    ($smallScopeContract.model -eq 'gemma-qat') `
+    'A small-scope contract without an explicit -Model did not default to gemma-qat.'
+
+$rejectedLargeScope = $false
+try {
+    & $submitScript `
+        -ProjectPath (Get-OrchestratorRoot) `
+        -Objective 'Routing guard test: scope past the proven-safe threshold.' `
+        -AcceptanceCriteria @('n/a') `
+        -AllowedFiles @('README.md') `
+        -MaxAddedLines 200 -MaxRemovedLines 200 `
+        -Mode execute -Phase edit -ModificationAuthorized -DeferWorker |
+        Out-Null
+}
+catch {
+    $rejectedLargeScope = $true
+}
+Assert-Condition `
+    $rejectedLargeScope `
+    'A large-scope contract without an explicit -Model was silently routed instead of rejected.'
+
+$explicitLargeScopeResult = & $submitScript `
+    -ProjectPath (Get-OrchestratorRoot) `
+    -Objective 'Routing guard test: scope past threshold with an explicit model.' `
+    -AcceptanceCriteria @('n/a') `
+    -AllowedFiles @('README.md') `
+    -MaxAddedLines 200 -MaxRemovedLines 200 `
+    -Model qwen `
+    -Mode execute -Phase edit -ModificationAuthorized -DeferWorker |
+    ConvertFrom-Json
+$routingFixtureIds.Add($explicitLargeScopeResult.taskId)
+$explicitLargeScopeContract = Read-JsonFile -Path (
+    Join-Path (Get-TaskDirectory -TaskId $explicitLargeScopeResult.taskId) 'contract.json'
+)
+Assert-Condition `
+    ($explicitLargeScopeContract.model -eq 'qwen') `
+    'An explicit -Model past the threshold was not honoured.'
+
+foreach ($fixtureId in $routingFixtureIds) {
+    $fixtureDir = Get-TaskDirectory -TaskId $fixtureId
+    if (Test-Path -LiteralPath $fixtureDir) {
+        Remove-Item -LiteralPath $fixtureDir -Recurse -Force
+    }
+}
+
 # --- Project lookup -------------------------------------------------------
 $resolveScript = Join-Path $PSScriptRoot 'resolve-project.ps1'
 $catalogPath = Join-Path (Get-OrchestratorRoot) (
