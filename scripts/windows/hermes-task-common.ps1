@@ -141,6 +141,10 @@ function Invoke-NativeCommand(
 function Get-HermesModelKey([string]$Alias) {
     switch ($Alias) {
         'gemma' { return 'google/gemma-4-12b' }
+        # Quantization-aware trained build: same architecture and a little
+        # smaller, but 4-bit quality holds up far better than a post-training
+        # quantization of the same size.
+        'gemma-qat' { return 'google/gemma-4-12b-qat' }
         'qwen' { return 'qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive' }
         default { throw "Unknown Hermes model alias '$Alias'." }
     }

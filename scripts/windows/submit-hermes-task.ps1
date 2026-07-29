@@ -69,7 +69,7 @@ param(
 
     # Pins the task to one prepared model. Recorded in the contract so a result
     # can always be attributed to the model that actually produced it.
-    [ValidateSet('gemma', 'qwen')]
+    [ValidateSet('gemma', 'gemma-qat', 'qwen')]
     [string]$Model = 'gemma',
 
     [ValidateRange(1, 3)]

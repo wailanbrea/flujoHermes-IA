@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('gemma', 'qwen')]
+    [ValidateSet('gemma', 'gemma-qat', 'qwen')]
     [string]$Model = 'gemma',
 
     [string]$LmsExecutable = 'lms.exe'
@@ -14,6 +14,7 @@ $parallel = 1
 # The key itself comes from the shared map so this script and the task worker can
 # never disagree about which model an alias means.
 $modelKey = Get-HermesModelKey -Alias $Model
+# Only the 35B exceeds the card and has to be split; the 12B builds fit whole.
 $gpuOffload = if ($Model -eq 'qwen') { '0.50' } else { 'max' }
 
 function Get-LoadedModels([string]$Executable) {

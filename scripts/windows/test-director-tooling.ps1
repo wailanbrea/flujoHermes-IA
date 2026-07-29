@@ -75,6 +75,12 @@ Assert-Condition `
     ((Get-HermesModelKey -Alias 'gemma') -eq 'google/gemma-4-12b') `
     'The gemma alias no longer maps to its model key.'
 Assert-Condition `
+    ((Get-HermesModelKey -Alias 'gemma-qat') -eq 'google/gemma-4-12b-qat') `
+    'The gemma-qat alias no longer maps to its model key.'
+Assert-Condition `
+    ((Get-HermesModelKey -Alias 'gemma') -ne (Get-HermesModelKey -Alias 'gemma-qat')) `
+    'The two gemma builds resolve to the same key.'
+Assert-Condition `
     ((Get-HermesModelKey -Alias 'qwen') -like 'qwen3.6-35b*') `
     'The qwen alias no longer maps to its model key.'
 $rejectedAlias = $false
