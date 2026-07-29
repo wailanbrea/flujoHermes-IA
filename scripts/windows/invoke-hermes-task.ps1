@@ -389,6 +389,22 @@ try {
     catch {
         Write-Warning 'Per-task Hermes usage telemetry could not be captured.'
     }
+    if ($stalled -or -not $completedInTime) {
+        # Measure before failing, so an abandoned run reports what it produced
+        # instead of an unmeasured zero.
+        $partial = Save-PartialWorkEvidence `
+            -ExecutionRoot $executionRoot `
+            -TaskDirectory $taskDirectory
+        Set-TaskStatus `
+            -TaskDirectory $taskDirectory `
+            -State 'executing' `
+            -Message 'Recuperando el trabajo parcial antes de fallar.' `
+            -Fields @{
+                partialWorkCaptured = $partial.Captured
+                partialFilesChanged = $partial.Files
+                partialPatchBytes = $partial.PatchBytes
+            }
+    }
     if ($stalled) {
         throw 'Hermes execution stalled without observable progress.'
     }

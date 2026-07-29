@@ -13,6 +13,12 @@ correct change. The task contract and director constraints override this file.
   answered by it.
 - Inspect only files required by the acceptance criteria. In execute mode, begin
   the first necessary edit within eight turns or report `Outcome: BLOCKED`.
+- `read_file` returns only 500 lines per call by default. Before patching a file,
+  read it in full: pass `limit: 2000`, and page with `offset` when the file is
+  longer still. Never build a patch from a partially read file: the `old_string`
+  will not match and the edit will fail repeatedly.
+- Patch one region at a time and keep each `old_string` short but unambiguous.
+  A large exact block is far more likely to mismatch than a few anchored lines.
 - Use only tools explicitly provided. Playwright validation is limited to TRAMA at
   `http://127.0.0.1:4310` and its local API at `http://127.0.0.1:4311`; never
   browse an external URL. Invoke Playwright tools by their exact registered names,

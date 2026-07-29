@@ -554,6 +554,66 @@ function Start-HermesWorker([string]$TaskId) {
         -WindowStyle Hidden | Out-Null
 }
 
+# A stalled or timed-out run used to throw before the diff was ever computed, so
+# the director was told "0 files changed" when that number had never been
+# measured and real work could be sitting in the worktree. This records what the
+# model actually produced. It is written to partial.patch, never changes.patch,
+# because it has passed no policy check and must never be applied by Approve.
+function Save-PartialWorkEvidence(
+    [string]$ExecutionRoot,
+    [string]$TaskDirectory
+) {
+    $summary = [pscustomobject]@{
+        Files = 0
+        PatchBytes = 0
+        Captured = $false
+    }
+    try {
+        & git.exe -C $ExecutionRoot add -N -- . 2>$null | Out-Null
+        $changed = @(
+            & git.exe -C $ExecutionRoot diff --name-only HEAD 2>$null
+        ) | Where-Object { $_ }
+        if ($LASTEXITCODE -ne 0) { return $summary }
+        $summary.Files = $changed.Count
+        if ($changed.Count -eq 0) {
+            $summary.Captured = $true
+            return $summary
+        }
+
+        $info = [Diagnostics.ProcessStartInfo]::new()
+        $info.FileName = 'git.exe'
+        $info.Arguments = "-C `"$($ExecutionRoot.Replace('"', '\"'))`" " +
+            'diff --binary --no-ext-diff HEAD'
+        $info.UseShellExecute = $false
+        $info.CreateNoWindow = $true
+        $info.RedirectStandardOutput = $true
+        $info.RedirectStandardError = $true
+        $process = [Diagnostics.Process]::new()
+        $process.StartInfo = $info
+        try {
+            if (-not $process.Start()) { return $summary }
+            $raw = $process.StandardOutput.ReadToEnd()
+            $process.StandardError.ReadToEnd() | Out-Null
+            $process.WaitForExit()
+            if ($process.ExitCode -ne 0) { return $summary }
+        }
+        finally {
+            $process.Dispose()
+        }
+
+        $text = $raw.Replace("`r`n", "`n").Replace("`r", "`n")
+        if ($text.Length -gt 0 -and -not $text.EndsWith("`n")) { $text += "`n" }
+        $path = Join-Path $TaskDirectory 'partial.patch'
+        [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
+        $summary.PatchBytes = (Get-Item -LiteralPath $path).Length
+        $summary.Captured = $true
+    }
+    catch {
+        # Salvage is best-effort; the underlying failure is what gets reported.
+    }
+    return $summary
+}
+
 function Get-TaskStatus([string]$TaskDirectory) {
     return Read-JsonFile -Path (Join-Path $TaskDirectory 'status.json')
 }
@@ -786,8 +846,18 @@ function Get-HermesTaskBrief([string]$TaskId) {
             'review-hermes-task.ps1 -Decision Complete.'
         }
         'failed' {
-            "Inspect errorCode '$errorCode'. Use -Decision RequestChanges with " +
-            'concrete feedback, or narrow the contract.'
+            $salvage = [int](
+                Get-JsonProperty -Object $status -Name 'partialFilesChanged' -Default 0
+            )
+            if ($salvage -gt 0) {
+                "Inspect errorCode '$errorCode'. The run left $salvage changed " +
+                'file(s) in partial.patch, unvalidated: read it to judge whether ' +
+                'the work is worth a RequestChanges with concrete feedback.'
+            }
+            else {
+                "Inspect errorCode '$errorCode'. Use -Decision RequestChanges " +
+                'with concrete feedback, or narrow the contract.'
+            }
         }
         'blocked' { 'Attempts exhausted. Re-scope the contract manually.' }
         'completed' { 'Nothing pending.' }
@@ -818,6 +888,12 @@ function Get-HermesTaskBrief([string]$TaskId) {
         patchPolicyPassed = Get-JsonProperty -Object $patchValidation -Name 'passed'
         violations = @(Get-JsonProperty -Object $patchValidation -Name 'violations' -Default @())
         localTokens = [int64](Get-JsonProperty -Object $status -Name 'localTokens' -Default 0)
+        partialFilesChanged = [int](
+            Get-JsonProperty -Object $status -Name 'partialFilesChanged' -Default 0
+        )
+        partialPatchBytes = [int](
+            Get-JsonProperty -Object $status -Name 'partialPatchBytes' -Default 0
+        )
         patch = Get-PatchDigest -PatchPath $patchPath
         report = Get-ReportDigest -ReportPath $reportPath
         sourceArtifactBytes = $sourceArtifactBytes
