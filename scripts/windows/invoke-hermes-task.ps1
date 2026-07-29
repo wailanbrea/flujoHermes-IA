@@ -68,7 +68,7 @@ try {
         -State 'preparing' `
         -Message 'Preparando contexto y espacio aislado.' `
         -Fields @{
-            attempt = 1
+            attempt = [int]$status.attempt
             startedAt = [DateTime]::UtcNow.ToString('o')
         }
 

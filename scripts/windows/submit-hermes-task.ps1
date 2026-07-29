@@ -55,6 +55,14 @@ param(
     [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
     [string]$RequestedBy = 'Codex',
 
+    [ValidateRange(1, 3)]
+    [int]$Attempt = 1,
+
+    [ValidateRange(1, 3)]
+    [int]$MaxAttempts = 3,
+
+    [string]$CorrectionOf = '',
+
     [switch]$ModificationAuthorized,
 
     [switch]$Wait
@@ -82,6 +90,9 @@ if ($Phase -eq 'edit' -and $Mode -ne 'execute') {
 }
 if ($Phase -ne 'edit' -and $Mode -ne 'analysis') {
     throw 'Plan and browser phases require analysis mode.'
+}
+if ($Attempt -gt $MaxAttempts) {
+    throw "Attempt ($Attempt) exceeds MaxAttempts ($MaxAttempts)."
 }
 $toolsets = switch ($Phase) {
     'browser' { @('playwright') }
@@ -141,6 +152,9 @@ $contract = [ordered]@{
     timeoutSeconds = $TimeoutSeconds
     noProgressTimeoutSeconds = $NoProgressTimeoutSeconds
     toolsets = @($toolsets)
+    correctionOf = $CorrectionOf
+    attempt = $Attempt
+    maxAttempts = $MaxAttempts
     patchPolicy = [ordered]@{
         allowedFiles = @($normalizedAllowedFiles)
         maxAddedLines = $MaxAddedLines
@@ -180,8 +194,8 @@ Set-TaskStatus `
         filesChanged = 0
         patchBytes = 0
         validationPassed = $null
-        attempt = 0
-        maxAttempts = 1
+        attempt = $Attempt
+        maxAttempts = $MaxAttempts
         errorCode = $null
         lastActivityAt = $null
         elapsedSeconds = 0

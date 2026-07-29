@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
+import { watch, type FSWatcher } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { freemem, homedir, hostname, totalmem, uptime } from "node:os";
@@ -26,7 +27,7 @@ import type {
 const execFileAsync = promisify(execFile);
 const HOST = "127.0.0.1";
 const PORT = Number.parseInt(process.env.TELEMETRY_PORT ?? "4311", 10);
-const INTERVAL_MS = 4_000;
+const INTERVAL_MS = 15000;
 const WORKSPACE_ROOT = resolve(import.meta.dirname, "..", "..");
 const GLOBAL_GRAPH_PATH = resolve(homedir(), ".graphify", "global-graph.json");
 const LOCAL_GRAPH_PATH = resolve(WORKSPACE_ROOT, "graphify-out", "graph.json");
@@ -336,6 +337,12 @@ let sequence = 0;
 let current: TelemetrySnapshot | null = null;
 let refreshPromise: Promise<void> | null = null;
 let cachedGraphData: CachedGraphData | null = null;
+let hermesWatcher: FSWatcher | null = null;
+let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let fullRefreshInterval: ReturnType<typeof setInterval> | null = null;
+let brokerRefreshPromise: Promise<void> | null = null;
+const LINE_FEED = String.fromCharCode(10);
 
 const checkedAt = () => new Date().toISOString();
 const latency = (start: number) =>
@@ -1476,7 +1483,106 @@ function json(response: ServerResponse, status: number, body: unknown): void {
   response.end(JSON.stringify(body));
 }
 
+async function refreshHermesBroker(): Promise<void> {
+  if (brokerRefreshPromise) return brokerRefreshPromise;
+  brokerRefreshPromise = (async () => {
+    const probe = await probeHermesBroker();
+
+    if (!current) return;
+
+    const oldServices = current.services.map((s) => ({ ...s }));
+    const oldConnections = current.connections.map((c) => ({ ...c }));
+
+    const newService = probe.service;
+    const newConnection = connectionFrom(probe);
+
+    const updatedServices = oldServices.map((s) =>
+      s.id === "hermes-broker" ? newService : s,
+    );
+    const updatedConnections = oldConnections.map((c) =>
+      c.target === "hermes-broker" ? newConnection : c,
+    );
+
+    const brokerOld = oldServices.find((s) => s.id === "hermes-broker");
+    const stableOld = JSON.stringify({
+      service: { state: brokerOld?.state, detail: brokerOld?.detail },
+      delegation: {
+        totalTasks: current.delegation.totalTasks,
+        activeCount: current.delegation.activeCount,
+        completedCount: current.delegation.completedCount,
+        failedCount: current.delegation.failedCount,
+        efficiency: current.delegation.efficiency,
+      },
+    });
+    const stableNew = JSON.stringify({
+      service: { state: newService.state, detail: newService.detail },
+      delegation: {
+        totalTasks: probe.delegation.totalTasks,
+        activeCount: probe.delegation.activeCount,
+        completedCount: probe.delegation.completedCount,
+        failedCount: probe.delegation.failedCount,
+        efficiency: probe.delegation.efficiency,
+      },
+    });
+
+    if (stableOld === stableNew) return;
+
+    sequence += 1;
+    const generatedAt = checkedAt();
+    updateEvents(updatedServices);
+    current = {
+      ...current,
+      generatedAt,
+      sequence,
+      services: updatedServices,
+      connections: updatedConnections,
+      delegation: probe.delegation,
+      workflow: buildWorkflow(
+        updatedServices,
+        current.graph,
+        probe.delegation,
+        generatedAt,
+      ),
+      events: [...events],
+    };
+    const payload = `event: snapshot${LINE_FEED}data: ${JSON.stringify(current)}${LINE_FEED}${LINE_FEED}`;
+    for (const client of clients) client.write(payload);
+  })().catch((err) => {
+    console.error(`[telemetry] broker refresh error: ${safeError(err)}`);
+  }).finally(() => {
+    brokerRefreshPromise = null;
+  });
+  return brokerRefreshPromise;
+}
+
+function startHermesWatcher(): void {
+  if (hermesWatcher) return;
+  try {
+    hermesWatcher = watch(
+      HERMES_JOBS_PATH,
+      { recursive: true },
+      (_event, _filename) => {
+        if (_filename?.includes("hermes-")) {
+          if (debounceTimeout) clearTimeout(debounceTimeout);
+          debounceTimeout = setTimeout(() => {
+            refreshHermesBroker().catch(() => {});
+          }, 150);
+        }
+      },
+    ).on("error", (err) => {
+      console.error(`[telemetry] hermes watcher error: ${safeError(err)}`);
+      if (hermesWatcher) {
+        hermesWatcher.close();
+        hermesWatcher = null;
+      }
+    });
+  } catch (err) {
+    console.error(`[telemetry] failed to start hermes watcher: ${safeError(err)}`);
+  }
+}
+
 async function refresh(): Promise<void> {
+  if (!hermesWatcher) startHermesWatcher();
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     current = await collect();
@@ -1531,10 +1637,28 @@ const server = createServer(async (request, response) => {
 server.listen(PORT, HOST, async () => {
   console.log(`Telemetry API listening on http://${HOST}:${PORT}`);
   await refresh();
-  setInterval(refresh, INTERVAL_MS).unref();
+  startHermesWatcher();
+  fullRefreshInterval = setInterval(refresh, INTERVAL_MS);
+  fullRefreshInterval.unref();
+  heartbeatInterval = setInterval(() => {
+    for (const client of clients) {
+      client.write(`:heartbeat${LINE_FEED}${LINE_FEED}`);
+    }
+  }, 15000);
+  heartbeatInterval.unref();
 });
 
 function shutdown(): void {
+  if (debounceTimeout) clearTimeout(debounceTimeout);
+  debounceTimeout = null;
+  if (hermesWatcher) {
+    hermesWatcher.close();
+    hermesWatcher = null;
+  }
+  if (fullRefreshInterval) clearInterval(fullRefreshInterval);
+  fullRefreshInterval = null;
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = null;
   for (const client of clients) client.end();
   server.close(() => process.exit(0));
 }
