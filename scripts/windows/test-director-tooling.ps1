@@ -185,6 +185,19 @@ Assert-Condition `
     (-not $reportDigest.tail.Contains($escape)) `
     'ANSI escape sequences survived into the digest.'
 
+$markdownReport = Join-Path ([IO.Path]::GetTempPath()) (
+    'brief-report-' + [Guid]::NewGuid().ToString('N') + '.txt'
+)
+[IO.File]::WriteAllText(
+    $markdownReport,
+    "work done`n**Outcome:** PASS`n",
+    $utf8
+)
+Assert-Condition `
+    ((Get-ReportDigest -ReportPath $markdownReport).outcome -eq 'PASS') `
+    'A verdict written with Markdown emphasis was reported as unknown.'
+Remove-Item -LiteralPath $markdownReport -Force
+
 $hugeReport = Join-Path ([IO.Path]::GetTempPath()) (
     'brief-report-' + [Guid]::NewGuid().ToString('N') + '.txt'
 )

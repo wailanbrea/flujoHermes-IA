@@ -795,7 +795,12 @@ function Get-ReportDigest([string]$ReportPath) {
     $escape = [char]27
     $text = ($text -replace "$escape\[[0-9;]*[A-Za-z]", '').Trim()
     if (-not $text) { return $digest }
-    $match = [regex]::Match($text, '(?im)^\s*outcome\s*:\s*(PASS|FAIL|BLOCKED)')
+    # Models format the required verdict as plain text or as Markdown, so the
+    # emphasis characters have to be tolerated or a PASS reads as unknown.
+    $match = [regex]::Match(
+        $text,
+        '(?im)^\s*[*_]{0,2}\s*outcome\s*[*_]{0,2}\s*:\s*[*_]{0,2}\s*(PASS|FAIL|BLOCKED)'
+    )
     if ($match.Success) {
         $digest.outcome = $match.Groups[1].Value.ToUpperInvariant()
     }
