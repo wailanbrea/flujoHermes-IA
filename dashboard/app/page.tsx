@@ -433,7 +433,7 @@ type DiagramPoint = { x: number; y: number };
 // The canvas grows with the spread control while the boxes keep their size, so
 // raising it genuinely pushes nodes apart instead of just scaling the picture.
 const SPREAD_MIN = 1;
-const SPREAD_MAX = 2;
+const SPREAD_MAX = 2.5;
 
 // WorkflowNode.x and .y are percentages of the canvas, the convention the
 // telemetry server already emits. Keeping the stored layout in percentages means
