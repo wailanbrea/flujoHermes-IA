@@ -46,7 +46,10 @@ param(
 
     [switch]$ForbidLiteralEscapedNewlines,
 
-    [ValidateRange(5, 24)]
+    # The worker clamps this to 18. Accepting more here told a director it had a
+    # bigger budget than the run would actually get, so the ceiling is stated
+    # where it is asked for.
+    [ValidateRange(5, 18)]
     [int]$MaxTurns = 18,
 
     [ValidateRange(60, 3600)]
