@@ -108,7 +108,6 @@ export type HermesTaskState =
   | "awaiting-review"
   | "validating"
   | "completed"
-  | "rejected"
   | "failed"
   | "blocked"
   | "validation-failed";

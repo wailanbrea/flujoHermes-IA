@@ -43,19 +43,26 @@ function Request-HermesCorrection(
     [string]$ReviewedBy,
     [bool]$ForbidLiteralEscapedNewlines
 ) {
-    if (-not $Feedback -or $Feedback.Trim().Length -eq 0) {
-        throw 'Correction feedback must be nonblank.'
+    $sanitizedFeedback = Get-SanitizedCorrectionFeedback -Feedback $Feedback
+    $currentAttempt = if ($null -ne $Status.attempt) {
+        [int]$Status.attempt
     }
-
-    $currentAttempt = $Status.attempt
-    if ($null -eq $currentAttempt) {
-        $currentAttempt = 0
+    elseif ($null -ne $Contract.attempt) {
+        [int]$Contract.attempt
     }
-
-    $maxAttempts = $Status.maxAttempts
-    if ($null -eq $maxAttempts) {
-        $maxAttempts = 1
+    else {
+        1
     }
+    $maxAttempts = if ($null -ne $Status.maxAttempts) {
+        [int]$Status.maxAttempts
+    }
+    elseif ($null -ne $Contract.maxAttempts) {
+        [int]$Contract.maxAttempts
+    }
+    else {
+        3
+    }
+    $maxAttempts = [Math]::Min(3, $maxAttempts)
 
     if ($currentAttempt -ge $maxAttempts) {
         Set-TaskStatus `
@@ -66,14 +73,24 @@ function Request-HermesCorrection(
         return
     }
 
-    $sanitizedFeedback = $Feedback.Trim()
-    if ($sanitizedFeedback.Length -gt 500) {
-        $sanitizedFeedback = $sanitizedFeedback.Substring(0, 500)
-    }
+    $combinedConstraints = @($Contract.constraints | Select-Object -First 19)
+    $combinedConstraints += $sanitizedFeedback
 
-    $combinedConstraints = @($Contract.constraints)
-    if ($sanitizedFeedback.Length -gt 0) {
-        $combinedConstraints += $sanitizedFeedback
+    $maxTurns = 18
+    if ($null -ne $Contract.maxTurns) {
+        $maxTurns = [Math]::Max(5, [Math]::Min(18, [int]$Contract.maxTurns))
+    }
+    $timeoutSeconds = 1200
+    if ($null -ne $Contract.timeoutSeconds) {
+        $timeoutSeconds = [int]$Contract.timeoutSeconds
+    }
+    $noProgressTimeout = 180
+    if ($null -ne $Contract.noProgressTimeoutSeconds) {
+        $noProgressTimeout = [int]$Contract.noProgressTimeoutSeconds
+    }
+    $modificationAuthorized = $true
+    if ($null -ne $Contract.modificationAuthorized) {
+        $modificationAuthorized = [bool]$Contract.modificationAuthorized
     }
 
     $submitParams = [ordered]@{
@@ -88,11 +105,11 @@ function Request-HermesCorrection(
         MaxRemovedLines      = [int]$Contract.patchPolicy.maxRemovedLines
         MaxPatchBytes        = [int]$Contract.patchPolicy.maxPatchBytes
         ForbidLiteralEscapedNewlines = $ForbidLiteralEscapedNewlines
-        MaxTurns             = if ($null -ne $Contract.maxTurns) { [int]$Contract.maxTurns } else { 30 }
-        TimeoutSeconds       = if ($null -ne $Contract.timeoutSeconds) { [int]$Contract.timeoutSeconds } else { 1200 }
-        NoProgressTimeoutSeconds = if ($null -ne $Contract.noProgressTimeoutSeconds) { [int]$Contract.noProgressTimeoutSeconds } else { 180 }
+        MaxTurns             = $maxTurns
+        TimeoutSeconds       = $timeoutSeconds
+        NoProgressTimeoutSeconds = $noProgressTimeout
         RequestedBy          = $ReviewedBy
-        ModificationAuthorized = if ($null -ne $Contract.modificationAuthorized) { [bool]$Contract.modificationAuthorized } else { $true }
+        ModificationAuthorized = $modificationAuthorized
         Wait                 = $false
     }
 
@@ -161,22 +178,10 @@ elseif ($Decision -eq 'Approve') {
     if ($status.state -ne 'awaiting-review') {
         throw 'Only an awaiting-review task can be approved.'
     }
-    $patchValidationPath = Join-Path $taskDirectory 'patch-validation.json'
-    if (-not (Test-Path -LiteralPath $patchValidationPath -PathType Leaf)) {
-        throw 'Hermes patch validation evidence is missing.'
-    }
-    $patchValidation = Read-JsonFile -Path $patchValidationPath
-    if (-not [bool]$patchValidation.passed) {
-        throw 'Hermes patch policy did not pass.'
-    }
-    $patchPath = Join-Path $taskDirectory 'changes.patch'
-    if ($status.patchBytes -gt 0 -and (
-        -not (Test-Path -LiteralPath $patchPath -PathType Leaf) -or
-        (Get-Item -LiteralPath $patchPath).Length -ne [int64]$patchValidation.patchBytes
-    )) {
-        throw 'Hermes patch no longer matches its validation evidence.'
-    }
-
+    Assert-CleanGitRepository -ProjectRoot $project.Path
+    $patchValidation = Assert-PatchEvidence `
+        -ProjectRoot $project.Path `
+        -TaskDirectory $taskDirectory
 
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
@@ -205,52 +210,26 @@ else {
                 validatedAt = [DateTime]::UtcNow.ToString('o')
                 reviewedBy = $ReviewedBy
                 validationPassed = $true
-                validationSummary = $ValidationSummary.Substring(
-                    0,
-                    [Math]::Min(180, $ValidationSummary.Length)
-                )
             }
-        & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
-            -ProjectPath $project.Path `
-            -Refresh | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Code passed validation, but Graphify refresh failed.'
+        if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -ne '1') {
+            & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
+                -ProjectPath $project.Path `
+                -Refresh | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Code passed validation, but Graphify refresh failed.'
+            }
         }
         Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
         exit 0
     }
 
     if ($ValidationPassed) {
-        $patchValidationPath = Join-Path $taskDirectory 'patch-validation.json'
-        if (-not (Test-Path -LiteralPath $patchValidationPath -PathType Leaf)) {
-            throw 'Patch validation file is missing.'
-        }
-        $patchValidation = Read-JsonFile -Path $patchValidationPath
-
-        if (-not [bool]$patchValidation.passed) {
-            throw 'Patch validation failed.'
-        }
-
+        Assert-CleanGitRepository -ProjectRoot $project.Path
+        $patchValidation = Assert-PatchEvidence `
+            -ProjectRoot $project.Path `
+            -TaskDirectory $taskDirectory
         $patchPath = Join-Path $taskDirectory 'changes.patch'
-        if ($status.patchBytes -gt 0) {
-            if (-not (Test-Path -LiteralPath $patchPath -PathType Leaf) -or (Get-Item -LiteralPath $patchPath).Length -ne [int64]$patchValidation.patchBytes) {
-                throw 'Hermes patch no longer matches its validation evidence.'
-            }
-
-            $gitStatus = @(& git.exe -C $project.Path status --porcelain)
-            if ($LASTEXITCODE -ne 0 -or $gitStatus.Count -gt 0) {
-                throw 'Source is not clean before applying patch.'
-            }
-
-            & git.exe -C $project.Path apply --check $patchPath
-            if ($LASTEXITCODE -ne 0) {
-                Set-TaskStatus `
-                    -TaskDirectory $taskDirectory `
-                    -State 'blocked' `
-                    -Message 'El parche entra en conflicto con el proyecto actual.' `
-                    -Fields @{ errorCode = 'patch-check-failed' }
-                throw 'Hermes patch did not pass git apply --check.'
-            }
+        if ([int64]$patchValidation.patchBytes -gt 0) {
             & git.exe -C $project.Path apply $patchPath
             if ($LASTEXITCODE -ne 0) {
                 throw 'Git failed while applying the reviewed Hermes patch.'
@@ -270,15 +249,16 @@ else {
                 validatedAt   = [DateTime]::UtcNow.ToString('o')
                 reviewedBy    = $ReviewedBy
                 validationPassed = [bool]$ValidationPassed
-                validationSummary = $ValidationSummary.Substring(0, [Math]::Min(180, $ValidationSummary.Length))
                 worktreeActive = $false
             }
 
-        & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
-            -ProjectPath $project.Path `
-            -Refresh | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Code passed validation, but Graphify refresh failed.'
+        if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -ne '1') {
+            & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
+                -ProjectPath $project.Path `
+                -Refresh | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Code passed validation, but Graphify refresh failed.'
+            }
         }
     }
     else {

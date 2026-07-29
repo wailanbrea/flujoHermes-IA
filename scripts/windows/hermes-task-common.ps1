@@ -71,6 +71,13 @@ function Stop-ProcessTree(
         $taskkill.Dispose()
     }
 
+    $exitDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (
+        (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) -and
+        [DateTime]::UtcNow -lt $exitDeadline
+    ) {
+        Start-Sleep -Milliseconds 100
+    }
     if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
         $detail = @($stderr, $stdout) |
             Where-Object { $_ } |
@@ -139,6 +146,115 @@ function Write-JsonAtomic(
             Remove-Item -LiteralPath $temporary -Force
         }
     }
+}
+
+function Get-FileSha256([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw 'Cannot hash a missing file.'
+    }
+    return ([string](Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash).ToLowerInvariant()
+}
+
+function Get-SanitizedCorrectionFeedback([string]$Feedback) {
+    if (-not $Feedback) {
+        throw 'Correction feedback must be concrete and nonblank.'
+    }
+    $sanitized = ($Feedback -replace '[\x00-\x1F\x7F]+', ' ').Trim()
+    $sanitized = $sanitized -replace '\s{2,}', ' '
+    if (
+        $sanitized.Length -lt 12 -or
+        $sanitized -match '^(fix|fix it|try again|corrige|arregla|reintenta|mal)[.! ]*$'
+    ) {
+        throw 'Correction feedback must describe a concrete validation failure.'
+    }
+    if ($sanitized -match '(?i)(api[_-]?key|authorization|bearer|password|secret)\s*[:=]') {
+        throw 'Correction feedback must not contain credentials or secrets.'
+    }
+    if ($sanitized.Length -gt 500) {
+        $sanitized = $sanitized.Substring(0, 500).Trim()
+    }
+    return $sanitized
+}
+
+function Test-SuspiciousLiteralEscapedNewline([string]$AddedLine) {
+    if (-not $AddedLine.Contains('\n')) { return $false }
+    $quote = [char]0
+    $escaped = $false
+    for ($index = 0; $index -lt $AddedLine.Length - 1; $index++) {
+        $character = $AddedLine[$index]
+        if ($escaped) {
+            $escaped = $false
+            continue
+        }
+        if ($quote -ne [char]0) {
+            if ($character -eq '\') {
+                $escaped = $true
+            }
+            elseif ($character -eq $quote) {
+                $quote = [char]0
+            }
+            continue
+        }
+        if ($character -eq "'" -or $character -eq '"' -or $character -eq '`') {
+            $quote = $character
+            continue
+        }
+        if ($character -eq '\' -and $AddedLine[$index + 1] -eq 'n') {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Assert-CleanGitRepository([string]$ProjectRoot) {
+    $gitStatus = @(& git.exe -C $ProjectRoot status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $gitStatus.Count -gt 0) {
+        throw 'Source repository must be clean.'
+    }
+}
+
+function Assert-PatchEvidence(
+    [string]$ProjectRoot,
+    [string]$TaskDirectory
+) {
+    $validationPath = Join-Path $TaskDirectory 'patch-validation.json'
+    if (-not (Test-Path -LiteralPath $validationPath -PathType Leaf)) {
+        throw 'Patch validation evidence is missing.'
+    }
+    $evidence = Read-JsonFile -Path $validationPath
+    if (-not [bool]$evidence.passed) {
+        throw 'Patch validation evidence did not pass.'
+    }
+    if (
+        $evidence.patchBytes -isnot [ValueType] -or
+        -not $evidence.patchSha256 -or
+        ([string]$evidence.patchSha256) -notmatch '^[a-fA-F0-9]{64}$'
+    ) {
+        throw 'Patch validation evidence is incomplete.'
+    }
+    $patchPath = Join-Path $TaskDirectory 'changes.patch'
+    if ([int64]$evidence.patchBytes -eq 0) {
+        if (Test-Path -LiteralPath $patchPath -PathType Leaf) {
+            if ((Get-Item -LiteralPath $patchPath).Length -ne 0) {
+                throw 'Patch changed after validation.'
+            }
+        }
+        return $evidence
+    }
+    if (-not (Test-Path -LiteralPath $patchPath -PathType Leaf)) {
+        throw 'Validated patch is missing.'
+    }
+    if (
+        (Get-Item -LiteralPath $patchPath).Length -ne [int64]$evidence.patchBytes -or
+        (Get-FileSha256 -Path $patchPath) -ne ([string]$evidence.patchSha256).ToLowerInvariant()
+    ) {
+        throw 'Patch changed after validation.'
+    }
+    & git.exe -C $ProjectRoot apply --check $patchPath
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Patch no longer passes git apply --check.'
+    }
+    return $evidence
 }
 
 function Get-ManagedRootPath([string]$Alias) {
@@ -226,6 +342,11 @@ function Set-TaskStatus(
     $values.updatedAt = [DateTime]::UtcNow.ToString('o')
     foreach ($key in $Fields.Keys) {
         $values[$key] = $Fields[$key]
+    }
+    @($values.Keys) | Where-Object {
+        $_ -match '(?i)(feedback|prompt|response|session.?id|tool.?arguments?|validationSummary|objective|acceptanceCriteria|constraints)'
+    } | ForEach-Object {
+        $values.Remove($_)
     }
     Write-JsonAtomic -Path $path -Value $values
 }

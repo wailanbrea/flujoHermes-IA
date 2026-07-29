@@ -197,7 +197,9 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.match(benchmark, /scoped-edit/);
   assert.doesNotMatch(benchmark, /api[_-]?key|https:\/\//i);
   assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
-  assert.match(review, /apply --check/);
+  assert.match(common, /apply --check/);
+  assert.match(common, /Get-FileSha256/);
+  assert.match(worker, /patchSha256/);
   assert.match(review, /patchValidation/);
   assert.match(review, /RequestChanges/);
   assert.match(review, /correction-attempts-exhausted/);

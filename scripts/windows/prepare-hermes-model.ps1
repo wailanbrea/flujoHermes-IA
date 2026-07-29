@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [ValidateSet('gemma', 'qwen')]
-    [string]$Model = 'gemma'
+    [string]$Model = 'gemma',
+
+    [string]$LmsExecutable = 'lms.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,42 +18,41 @@ else {
     $gpuOffload = 'max'
 }
 
-$loaded = @(& lms.exe ps --json | ConvertFrom-Json)
+$loaded = @(& $LmsExecutable ps --json | ConvertFrom-Json)
 if ($LASTEXITCODE -ne 0) {
     throw 'LM Studio could not list loaded models.'
 }
 
-$target = @($loaded | Where-Object { $_.modelKey -eq $modelKey })[0]
+$targets = @($loaded | Where-Object {
+    $_.type -eq 'llm' -and $_.modelKey -eq $modelKey
+})
 $conflicts = @(
     $loaded | Where-Object {
         $_.type -eq 'llm' -and $_.modelKey -ne $modelKey
     }
 )
 foreach ($conflict in $conflicts) {
-    & lms.exe unload $conflict.identifier
+    $conflictIdentifier = [string]$conflict.identifier
+    if (-not $conflictIdentifier) {
+        throw 'A loaded language model has no unload identifier.'
+    }
+    & $LmsExecutable unload $conflictIdentifier
     if ($LASTEXITCODE -ne 0) {
         throw 'LM Studio could not unload a conflicting language model.'
     }
 }
-
-$safeTarget = $target -and
-    [int64]$target.contextLength -eq $contextLength -and
-    [int]$target.parallel -eq $parallel
-if ($safeTarget) {
-    Write-Output (
-        "Hermes model already ready: $modelKey; context $contextLength; " +
-        "parallel $parallel; GPU preset $gpuOffload."
-    )
-    exit 0
-}
-if ($target) {
-    & lms.exe unload $target.identifier
+foreach ($unsafeTarget in $targets) {
+    $targetIdentifier = [string]$unsafeTarget.identifier
+    if (-not $targetIdentifier) {
+        throw 'The target language model has no unload identifier.'
+    }
+    & $LmsExecutable unload $targetIdentifier
     if ($LASTEXITCODE -ne 0) {
         throw 'LM Studio could not unload the unsafe target instance.'
     }
 }
 
-& lms.exe load $modelKey `
+& $LmsExecutable load $modelKey `
     --identifier $modelKey `
     --context-length $contextLength `
     --parallel $parallel `
@@ -60,6 +61,20 @@ if ($target) {
     --yes
 if ($LASTEXITCODE -ne 0) {
     throw 'LM Studio could not load the selected Hermes model safely.'
+}
+
+$verified = @(& $LmsExecutable ps --json | ConvertFrom-Json)
+if ($LASTEXITCODE -ne 0) {
+    throw 'LM Studio could not verify the loaded Hermes model.'
+}
+$verifiedLlms = @($verified | Where-Object { $_.type -eq 'llm' })
+$verifiedTarget = @($verifiedLlms | Where-Object {
+    $_.modelKey -eq $modelKey -and
+    [int64]$_.contextLength -eq $contextLength -and
+    [int]$_.parallel -eq $parallel
+})
+if ($verifiedLlms.Count -ne 1 -or $verifiedTarget.Count -ne 1) {
+    throw 'LM Studio did not finish with exactly one safely configured language model.'
 }
 
 Write-Output (

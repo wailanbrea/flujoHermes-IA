@@ -212,7 +212,7 @@ try {
         '" -Q -t ' +
         $toolsetArgument +
         ' --checkpoints --max-turns ' +
-        [int]$contract.maxTurns +
+        [Math]::Min([int]$contract.maxTurns, 18) +
         ' --source tool --no-restore-cwd --ignore-rules'
     $processInfo = [Diagnostics.ProcessStartInfo]::new()
     $processInfo.FileName = 'hermes.exe'
@@ -245,6 +245,8 @@ try {
         else { 0 }
         $absoluteDeadline = $startedAt.AddSeconds([int]$contract.timeoutSeconds)
         $noProgressLimit = [int]$contract.noProgressTimeoutSeconds
+        $lastWorkspaceChangeAt = $startedAt
+        $readOnlyEvents = 0
         while (-not $process.WaitForExit(5000)) {
             $now = [DateTime]::UtcNow
             $process.Refresh()
@@ -261,6 +263,7 @@ try {
                     $lastAgentLogLength = $agentLogLength
                     $lastActivityAt = $now
                     $progressKind = 'agent-event'
+                    $readOnlyEvents += 1
                 }
             }
             $currentFingerprint = (
@@ -272,6 +275,8 @@ try {
                 $workspaceFingerprint = $currentFingerprint
                 if ($currentFingerprint) {
                     $lastActivityAt = $now
+                    $lastWorkspaceChangeAt = $now
+                    $readOnlyEvents = 0
                     $progressKind = 'workspace-change'
                 }
             }
@@ -290,6 +295,14 @@ try {
                     progressKind = $progressKind
                 }
             if ($noProgressSeconds -ge $noProgressLimit) {
+                $stalled = $true
+                break
+            }
+            if (
+                $phase -eq 'edit' -and
+                $readOnlyEvents -ge 8 -and
+                ($now - $lastWorkspaceChangeAt).TotalSeconds -ge 90
+            ) {
                 $stalled = $true
                 break
             }
@@ -392,36 +405,72 @@ try {
             $violations.Add('removed-lines-limit')
         }
 
-        $patch = @(& git.exe -C $executionRoot diff --binary --no-ext-diff HEAD)
-        if ($LASTEXITCODE -ne 0) {
+        $diffInfo = [Diagnostics.ProcessStartInfo]::new()
+        $diffInfo.FileName = 'git.exe'
+        $safeExecutionRoot = $executionRoot.Replace('"', '\"')
+        $diffInfo.Arguments = "-C `"$safeExecutionRoot`" diff --binary --no-ext-diff HEAD"
+        $diffInfo.UseShellExecute = $false
+        $diffInfo.CreateNoWindow = $true
+        $diffInfo.RedirectStandardOutput = $true
+        $diffInfo.RedirectStandardError = $true
+        $diffProcess = [Diagnostics.Process]::new()
+        $diffProcess.StartInfo = $diffInfo
+        try {
+            if (-not $diffProcess.Start()) {
+                throw 'Git diff process could not start.'
+            }
+            $rawPatch = $diffProcess.StandardOutput.ReadToEnd()
+            $diffProcess.StandardError.ReadToEnd() | Out-Null
+            $diffProcess.WaitForExit()
+            $diffExitCode = $diffProcess.ExitCode
+        }
+        finally {
+            $diffProcess.Dispose()
+        }
+        if ($diffExitCode -ne 0) {
             throw 'Git could not capture the Hermes patch.'
         }
         $patchPath = Join-Path $taskDirectory 'changes.patch'
-        $patchText = (
-            @($patch | ForEach-Object {
-                ([string]$_).TrimEnd([char]13)
-            }) -join "`n"
-        ) + "`n"
+        $patchText = $rawPatch.Replace("`r`n", "`n").Replace("`r", "`n")
+        if ($patchText.Length -gt 0 -and -not $patchText.EndsWith("`n")) {
+            $patchText += "`n"
+        }
         [IO.File]::WriteAllText(
             $patchPath,
             $patchText,
             $utf8
         )
         $patchBytes = (Get-Item -LiteralPath $patchPath).Length
+        if ([IO.File]::ReadAllBytes($patchPath) -contains [byte]13) {
+            $violations.Add('patch-contains-cr')
+        }
         if ($patchBytes -gt [int]$patchPolicy.maxPatchBytes) {
             $violations.Add('patch-bytes-limit')
         }
         if ([bool]$patchPolicy.forbidLiteralEscapedNewlines) {
-            $hasEscapedNewline = @($patch | Where-Object {
-                $_ -match '^\+(?!\+\+)' -and $_.Substring(1).Contains('\n')
+            $hasEscapedNewline = @(($patchText -split "`n") | Where-Object {
+                $_ -match '^\+(?!\+\+)' -and
+                (Test-SuspiciousLiteralEscapedNewline -AddedLine $_.Substring(1))
             }).Count -gt 0
             if ($hasEscapedNewline) {
                 $violations.Add('literal-escaped-newline')
             }
         }
+        if ($patchBytes -gt 0) {
+            & git.exe -C $project.Path apply --check $patchPath
+            if ($LASTEXITCODE -ne 0) {
+                $violations.Add('git-apply-check-failed')
+            }
+        }
     }
 
     $uniqueViolations = @($violations | Sort-Object -Unique)
+    $patchSha256 = if ($patchBytes -gt 0) {
+        Get-FileSha256 -Path $patchPath
+    }
+    else {
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+    }
     $patchValidation = [ordered]@{
         schemaVersion = 1
         passed = $uniqueViolations.Count -eq 0
@@ -429,6 +478,7 @@ try {
         additions = $addedLines
         removals = $removedLines
         patchBytes = $patchBytes
+        patchSha256 = $patchSha256
         violations = $uniqueViolations
     }
     Write-JsonAtomic `
@@ -476,13 +526,28 @@ catch {
         0,
         [Math]::Min(180, ($safeMessage -replace '[\r\n\t]+', ' ').Length)
     )
+    $stableErrorCode = if ($stalled) {
+        'no-progress'
+    }
+    elseif ($safeMessage -like '*timed out*') {
+        'execution-timeout'
+    }
+    elseif ($safeMessage -like '*patch policy failed*') {
+        'patch-policy-failed'
+    }
+    elseif ($safeMessage -like '*exit code*') {
+        'hermes-exit-nonzero'
+    }
+    else {
+        'worker-failed'
+    }
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'failed' `
         -Message 'La ejecucion local fallo; requiere revision.' `
         -Fields @{
             finishedAt = [DateTime]::UtcNow.ToString('o')
-            errorCode = $safeMessage
+            errorCode = $stableErrorCode
             worktreePath = $worktreePath
             taskUsageCaptured = $taskUsageCaptured
             localTokens = $taskUsageTokens

@@ -35,7 +35,6 @@ const taskStateLabels: Record<HermesTaskState, string> = {
   "awaiting-review": "Esperando revisión",
   validating: "Validando",
   completed: "Completada",
-  rejected: "Rechazada",
   failed: "Fallida",
   blocked: "Bloqueada",
   "validation-failed": "Validación fallida",
@@ -55,7 +54,6 @@ const taskStages: Array<{
 ];
 
 const unsuccessfulTaskStates = new Set<HermesTaskState>([
-  "rejected",
   "failed",
   "blocked",
   "validation-failed",

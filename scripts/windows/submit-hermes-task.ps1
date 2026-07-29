@@ -43,8 +43,8 @@ param(
 
     [switch]$ForbidLiteralEscapedNewlines,
 
-    [ValidateRange(5, 80)]
-    [int]$MaxTurns = 30,
+    [ValidateRange(5, 24)]
+    [int]$MaxTurns = 18,
 
     [ValidateRange(60, 3600)]
     [int]$TimeoutSeconds = 1200,
@@ -209,13 +209,15 @@ if ($Wait) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 else {
-    $argumentLine = '-NoProfile -NonInteractive -ExecutionPolicy Bypass ' +
-        "-File `"$worker`" -TaskId `"$taskId`""
-    Start-Process `
-        -FilePath 'powershell.exe' `
-        -ArgumentList $argumentLine `
-        -WorkingDirectory (Get-OrchestratorRoot) `
-        -WindowStyle Hidden | Out-Null
+    if ($env:HERMES_TEST_DEFER_WORKER -ne '1') {
+        $argumentLine = '-NoProfile -NonInteractive -ExecutionPolicy Bypass ' +
+            "-File `"$worker`" -TaskId `"$taskId`""
+        Start-Process `
+            -FilePath 'powershell.exe' `
+            -ArgumentList $argumentLine `
+            -WorkingDirectory (Get-OrchestratorRoot) `
+            -WindowStyle Hidden | Out-Null
+    }
 }
 
 Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress

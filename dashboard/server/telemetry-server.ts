@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { watch, type FSWatcher } from "node:fs";
+import { mkdirSync, watch, type FSWatcher } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { freemem, homedir, hostname, totalmem, uptime } from "node:os";
@@ -150,18 +150,20 @@ const hermesTaskSchema = z.object({
     .default("Codex"),
   mode: z.enum(["analysis", "execute"]),
   phase: z.enum(["plan", "edit", "browser"]).default("plan"),
-  state: z.enum([
-    "queued",
-    "preparing",
-    "executing",
-    "awaiting-review",
-    "validating",
-    "completed",
-    "rejected",
-    "failed",
-    "blocked",
-    "validation-failed",
-  ]),
+  state: z.preprocess(
+    (value) => (value === "rejected" ? "blocked" : value),
+    z.enum([
+      "queued",
+      "preparing",
+      "executing",
+      "awaiting-review",
+      "validating",
+      "completed",
+      "failed",
+      "blocked",
+      "validation-failed",
+    ]),
+  ),
   updatedAt: z.string(),
   filesChanged: z.number().int().nonnegative().default(0),
   patchBytes: z.number().int().nonnegative().default(0),
@@ -176,7 +178,26 @@ const hermesTaskSchema = z.object({
   taskUsageCaptured: z.boolean().default(false),
   localTokens: z.number().int().nonnegative().default(0),
   avoidedGpt56SolCostUsd: z.number().nonnegative().default(0),
-  errorCode: z.string().nullable().default(null),
+  errorCode: z
+    .string()
+    .nullable()
+    .default(null)
+    .transform((value) =>
+      value &&
+      [
+        "correction-attempts-exhausted",
+        "patch-check-failed",
+        "no-progress",
+        "execution-timeout",
+        "patch-policy-failed",
+        "hermes-exit-nonzero",
+        "worker-failed",
+      ].includes(value)
+        ? value
+        : value
+          ? "legacy-failure"
+          : null,
+    ),
 });
 const hermesBenchmarkSchema = z.object({
   generatedAt: z.string(),
@@ -342,7 +363,35 @@ let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let fullRefreshInterval: ReturnType<typeof setInterval> | null = null;
 let brokerRefreshPromise: Promise<void> | null = null;
+let fullRefreshCount = 0;
+let scheduledFullRefreshCount = 0;
+let brokerRefreshCount = 0;
 const LINE_FEED = String.fromCharCode(10);
+
+function materialSnapshot(snapshot: TelemetrySnapshot): string {
+  const { checkedAt: _graphCheckedAt, ...graph } = snapshot.graph;
+  const { checkedAt: _delegationCheckedAt, ...delegation } = snapshot.delegation;
+  return JSON.stringify({
+    overallState: snapshot.overallState,
+    services: snapshot.services.map(({ checkedAt: _checkedAt, latencyMs: _latency, ...service }) => service),
+    connections: snapshot.connections.map(
+      ({ latencyMs: _latency, successfulChecks: _success, failedChecks: _failure, ...connection }) =>
+        connection,
+    ),
+    events: snapshot.events,
+    graph,
+    delegation,
+    workflow: {
+      nodes: snapshot.workflow.nodes,
+      edges: snapshot.workflow.edges.map(({ lastObservedAt: _observedAt, ...edge }) => edge),
+    },
+    system: {
+      ...snapshot.system,
+      uptimeSeconds: 0,
+    },
+    privacy: snapshot.privacy,
+  });
+}
 
 const checkedAt = () => new Date().toISOString();
 const latency = (start: number) =>
@@ -1044,7 +1093,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
         ? "degraded"
         : "healthy";
     const reviewedTasks = tasks.filter((task) =>
-      ["completed", "rejected", "validation-failed"].includes(task.state),
+      ["completed", "blocked", "validation-failed"].includes(task.state),
     );
     const acceptedTasks = reviewedTasks.filter(
       (task) => task.state === "completed",
@@ -1486,6 +1535,7 @@ function json(response: ServerResponse, status: number, body: unknown): void {
 async function refreshHermesBroker(): Promise<void> {
   if (brokerRefreshPromise) return brokerRefreshPromise;
   brokerRefreshPromise = (async () => {
+    brokerRefreshCount += 1;
     const probe = await probeHermesBroker();
 
     if (!current) return;
@@ -1512,6 +1562,7 @@ async function refreshHermesBroker(): Promise<void> {
         completedCount: current.delegation.completedCount,
         failedCount: current.delegation.failedCount,
         efficiency: current.delegation.efficiency,
+        latestTask: current.delegation.latestTask,
       },
     });
     const stableNew = JSON.stringify({
@@ -1522,6 +1573,7 @@ async function refreshHermesBroker(): Promise<void> {
         completedCount: probe.delegation.completedCount,
         failedCount: probe.delegation.failedCount,
         efficiency: probe.delegation.efficiency,
+        latestTask: probe.delegation.latestTask,
       },
     });
 
@@ -1558,11 +1610,16 @@ async function refreshHermesBroker(): Promise<void> {
 function startHermesWatcher(): void {
   if (hermesWatcher) return;
   try {
+    mkdirSync(HERMES_JOBS_PATH, { recursive: true });
     hermesWatcher = watch(
       HERMES_JOBS_PATH,
       { recursive: true },
       (_event, _filename) => {
-        if (_filename?.includes("hermes-")) {
+        const normalized = _filename?.replaceAll("\\", "/");
+        if (
+          normalized?.endsWith("status.json") &&
+          (normalized.includes("hermes-") || normalized === "status.json")
+        ) {
           if (debounceTimeout) clearTimeout(debounceTimeout);
           debounceTimeout = setTimeout(() => {
             refreshHermesBroker().catch(() => {});
@@ -1585,8 +1642,12 @@ async function refresh(): Promise<void> {
   if (!hermesWatcher) startHermesWatcher();
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
-    current = await collect();
-    const payload = `event: snapshot\ndata: ${JSON.stringify(current)}\n\n`;
+    fullRefreshCount += 1;
+    const next = await collect();
+    const changed = !current || materialSnapshot(current) !== materialSnapshot(next);
+    current = next;
+    if (!changed) return;
+    const payload = `event: snapshot\ndata: ${JSON.stringify(next)}\n\n`;
     for (const client of clients) client.write(payload);
   })().finally(() => {
     refreshPromise = null;
@@ -1613,6 +1674,11 @@ const server = createServer(async (request, response) => {
       status: "ok",
       host: hostname(),
       binding: `${HOST}:${PORT}`,
+      diagnostics: {
+        fullRefreshCount,
+        scheduledFullRefreshCount,
+        brokerRefreshCount,
+      },
     });
   }
   if (request.url === "/api/status") {
@@ -1638,7 +1704,10 @@ server.listen(PORT, HOST, async () => {
   console.log(`Telemetry API listening on http://${HOST}:${PORT}`);
   await refresh();
   startHermesWatcher();
-  fullRefreshInterval = setInterval(refresh, INTERVAL_MS);
+  fullRefreshInterval = setInterval(() => {
+    scheduledFullRefreshCount += 1;
+    void refresh();
+  }, INTERVAL_MS);
   fullRefreshInterval.unref();
   heartbeatInterval = setInterval(() => {
     for (const client of clients) {
