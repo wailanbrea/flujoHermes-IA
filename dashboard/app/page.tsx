@@ -13,7 +13,9 @@ import type {
 } from "../lib/telemetry";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_TELEMETRY_URL ?? "http://127.0.0.1:4311";
+  typeof process !== "undefined" && process.env?.NEXT_PUBLIC_TELEMETRY_URL
+    ? process.env.NEXT_PUBLIC_TELEMETRY_URL
+    : "http://127.0.0.1:4311";
 
 const stateLabels: Record<HealthState, string> = {
   healthy: "Operativo",
@@ -575,6 +577,254 @@ function HermesLab({
     </section>
   );
 }
+
+function ExactFlowchartDiagram() {
+  return (
+    <div className="exact-flowchart-card" aria-label="Diagrama de Flujo Oficial TRAMA">
+      <div className="flowchart-header">
+        <span className="flow-badge">Arquitectura Oficial</span>
+        <h3>Diagrama de Gobernanza: IA Manager ($) → Hermes Worker ($0)</h3>
+        <p>Circuito 2D exacto de delegación, consulta AST, revisión y observabilidad privada en tiempo real.</p>
+      </div>
+
+      <div className="svg-canvas-wrapper">
+        <svg
+          viewBox="0 0 960 670"
+          className="exact-mermaid-svg"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            {/* Arrowhead marker for solid lines */}
+            <marker
+              id="m-arrow-blue"
+              markerWidth="8"
+              markerHeight="8"
+              refX="7"
+              refY="4"
+              orient="auto"
+            >
+              <path d="M0,0 L8,4 L0,8 Z" fill="#69d7d1" />
+            </marker>
+            {/* Arrowhead marker for dashed lines */}
+            <marker
+              id="m-arrow-dash"
+              markerWidth="8"
+              markerHeight="8"
+              refX="7"
+              refY="4"
+              orient="auto"
+            >
+              <path d="M0,0 L8,4 L0,8 Z" fill="#91a8ae" />
+            </marker>
+          </defs>
+
+          {/* Subgraph Container: Observabilidad Privada */}
+          <g className="subgraph-container">
+            <rect
+              x="585"
+              y="60"
+              width="250"
+              height="150"
+              rx="6"
+              fill="#0e2533"
+              stroke="#284653"
+              strokeWidth="1.5"
+            />
+            <text x="600" y="84" fill="#69d7d1" fontSize="11" fontWeight="bold" fontFamily="monospace" letterSpacing="0.1em">
+              OBSERVABILIDAD PRIVADA
+            </text>
+
+            {/* Dashboard TRAMA Node inside Subgraph */}
+            <rect
+              x="605"
+              y="98"
+              width="210"
+              height="80"
+              rx="4"
+              fill="#173140"
+              stroke="#69d7d1"
+              strokeWidth="1.5"
+            />
+            <text x="710" y="132" textAnchor="middle" fill="#e8efe9" fontSize="15" fontWeight="bold" fontFamily="sans-serif">
+              Dashboard TRAMA
+            </text>
+            <text x="710" y="156" textAnchor="middle" fill="#69d7d1" fontSize="13" fontWeight="bold" fontFamily="monospace">
+              127.0.0.1:4310
+            </text>
+          </g>
+
+          {/* Node 1: Usuario (Pill Shape) */}
+          <g className="node-usuario">
+            <rect x="300" y="20" width="130" height="42" rx="21" fill="#102936" stroke="#315463" strokeWidth="1.5" />
+            <text x="365" y="46" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="sans-serif">
+              Usuario
+            </text>
+          </g>
+
+          {/* Connector 1: Usuario -> Manager */}
+          <path id="flow-p1" d="M 365 62 L 365 140" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
+            <animateMotion dur="2.2s" repeatCount="indefinite" path="M 365 62 L 365 140" />
+          </circle>
+          {/* Label box: Solicitud */}
+          <rect x="333" y="88" width="64" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="365" y="104" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
+            Solicitud
+          </text>
+
+          {/* Node 2: IA de Pago Manager (Rect) */}
+          <g className="node-manager">
+            <rect x="235" y="140" width="260" height="66" rx="4" fill="#173140" stroke="#f0a36a" strokeWidth="2" />
+            <text x="365" y="167" textAnchor="middle" fill="#e8efe9" fontSize="15" fontWeight="bold" fontFamily="sans-serif">
+              IA de Pago Manager
+            </text>
+            <text x="365" y="188" textAnchor="middle" fill="#f0a36a" fontSize="12" fontFamily="monospace">
+              Antigravity / Codex / Claude
+            </text>
+          </g>
+
+          {/* Branch Left: Manager -> Graphify */}
+          <path id="flow-p2" d="M 300 206 L 300 235 L 140 235 L 140 320" fill="none" stroke="#f0a36a" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#f0a36a" filter="drop-shadow(0 0 6px #f0a36a)">
+            <animateMotion dur="2.8s" repeatCount="indefinite" path="M 300 206 L 300 235 L 140 235 L 140 320" />
+          </circle>
+          {/* Label: 1. Consulta Subgrafo AST */}
+          <rect x="60" y="223" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="140" y="239" textAnchor="middle" fill="#f0a36a" fontSize="11" fontFamily="sans-serif">
+            1. Consulta Subgrafo AST
+          </text>
+          {/* Node: Graphify Local AST */}
+          <rect x="40" y="320" width="200" height="50" rx="4" fill="#102936" stroke="#f0a36a" strokeWidth="1.5" />
+          <text x="140" y="350" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="sans-serif">
+            Graphify Local AST
+          </text>
+
+          {/* Branch Middle: Manager -> submit-hermes-task.ps1 */}
+          <path id="flow-p3" d="M 365 206 L 365 320" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
+            <animateMotion dur="2.2s" repeatCount="indefinite" path="M 365 206 L 365 320" />
+          </circle>
+          {/* Label: 2. Envía Contrato de Tarea */}
+          <rect x="285" y="235" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="365" y="251" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
+            2. Envía Contrato de Tarea
+          </text>
+          {/* Node: submit-hermes-task.ps1 */}
+          <rect x="270" y="320" width="190" height="50" rx="4" fill="#102936" stroke="#315463" strokeWidth="1.5" strokeDasharray="4 2" />
+          <text x="365" y="350" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="monospace">
+            submit-hermes-task.ps1
+          </text>
+
+          {/* Connector: submit-hermes-task.ps1 -> Hermes */}
+          <path id="flow-p4" d="M 365 370 L 365 460" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
+            <animateMotion dur="2.0s" repeatCount="indefinite" path="M 365 370 L 365 460" />
+          </circle>
+          {/* Label: 3. Trabajo Pesado en Worktree */}
+          <rect x="275" y="395" width="180" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="365" y="411" textAnchor="middle" fill="#69d7d1" fontSize="11" fontFamily="sans-serif">
+            3. Trabajo Pesado en Worktree
+          </text>
+          {/* Node: Hermes + LM Studio */}
+          <rect x="250" y="460" width="230" height="66" rx="4" fill="#132a35" stroke="#69d7d1" strokeWidth="2" />
+          <text x="365" y="487" textAnchor="middle" fill="#e8efe9" fontSize="15" fontWeight="bold" fontFamily="sans-serif">
+            Hermes + LM Studio
+          </text>
+          <text x="365" y="508" textAnchor="middle" fill="#e8c36a" fontSize="12" fontFamily="monospace">
+            Qwen 3.6 35B Local
+          </text>
+
+          {/* Connector: Hermes -> changes.patch */}
+          <path id="flow-p5" d="M 365 526 L 365 600" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
+            <animateMotion dur="2.0s" repeatCount="indefinite" path="M 365 526 L 365 600" />
+          </circle>
+          {/* Label: 4. Genera Patch */}
+          <rect x="315" y="546" width="100" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="365" y="562" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
+            4. Genera Patch
+          </text>
+          {/* Node: changes.patch */}
+          <rect x="285" y="600" width="160" height="48" rx="4" fill="#102936" stroke="#e8c36a" strokeWidth="1.5" />
+          <text x="365" y="629" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="monospace">
+            changes.patch
+          </text>
+
+          {/* Branch Right: Manager -> review-hermes-task.ps1 */}
+          <path id="flow-p6" d="M 430 206 L 430 235 L 750 235 L 750 360" fill="none" stroke="#e8c36a" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#e8c36a" filter="drop-shadow(0 0 6px #e8c36a)">
+            <animateMotion dur="2.8s" repeatCount="indefinite" path="M 430 206 L 430 235 L 750 235 L 750 360" />
+          </circle>
+          {/* Label: 5. Revisa Patch y Testea */}
+          <rect x="670" y="223" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="750" y="239" textAnchor="middle" fill="#e8c36a" fontSize="11" fontFamily="sans-serif">
+            5. Revisa Patch y Testea
+          </text>
+          {/* Node: review-hermes-task.ps1 */}
+          <rect x="655" y="360" width="190" height="50" rx="4" fill="#102936" stroke="#e8c36a" strokeWidth="1.5" strokeDasharray="4 2" />
+          <text x="750" y="390" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="monospace">
+            review-hermes-task.ps1
+          </text>
+
+          {/* Connector: review-hermes-task.ps1 -> Repositorio Git */}
+          <path id="flow-p7" d="M 750 410 L 750 500" fill="none" stroke="#69d7d1" strokeWidth="2" markerEnd="url(#m-arrow-blue)" />
+          <circle r="3.5" fill="#69d7d1" filter="drop-shadow(0 0 6px #69d7d1)">
+            <animateMotion dur="2.0s" repeatCount="indefinite" path="M 750 410 L 750 500" />
+          </circle>
+          {/* Label: 6. Integración y Cierre */}
+          <rect x="670" y="435" width="160" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="750" y="451" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
+            6. Integración y Cierre
+          </text>
+          {/* Node: Repositorio Git */}
+          <rect x="670" y="500" width="160" height="48" rx="4" fill="#13232d" stroke="#69d7d1" strokeWidth="1.5" />
+          <text x="750" y="529" textAnchor="middle" fill="#e8efe9" fontSize="14" fontWeight="bold" fontFamily="sans-serif">
+            Repositorio Git
+          </text>
+
+          {/* Dashed Line 1: TRAMA -> Hermes */}
+          <path
+            id="flow-obs1"
+            d="M 605 138 L 520 138 L 520 493 L 480 493"
+            fill="none"
+            stroke="#91a8ae"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+            markerEnd="url(#m-arrow-dash)"
+          />
+          <circle r="3" fill="#69d7d1" opacity="0.85" filter="drop-shadow(0 0 4px #69d7d1)">
+            <animateMotion dur="3.2s" repeatCount="indefinite" path="M 605 138 L 520 138 L 520 493 L 480 493" />
+          </circle>
+          {/* Label: Observa Estados */}
+          <rect x="470" y="320" width="100" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="520" y="336" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
+            Observa Estados
+          </text>
+
+          {/* Dashed Line 2: TRAMA -> review-hermes-task.ps1 */}
+          <path
+            id="flow-obs2"
+            d="M 815 138 L 895 138 L 895 385 L 845 385"
+            fill="none"
+            stroke="#91a8ae"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+            markerEnd="url(#m-arrow-dash)"
+          />
+          <circle r="3" fill="#69d7d1" opacity="0.85" filter="drop-shadow(0 0 4px #69d7d1)">
+            <animateMotion dur="3.2s" begin="1.6s" repeatCount="indefinite" path="M 815 138 L 895 138 L 895 385 L 845 385" />
+          </circle>
+          {/* Label: Observa Colas y Patches */}
+          <rect x="815" y="275" width="135" height="24" rx="3" fill="#0e2533" stroke="#284653" strokeWidth="1" />
+          <text x="882" y="291" textAnchor="middle" fill="#91a8ae" fontSize="11" fontFamily="sans-serif">
+            Observa Colas y Patches
+          </text>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -641,6 +891,7 @@ export default function Home() {
           </span>
         </a>
         <nav className="mast-nav" aria-label="Secciones">
+          <a href="#top">Diagrama</a>
           <a href="#flujo">Flujo</a>
           <a href="#grafo">Grafo</a>
           <a href="#servicios">Servicios</a>
@@ -655,7 +906,11 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="signal-room" id="top">
+      <section className="official-flow-section" id="top" style={{ padding: "20px 24px 0" }}>
+        <ExactFlowchartDiagram />
+      </section>
+
+      <section className="signal-room">
         <div className="hero-copy">
           <p className="eyebrow">Sistema local · lectura {snapshot?.sequence ?? "—"}</p>
           <h1>
