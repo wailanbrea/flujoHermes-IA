@@ -38,8 +38,12 @@ foreach ($taskId in $TaskIds) {
     $states[$taskId] = Get-TaskState -TaskId $taskId
 }
 
+# @() must wrap the whole pipeline, not just $states.Values: a Where-Object
+# that matches nothing collapses the parenthesized expression to $null rather
+# than an empty array, and .Count on $null throws under Set-StrictMode 2.0
+# (inherited from the hermes-task-common.ps1 dot-source above).
 while (
-    (@($states.Values) | Where-Object { $_ -in $runningStates }).Count -gt 0 -and
+    @($states.Values | Where-Object { $_ -in $runningStates }).Count -gt 0 -and
     [DateTime]::UtcNow -lt $deadline
 ) {
     Start-Sleep -Seconds $PollSeconds
@@ -49,7 +53,7 @@ while (
 }
 
 $briefScript = Join-Path $PSScriptRoot 'get-hermes-brief.ps1'
-$settledCount = (@($states.Values) | Where-Object { $_ -notin $runningStates }).Count
+$settledCount = @($states.Values | Where-Object { $_ -notin $runningStates }).Count
 
 foreach ($taskId in $TaskIds) {
     if ($states[$taskId] -in $runningStates) {
