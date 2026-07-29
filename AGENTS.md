@@ -54,6 +54,14 @@ herramientas salvo que se habilite una captura saneada explícita.
   someter hasta dos tareas Hermes a la vez contra el mismo modelo cargado sin
   degradar la que ya estaba en curso. No someter una tercera: cada tarea añade su
   propio worktree y su propio consumo de contexto, y no se ha medido más allá de dos.
+- Para repartir un objetivo grande en piezas concurrentes, usar
+  `scripts/windows/submit-hermes-task-batch.ps1` en vez de dos llamadas sueltas a
+  `submit-hermes-task.ps1`. Exige archivos disjuntos entre tareas del mismo lote
+  (dos agentes editando el mismo archivo en worktrees separados producirían
+  parches ciegos entre sí) y un único modelo compartido para todo el lote —
+  nunca mezclar `qwen` con otro modelo, sus 20,55 GiB ya ocupan la tarjeta entera.
+  Esperar el lote con `wait-hermes-task-batch.ps1 -TaskIds @(...)` en una sola
+  llamada en vez de una por tarea.
 - Sólo quedan dos modelos locales: `gemma`/`gemma-qat` (misma clave,
   `google/gemma-4-12b-qat`, oficial de Google) y `qwen`
   (`qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive`, fine-tune de terceros sin
