@@ -61,6 +61,10 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(server, /PROJECT_CATALOG_PATH/);
   assert.match(server, /projectCatalogSchema/);
   assert.match(server, /probeHermesBroker/);
+  assert.match(server, /const INTERVAL_MS = 15000/);
+  assert.match(server, /refreshHermesBroker/);
+  assert.match(server, /watch\(/);
+  assert.match(server, /:heartbeat/);
   assert.match(server, /HERMES_JOBS_PATH/);
   assert.match(server, /HERMES_INSIGHTS_PATH/);
   assert.match(server, /HERMES_MODEL_REPORT_PATH/);
@@ -195,6 +199,15 @@ test("delegates Hermes work through a bounded review gate", async () => {
   assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
   assert.match(review, /apply --check/);
   assert.match(review, /patchValidation/);
+  assert.match(review, /RequestChanges/);
+  assert.match(review, /correction-attempts-exhausted/);
+  assert.doesNotMatch(review, /ValidateSet\([^)]*Reject/);
+  assert.match(submit, /MaxAttempts = 3/);
+  const approveBranch = review.match(
+    /elseif \(\$Decision -eq 'Approve'\)([\s\S]*?)\nelse \{/,
+  );
+  assert.ok(approveBranch);
+  assert.doesNotMatch(approveBranch[1], /git\.exe/);
   assert.match(review, /ReviewedBy/);
   assert.match(review, /ensure-project-graph\.ps1/);
 });

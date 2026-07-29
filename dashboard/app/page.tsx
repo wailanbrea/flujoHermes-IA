@@ -914,7 +914,7 @@ export default function Home() {
             <h2 id="services-title">Herramientas observadas</h2>
           </div>
           <p>
-            Actualización cada 4 segundos
+            Actualización en vivo por eventos · sondeo completo cada 15 segundos
             <br />
             <span>
               Última lectura {snapshot ? formatTime(snapshot.generatedAt) : "—"}

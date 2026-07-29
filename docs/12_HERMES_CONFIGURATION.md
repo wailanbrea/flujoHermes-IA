@@ -25,7 +25,7 @@ El perfil predeterminado preexistente no fue modificado.
 - Comandos destructivos: requieren confirmación
 - Corte por denegaciones: 3
 
-El worker headless no recibe la herramienta 	erminal. El MCP Playwright se
+El worker headless no recibe la herramienta `terminal`. El MCP Playwright se
 usa sólo para validar TRAMA local. Esto evita esperas de
 aprobación sin TTY. Las compilaciones y pruebas siguen siendo obligación del
 director después de revisar el parche.
@@ -94,6 +94,26 @@ eliminadas y bytes. Antes de revisión, el worker calcula `git diff --numstat`,
 rechaza binarios, rutas fuera de whitelist y, cuando se solicita, secuencias
 literales `\n` en líneas añadidas. La evidencia saneada se conserva en
 `patch-validation.json` y el revisor comprueba que coincida con el parche.
+
+## Ciclo de corrección
+
+Cada tarea empieza en el intento 1 de un máximo de 3. `RequestChanges` exige
+feedback concreto, lo sanea a 500 caracteres y crea una tarea hija limpia con el
+intento incrementado. El estado y TRAMA sólo conservan métricas y el vínculo entre
+tareas; nunca el feedback, prompts, respuestas ni argumentos de herramientas.
+
+`Approve` conserva el parche y el worktree aislados para que el director valide
+sin modificar el proyecto. Sólo `Complete -ValidationPassed $true` vuelve a
+comprobar la evidencia, aplica el parche y limpia los recursos. Una validación
+fallida solicita otra corrección. Al agotar los tres intentos, la tarea queda
+`blocked` con `correction-attempts-exhausted`; no se rechaza ni crea un cuarto hijo.
+
+## Actualización de TRAMA
+
+Los cambios de estado de Hermes llegan por `fs.watch`, con debounce de 150 ms y
+un sondeo exclusivo del broker. GPU, Docker, WSL, Graphify, LM Studio y red se
+sondean juntos cada 15 segundos. SSE envía heartbeats baratos entre eventos y no
+repite sondeos costosos.
 
 ## Uso por tarea
 
