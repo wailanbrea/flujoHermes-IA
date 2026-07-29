@@ -7,7 +7,11 @@ param(
     [ValidateRange(1, 3650)]
     [int]$Days = 30,
     [string]$HermesHome,
-    [string]$OutputPath
+    [string]$OutputPath,
+
+    # Per-task callers need only the overview totals. The full report exists for
+    # the TRAMA dashboard, which reads the shared profile once.
+    [switch]$Compact
 )
 
 $ErrorActionPreference = 'Stop'
@@ -165,6 +169,17 @@ $sanitized = [ordered]@{
             date = [string]$_.date
         }
     })
+}
+
+if ($Compact) {
+    $sanitized = [ordered]@{
+        schemaVersion = 1
+        generatedAt = $sanitized.generatedAt
+        days = $Days
+        compact = $true
+        pricing = $sanitized.pricing
+        overview = $sanitized.overview
+    }
 }
 
 $parent = Split-Path -Parent $OutputPath

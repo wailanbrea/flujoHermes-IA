@@ -96,6 +96,106 @@ function Get-HermesRuntimeRoot {
     return Join-Path (Get-OrchestratorRoot) 'telemetry\runtime\hermes-jobs'
 }
 
+# Single source of truth for the alias-to-model mapping. prepare-hermes-model.ps1
+# loads the model and the worker pins it into the per-task profile; if the two
+# ever disagreed, a task would silently run on a different model than the one
+# that was prepared, and any comparison between models would be meaningless.
+function Get-HermesModelKey([string]$Alias) {
+    switch ($Alias) {
+        'gemma' { return 'google/gemma-4-12b' }
+        'qwen' { return 'qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive' }
+        default { throw "Unknown Hermes model alias '$Alias'." }
+    }
+}
+
+# Rewrites the top-level `model.default` and `fallback_model.model` entries so a
+# task runs on exactly one known model. Pinning the fallback to the same key
+# stops a mid-task provider switch from quietly contaminating the result.
+function Set-HermesProfileModel(
+    [string]$ConfigPath,
+    [string]$ModelKey
+) {
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    $lines = [IO.File]::ReadAllLines($ConfigPath)
+    $block = ''
+    $defaultReplacements = 0
+    $fallbackReplacements = 0
+    for ($index = 0; $index -lt $lines.Length; $index++) {
+        $line = $lines[$index]
+        if ($line -match '^[^\s#]') {
+            $block = ($line -split ':')[0].Trim()
+            continue
+        }
+        if ($block -eq 'model' -and $line -match '^(\s+)default:\s') {
+            $lines[$index] = "$($Matches[1])default: $ModelKey"
+            $defaultReplacements += 1
+        }
+        elseif ($block -eq 'fallback_model' -and $line -match '^(\s+)model:\s') {
+            $lines[$index] = "$($Matches[1])model: $ModelKey"
+            $fallbackReplacements += 1
+        }
+    }
+    if ($defaultReplacements -ne 1) {
+        throw (
+            'The Hermes profile does not declare exactly one model.default entry; ' +
+            'refusing to run a task on an unverifiable model.'
+        )
+    }
+    if ($fallbackReplacements -gt 1) {
+        throw 'The Hermes profile declares more than one fallback model entry.'
+    }
+    [IO.File]::WriteAllText(
+        $ConfigPath,
+        (($lines -join "`n") + "`n"),
+        $utf8
+    )
+}
+
+# LM Studio is configured for explicit loading and exactly one language model at
+# a time, so a mismatch here means the task would either stall or trigger an
+# unsupervised load with unsafe defaults.
+function Assert-HermesModelLoaded([string]$ModelKey) {
+    try {
+        $response = Invoke-RestMethod `
+            -Uri 'http://127.0.0.1:1234/api/v0/models' `
+            -TimeoutSec 10
+    }
+    catch {
+        throw 'LM Studio is not reachable on 127.0.0.1:1234.'
+    }
+    $loaded = @($response.data | Where-Object {
+        $_.state -eq 'loaded' -and $_.type -ne 'embeddings'
+    })
+    $match = @($loaded | Where-Object { $_.id -eq $ModelKey })
+    if ($match.Count -ne 1) {
+        $loadedNames = if ($loaded.Count -gt 0) {
+            ($loaded | ForEach-Object { $_.id }) -join ', '
+        }
+        else { 'none' }
+        throw (
+            "The task requires '$ModelKey' but LM Studio has loaded: $loadedNames. " +
+            'Run prepare-hermes-model.ps1 for the requested model first.'
+        )
+    }
+}
+
+function Get-GraphQueryCacheRoot {
+    return Join-Path (Get-OrchestratorRoot) 'telemetry\runtime\graph-cache'
+}
+
+# Set-StrictMode 2.0 throws on absent properties; runtime JSON is not guaranteed
+# to carry every optional field, so all reads go through this accessor.
+function Get-JsonProperty(
+    [object]$Object,
+    [string]$Name,
+    $Default = $null
+) {
+    if ($null -eq $Object) { return $Default }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property -or $null -eq $property.Value) { return $Default }
+    return $property.Value
+}
+
 function Assert-TaskId([string]$TaskId) {
     if ($TaskId -notmatch '^hermes-[0-9]{8}-[0-9]{6}-[a-f0-9]{8}$') {
         throw 'Invalid Hermes task identifier.'
@@ -174,6 +274,48 @@ function Get-SanitizedCorrectionFeedback([string]$Feedback) {
         $sanitized = $sanitized.Substring(0, 500).Trim()
     }
     return $sanitized
+}
+
+function Get-SanitizedValidationSummary([string]$Summary) {
+    if (-not $Summary) {
+        throw 'Validation summary must be concrete and nonblank.'
+    }
+    $sanitized = ($Summary -replace '[\x00-\x1F\x7F]+', ' ').Trim()
+    $sanitized = $sanitized -replace '\s{2,}', ' '
+    if (
+        $sanitized.Length -lt 12 -or
+        $sanitized -match '^(ok|pass|passed|bien|listo|todo ok)[.! ]*$'
+    ) {
+        throw 'Validation summary must name the commands actually run.'
+    }
+    if ($sanitized -match '(?i)(api[_-]?key|authorization|bearer|password|secret)\s*[:=]') {
+        throw 'Validation summary must not contain credentials or secrets.'
+    }
+    if ($sanitized.Length -gt 500) {
+        $sanitized = $sanitized.Substring(0, 500).Trim()
+    }
+    return $sanitized
+}
+
+# The dashboard-facing status is sanitized by design, so independent-validation
+# evidence is persisted beside it instead of being silently dropped.
+function Write-ValidationEvidence(
+    [string]$TaskDirectory,
+    [string]$Summary,
+    [bool]$Passed,
+    [string]$ReviewedBy
+) {
+    $record = [ordered]@{
+        schemaVersion = 1
+        recordedAt = [DateTime]::UtcNow.ToString('o')
+        reviewedBy = $ReviewedBy
+        passed = $Passed
+        summary = Get-SanitizedValidationSummary -Summary $Summary
+    }
+    Write-JsonAtomic `
+        -Path (Join-Path $TaskDirectory 'validation.json') `
+        -Value $record
+    return $record
 }
 
 function Test-SuspiciousLiteralEscapedNewline([string]$AddedLine) {
@@ -316,6 +458,22 @@ function Get-AuthorizedProject([string]$ProjectPath) {
     throw 'Project is not present in the authorized local catalog.'
 }
 
+# Launching is separated from queuing so a caller can validate and persist a task
+# first, release any worktree it still holds, and only then start the worker. The
+# worker's own `git worktree add` must never run while a cleanup is pruning.
+function Start-HermesWorker([string]$TaskId) {
+    Assert-TaskId -TaskId $TaskId
+    if ($env:HERMES_TEST_DEFER_WORKER -eq '1') { return }
+    $worker = Join-Path $PSScriptRoot 'invoke-hermes-task.ps1'
+    $argumentLine = '-NoProfile -NonInteractive -ExecutionPolicy Bypass ' +
+        "-File `"$worker`" -TaskId `"$TaskId`""
+    Start-Process `
+        -FilePath 'powershell.exe' `
+        -ArgumentList $argumentLine `
+        -WorkingDirectory (Get-OrchestratorRoot) `
+        -WindowStyle Hidden | Out-Null
+}
+
 function Get-TaskStatus([string]$TaskDirectory) {
     return Read-JsonFile -Path (Join-Path $TaskDirectory 'status.json')
 }
@@ -419,6 +577,173 @@ function Remove-TaskWorktree(
     if ($pruneExitCode -ne 0) {
         throw 'Git could not prune isolated Hermes worktree metadata.'
     }
+}
+
+# Director-facing digest. The whole point is a bounded, predictable context cost:
+# every list below is capped so a large patch can never flood the director.
+$script:BriefMaxFiles = 40
+$script:BriefMaxHunks = 60
+$script:BriefMaxReportChars = 1200
+
+function Get-PatchDigest([string]$PatchPath) {
+    $digest = [ordered]@{
+        files = @()
+        hunks = @()
+        filesTruncated = $false
+        hunksTruncated = $false
+    }
+    if (-not (Test-Path -LiteralPath $PatchPath -PathType Leaf)) {
+        return $digest
+    }
+    $files = [Collections.Generic.List[object]]::new()
+    $hunks = [Collections.Generic.List[string]]::new()
+    $current = $null
+    foreach ($line in [IO.File]::ReadAllLines($PatchPath)) {
+        if ($line.StartsWith('diff --git ')) {
+            $path = $line -replace '^diff --git a/(.+?) b/.+$', '$1'
+            $current = [ordered]@{ path = $path; added = 0; removed = 0 }
+            $files.Add($current)
+            continue
+        }
+        if ($line.StartsWith('@@')) {
+            if ($hunks.Count -lt $script:BriefMaxHunks) {
+                $header = $line
+                if ($header.Length -gt 120) {
+                    $header = $header.Substring(0, 120)
+                }
+                $owner = if ($current) { $current.path } else { '?' }
+                $hunks.Add("$owner $header")
+            }
+            else {
+                $digest.hunksTruncated = $true
+            }
+            continue
+        }
+        if (-not $current) { continue }
+        if ($line.StartsWith('+') -and -not $line.StartsWith('+++')) {
+            $current.added += 1
+        }
+        elseif ($line.StartsWith('-') -and -not $line.StartsWith('---')) {
+            $current.removed += 1
+        }
+    }
+    if ($files.Count -gt $script:BriefMaxFiles) {
+        $digest.filesTruncated = $true
+        $digest.files = @($files | Select-Object -First $script:BriefMaxFiles)
+    }
+    else {
+        $digest.files = @($files)
+    }
+    $digest.hunks = @($hunks)
+    return $digest
+}
+
+function Get-ReportDigest([string]$ReportPath) {
+    $digest = [ordered]@{
+        outcome = 'unknown'
+        tail = ''
+        sourceBytes = 0
+        truncated = $false
+    }
+    if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
+        return $digest
+    }
+    $digest.sourceBytes = (Get-Item -LiteralPath $ReportPath).Length
+    $text = ([IO.File]::ReadAllText($ReportPath))
+    # Hermes writes a coloured TTY stream; the escape sequences are pure noise in
+    # the director's context. `e is PowerShell 6+, so the character is explicit.
+    $escape = [char]27
+    $text = ($text -replace "$escape\[[0-9;]*[A-Za-z]", '').Trim()
+    if (-not $text) { return $digest }
+    $match = [regex]::Match($text, '(?im)^\s*outcome\s*:\s*(PASS|FAIL|BLOCKED)')
+    if ($match.Success) {
+        $digest.outcome = $match.Groups[1].Value.ToUpperInvariant()
+    }
+    # The required report is emitted last, so the tail carries the conclusion.
+    if ($text.Length -gt $script:BriefMaxReportChars) {
+        $digest.truncated = $true
+        $text = $text.Substring($text.Length - $script:BriefMaxReportChars)
+    }
+    $digest.tail = ($text -replace '[\x00-\x08\x0B\x0C\x0E-\x1F]+', ' ')
+    return $digest
+}
+
+function Get-HermesTaskBrief([string]$TaskId) {
+    $taskDirectory = Get-TaskDirectory -TaskId $TaskId
+    $status = Get-TaskStatus -TaskDirectory $taskDirectory
+    $contract = Read-JsonFile -Path (Join-Path $taskDirectory 'contract.json')
+    $patchPath = Join-Path $taskDirectory 'changes.patch'
+    $reportPath = Join-Path $taskDirectory 'hermes-final.txt'
+
+    $patchValidation = $null
+    $validationPath = Join-Path $taskDirectory 'patch-validation.json'
+    if (Test-Path -LiteralPath $validationPath -PathType Leaf) {
+        $patchValidation = Read-JsonFile -Path $validationPath
+    }
+
+    $sourceArtifactBytes = 0
+    foreach ($artifact in @(
+        $patchPath,
+        $reportPath,
+        (Join-Path $taskDirectory 'contract.json'),
+        (Join-Path $taskDirectory 'usage.json'),
+        (Join-Path $taskDirectory 'status.json')
+    )) {
+        if (Test-Path -LiteralPath $artifact -PathType Leaf) {
+            $sourceArtifactBytes += (Get-Item -LiteralPath $artifact).Length
+        }
+    }
+
+    $state = [string](Get-JsonProperty -Object $status -Name 'state' -Default 'unknown')
+    $errorCode = Get-JsonProperty -Object $status -Name 'errorCode'
+    $nextAction = switch ($state) {
+        'awaiting-review' {
+            'Review the hunks below; read changes.patch only if they are ' +
+            'insufficient. Then review-hermes-task.ps1 -Decision Approve.'
+        }
+        'validating' {
+            'Run build, linters and tests independently, then ' +
+            'review-hermes-task.ps1 -Decision Complete.'
+        }
+        'failed' {
+            "Inspect errorCode '$errorCode'. Use -Decision RequestChanges with " +
+            'concrete feedback, or narrow the contract.'
+        }
+        'blocked' { 'Attempts exhausted. Re-scope the contract manually.' }
+        'completed' { 'Nothing pending.' }
+        'correction-requested' { 'A child task is running; wait on childTaskId.' }
+        'queued' { 'Not started yet; wait instead of polling.' }
+        'preparing' { 'Still running; wait instead of polling.' }
+        'executing' { 'Still running; wait instead of polling.' }
+        # 'rejected' is a legacy state the dashboard maps to 'blocked'. Reporting
+        # an unrecognised state as "still running" would be a false progress claim.
+        default { "Unrecognised state '$state'; inspect status.json directly." }
+    }
+
+    $brief = [ordered]@{
+        schemaVersion = 1
+        taskId = $TaskId
+        state = $state
+        errorCode = $errorCode
+        projectId = [string](Get-JsonProperty -Object $contract -Name 'projectId' -Default '')
+        phase = [string](Get-JsonProperty -Object $contract -Name 'phase' -Default '')
+        mode = [string](Get-JsonProperty -Object $contract -Name 'mode' -Default '')
+        model = [string](Get-JsonProperty -Object $contract -Name 'model' -Default 'unknown')
+        attempt = [int](Get-JsonProperty -Object $status -Name 'attempt' -Default 1)
+        maxAttempts = [int](Get-JsonProperty -Object $status -Name 'maxAttempts' -Default 3)
+        childTaskId = Get-JsonProperty -Object $status -Name 'childTaskId'
+        elapsedSeconds = [int](Get-JsonProperty -Object $status -Name 'elapsedSeconds' -Default 0)
+        filesChanged = [int](Get-JsonProperty -Object $status -Name 'filesChanged' -Default 0)
+        patchBytes = [int](Get-JsonProperty -Object $status -Name 'patchBytes' -Default 0)
+        patchPolicyPassed = Get-JsonProperty -Object $patchValidation -Name 'passed'
+        violations = @(Get-JsonProperty -Object $patchValidation -Name 'violations' -Default @())
+        localTokens = [int64](Get-JsonProperty -Object $status -Name 'localTokens' -Default 0)
+        patch = Get-PatchDigest -PatchPath $patchPath
+        report = Get-ReportDigest -ReportPath $reportPath
+        sourceArtifactBytes = $sourceArtifactBytes
+        nextAction = $nextAction
+    }
+    return $brief
 }
 
 function Remove-TaskExchange([string]$TaskId) {

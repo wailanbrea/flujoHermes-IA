@@ -30,6 +30,10 @@ another Git worktree. Intended for managed multi-project containers.
 .PARAMETER AllowMetadataOnly
 Registers an honest project-boundary node when Graphify finds no supported source
 files. No code relationships are inferred.
+
+.PARAMETER NoCache
+Forces a fresh bounded query instead of reusing an identical cached answer. Cache
+entries are already invalidated by any change to the graph file itself.
 #>
 [CmdletBinding()]
 param(
@@ -48,7 +52,9 @@ param(
 
     [switch]$ExactRoot,
 
-    [switch]$AllowMetadataOnly
+    [switch]$AllowMetadataOnly,
+
+    [switch]$NoCache
 )
 
 $ErrorActionPreference = 'Stop'
@@ -161,10 +167,60 @@ function Get-GraphStats(
     if ($nodes.Count -eq 0) {
         throw 'Graphify produced an empty graph; raw file exploration remains blocked.'
     }
+    # Detected here so the graph is parsed once instead of twice.
+    $markerCount = @($nodes | Where-Object {
+        $_.PSObject.Properties['_origin'] -and
+        $_._origin -eq 'filesystem-marker'
+    }).Count
     [pscustomobject]@{
         Nodes = $nodes.Count
         Edges = $edges.Count
+        MetadataOnly = ($markerCount -gt 0)
     }
+}
+
+# Repeated identical questions cost the director a full budget of tokens each
+# time. The key embeds the graph's own timestamp and size, so any graph change
+# invalidates the entry automatically.
+function Get-QueryCacheEntryPath(
+    [string]$GraphPath,
+    [string]$Question,
+    [int]$Budget
+) {
+    $item = Get-Item -LiteralPath $GraphPath
+    $stamp = '{0}|{1}|{2}|{3}|{4}' -f
+        $item.FullName.ToLowerInvariant(),
+        $item.LastWriteTimeUtc.Ticks,
+        $item.Length,
+        $Budget,
+        (($Question -replace '\s+', ' ').Trim().ToLowerInvariant())
+    $bytes = [Text.Encoding]::UTF8.GetBytes($stamp)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha.ComputeHash($bytes)
+    }
+    finally {
+        $sha.Dispose()
+    }
+    $key = [BitConverter]::ToString($hash).Replace('-', '').ToLowerInvariant()
+    $root = Join-Path (
+        Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    ) 'telemetry\runtime\graph-cache\queries'
+    return (Join-Path $root ($key.Substring(0, 32) + '.txt'))
+}
+
+function Limit-QueryCache([string]$Root, [int]$MaxEntries) {
+    $entries = @(
+        Get-ChildItem -LiteralPath $Root -Filter '*.txt' -File `
+            -ErrorAction SilentlyContinue
+    )
+    if ($entries.Count -le $MaxEntries) { return }
+    $entries |
+        Sort-Object LastWriteTimeUtc |
+        Select-Object -First ($entries.Count - $MaxEntries) |
+        ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        }
 }
 
 function Invoke-StructuralBuild(
@@ -375,16 +431,7 @@ elseif ($Refresh) {
 $statsRepository = if ($source -eq 'global') { $projectId } else { $null }
 $stats = Get-GraphStats -GraphPath $graphPath -RepositoryId $statsRepository
 if (-not $metadataOnly) {
-    try {
-        $graphProbe = Get-Content -LiteralPath $graphPath -Raw -Encoding UTF8 |
-            ConvertFrom-Json
-        $metadataOnly = [bool](@($graphProbe.nodes | Where-Object {
-            $_._origin -eq 'filesystem-marker'
-        }).Count)
-    }
-    catch {
-        $metadataOnly = $false
-    }
+    $metadataOnly = $stats.MetadataOnly
 }
 if (-not $isGlobal -or $action -in @('indexed', 'refreshed')) {
     $globalAdd = & $graphifyCommand.Source global add $graphPath --as $projectId 2>&1
@@ -409,11 +456,31 @@ if (-not $isGlobal -or $action -in @('indexed', 'refreshed')) {
 } | ConvertTo-Json -Compress
 
 if ($Question) {
-    Write-Output '--- GRAPH QUERY ---'
-    & $graphifyCommand.Source query "[$projectId] $Question" `
-        --budget $Budget `
-        --graph $graphPath
-    if ($LASTEXITCODE -ne 0) {
-        throw 'The project is indexed, but the bounded graph query failed.'
+    $cachePath = Get-QueryCacheEntryPath `
+        -GraphPath $graphPath `
+        -Question $Question `
+        -Budget $Budget
+    if (-not $NoCache -and (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
+        Write-Output '--- GRAPH QUERY (cached) ---'
+        Write-Output ([IO.File]::ReadAllText($cachePath).TrimEnd())
+    }
+    else {
+        $queryOutput = & $graphifyCommand.Source query "[$projectId] $Question" `
+            --budget $Budget `
+            --graph $graphPath 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw 'The project is indexed, but the bounded graph query failed.'
+        }
+        $queryText = ($queryOutput | Out-String).TrimEnd()
+        $cacheDirectory = Split-Path -Parent $cachePath
+        New-Item -ItemType Directory -Path $cacheDirectory -Force | Out-Null
+        [IO.File]::WriteAllText(
+            $cachePath,
+            $queryText,
+            [Text.UTF8Encoding]::new($false)
+        )
+        Limit-QueryCache -Root $cacheDirectory -MaxEntries 200
+        Write-Output '--- GRAPH QUERY ---'
+        Write-Output $queryText
     }
 }

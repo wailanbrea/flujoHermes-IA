@@ -30,6 +30,12 @@ Preparar el modelo e iniciar Hermes:
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-hermes-local.ps1
 ```
 
+Resolver un proyecto sin leer el catálogo entero:
+
+```powershell
+.\scripts\windows\resolve-project.ps1 -Name factur -OwnGitOnly
+```
+
 Consultar primero el grafo:
 
 ```powershell
@@ -52,12 +58,17 @@ $task = .\scripts\windows\submit-hermes-task.ps1 `
   -Objective "<cambio solicitado>" `
   -AcceptanceCriteria @("<criterio 1>", "<criterio 2>") `
   -Constraints @("no cambiar APIs públicas") `
+  -AllowedFiles @("<ruta/relativa.ts>") `
   -RequestedBy Codex `
   -Mode execute `
-  -ModificationAuthorized `
-  -Wait | ConvertFrom-Json
+  -ModificationAuthorized | ConvertFrom-Json
 
-# El director revisa telemetry\runtime\hermes-jobs\<taskId>\changes.patch
+# Una sola llamada bloqueante; devuelve el resumen acotado al terminar.
+# Repetir la misma llamada si aún sigue en marcha.
+.\scripts\windows\wait-hermes-task.ps1 -TaskId $task.taskId
+
+# El director decide sobre ese resumen: veredicto, violaciones de política,
+# líneas por archivo y cabeceras de hunk. changes.patch completo sólo si hace falta.
 .\scripts\windows\review-hermes-task.ps1 `
   -TaskId $task.taskId `
   -Decision Approve `

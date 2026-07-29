@@ -125,11 +125,24 @@ try {
         Join-Path $exchangeDirectory 'profiles'
     ) $TaskId
     New-Item -ItemType Directory -Path $isolatedHermesHome -Force | Out-Null
-    [IO.File]::Copy(
-        $localAiConfigPath,
-        (Join-Path $isolatedHermesHome 'config.yaml'),
-        $false
+    $isolatedConfigPath = Join-Path $isolatedHermesHome 'config.yaml'
+    [IO.File]::Copy($localAiConfigPath, $isolatedConfigPath, $false)
+
+    # The shared profile carries whichever model was configured last, which need
+    # not be the one prepare-hermes-model.ps1 actually loaded. Pin the contract's
+    # model into this task's own profile and refuse to start on a mismatch.
+    $contractModelKey = [string](
+        Get-JsonProperty -Object $contract -Name 'modelKey' -Default ''
     )
+    if (-not $contractModelKey) {
+        $contractModelKey = Get-HermesModelKey -Alias ([string](
+            Get-JsonProperty -Object $contract -Name 'model' -Default 'gemma'
+        ))
+    }
+    Assert-HermesModelLoaded -ModelKey $contractModelKey
+    Set-HermesProfileModel `
+        -ConfigPath $isolatedConfigPath `
+        -ModelKey $contractModelKey
     [IO.File]::WriteAllText(
         (Join-Path $isolatedHermesHome '.env'),
         "HERMES_WRITE_SAFE_ROOT=$executionRoot`n",
@@ -247,6 +260,10 @@ try {
         $noProgressLimit = [int]$contract.noProgressTimeoutSeconds
         $lastWorkspaceChangeAt = $startedAt
         $readOnlyEvents = 0
+        # Git ran twice per 5s tick, i.e. ~480 processes over a 20-minute task,
+        # contending with Hermes for the worktree index. One command every third
+        # tick is enough to detect progress at a fraction of the cost.
+        $fingerprintTick = 0
         while (-not $process.WaitForExit(5000)) {
             $now = [DateTime]::UtcNow
             $process.Refresh()
@@ -266,18 +283,24 @@ try {
                     $readOnlyEvents += 1
                 }
             }
-            $currentFingerprint = (
-                @(& git.exe -C $executionRoot status --porcelain) -join "`n"
-            ) + '|' + (
-                @(& git.exe -C $executionRoot diff --numstat HEAD) -join "`n"
-            )
-            if ($currentFingerprint -ne $workspaceFingerprint) {
-                $workspaceFingerprint = $currentFingerprint
-                if ($currentFingerprint) {
-                    $lastActivityAt = $now
-                    $lastWorkspaceChangeAt = $now
-                    $readOnlyEvents = 0
-                    $progressKind = 'workspace-change'
+            $fingerprintTick += 1
+            if ($fingerprintTick % 3 -eq 0) {
+                $statusLines = @(
+                    & git.exe -C $executionRoot status --porcelain 2>$null
+                )
+                # A transient failure (index.lock held by Hermes) must not be read
+                # as "no progress"; keep the previous fingerprint and retry later.
+                if ($LASTEXITCODE -eq 0) {
+                    $currentFingerprint = $statusLines -join "`n"
+                    if ($currentFingerprint -ne $workspaceFingerprint) {
+                        $workspaceFingerprint = $currentFingerprint
+                        if ($currentFingerprint) {
+                            $lastActivityAt = $now
+                            $lastWorkspaceChangeAt = $now
+                            $readOnlyEvents = 0
+                            $progressKind = 'workspace-change'
+                        }
+                    }
                 }
             }
             $elapsedSeconds = [int][Math]::Floor(($now - $startedAt).TotalSeconds)
@@ -330,10 +353,13 @@ try {
     [IO.File]::WriteAllText($stderrPath, $stderrText, $utf8NoBom)
     try {
         $taskUsagePath = Join-Path $taskDirectory 'usage.json'
+        # Per-task usage only feeds two numbers; the full insights report (daily
+        # and hourly activity, skills, top sessions) is ~9 KB of dead weight here.
         & (Join-Path $PSScriptRoot 'export-hermes-insights.ps1') `
             -Days 3650 `
             -HermesHome $isolatedHermesHome `
-            -OutputPath $taskUsagePath |
+            -OutputPath $taskUsagePath `
+            -Compact |
             Out-Null
         $taskUsage = Read-JsonFile -Path $taskUsagePath
         $taskUsageTokens = [int64]$taskUsage.overview.totalTokens

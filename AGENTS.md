@@ -44,7 +44,14 @@ herramientas salvo que se habilite una captura saneada explícita.
   `-RequestedBy Antigravity` o `-RequestedBy OpenCode`.
 - No invocar Hermes con `--yolo`, `--oneshot` ni `-z`. El worker usa aprobaciones
   normales, checkpoints, herramientas limitadas, máximo de turnos y worktree aislado.
-- El mismo director debe revisar `changes.patch`; sólo después puede usar
+- Enviar la tarea sin `-Wait` y esperar con
+  `scripts/windows/wait-hermes-task.ps1 -TaskId <id>`, que devuelve el resumen acotado
+  en una sola llamada. Sondear `status.json` en bucle gasta contexto del director sin
+  aportar información nueva.
+- El mismo director debe revisar el resumen de
+  `scripts/windows/get-hermes-brief.ps1` —veredicto, violaciones de política, líneas
+  por archivo y cabeceras de hunk— y leer `changes.patch` completo sólo cuando ese
+  resumen no baste. Sólo después puede usar
   `scripts/windows/review-hermes-task.ps1 -Decision Approve -ReviewedBy <director>`.
 - El director ejecuta pruebas independientes y cierra con `-Decision Complete`. Un
   resultado de Hermes nunca es evidencia suficiente por sí solo.
@@ -70,9 +77,14 @@ Rules:
   `scripts/windows/ensure-project-graph.ps1 -ProjectPath <exact-root> -Question <task>`.
 - If the project is absent, the script builds an AST-only graph in the local Graphify
   cache and registers it globally. It never enables semantic or external model extraction.
-- Before resolving a named local project with broad disk search, consult
-  `telemetry/runtime/project-catalog.json`. The managed roots are `C:\xampp\php\www`,
-  `C:\Users\waila\StudioProjects`, and `C:\Users\waila\AndroidStudioProjects`.
+- Resolve a named local project with `scripts/windows/resolve-project.ps1 -Name
+  <fragment>`, which returns only the matching rows. Do not read
+  `telemetry/runtime/project-catalog.json` whole: it is ~34 KB for a single lookup.
+  The managed roots are `C:\xampp\php\www`, `C:\Users\waila\StudioProjects`, and
+  `C:\Users\waila\AndroidStudioProjects`.
+- Identical bounded queries are served from a local cache keyed on the graph's own
+  timestamp, so repeating a question is free. Pass `-NoCache` only when the cache
+  itself is suspect.
 - Refresh the managed catalog with `scripts/windows/index-project-roots.ps1`. This
   authorized batch may cross the interactive corpus-size guard, but remains AST-only,
   skips sensitive files, and must not modify project source.

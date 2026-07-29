@@ -34,6 +34,21 @@ if ($null -ne $contract.patchPolicy.forbidLiteralEscapedNewlines) {
     $forbidSwitch = [bool]$contract.patchPolicy.forbidLiteralEscapedNewlines
 }
 
+# A PowerShell script invoked with `&` does not set $LASTEXITCODE unless it calls
+# `exit`, so the old exit-code guard read a stale value from an unrelated native
+# command. ensure-project-graph.ps1 throws on failure; catch that instead.
+function Update-ProjectGraph([string]$ProjectRoot) {
+    if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -eq '1') { return }
+    try {
+        & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
+            -ProjectPath $ProjectRoot `
+            -Refresh | Out-Null
+    }
+    catch {
+        throw "Code passed validation, but Graphify refresh failed: $($_.Exception.Message)"
+    }
+}
+
 function Request-HermesCorrection(
     [string]$TaskId,
     [string]$TaskDirectory,
@@ -117,6 +132,14 @@ function Request-HermesCorrection(
     $submitParams['MaxAttempts']   = $maxAttempts
     $submitParams['CorrectionOf']  = $TaskId
 
+    # Three-step ordering, and the order is load-bearing. Queue the child first
+    # but keep its worker deferred, so a rejected contract leaves the parent's
+    # worktree intact as evidence. Only once the child is known valid is the
+    # parent's worktree released, and only then is the worker started: the
+    # child's `git worktree add` must never run while `worktree prune` is
+    # removing the parent's metadata from the same repository.
+    $submitParams['DeferWorker'] = $true
+
     $submitScript = Join-Path $PSScriptRoot 'submit-hermes-task.ps1'
     $childResult = & $submitScript @submitParams
     if ($null -eq $childResult) {
@@ -156,6 +179,8 @@ function Request-HermesCorrection(
             worktreeActive = $false
             childTaskId  = $childStatus.taskId
         }
+
+    Start-HermesWorker -TaskId ([string]$childStatus.taskId)
 
     return
 }
@@ -201,6 +226,13 @@ else {
         throw 'Complete requires -ValidationPassed and -ValidationSummary.'
     }
 
+    # Recorded before any state change so the evidence survives a later failure.
+    $evidence = Write-ValidationEvidence `
+        -TaskDirectory $taskDirectory `
+        -Summary $ValidationSummary `
+        -Passed ([bool]$ValidationPassed) `
+        -ReviewedBy $ReviewedBy
+
     if ($ValidationPassed -and -not [bool]$status.worktreeActive) {
         Set-TaskStatus `
             -TaskDirectory $taskDirectory `
@@ -210,15 +242,9 @@ else {
                 validatedAt = [DateTime]::UtcNow.ToString('o')
                 reviewedBy = $ReviewedBy
                 validationPassed = $true
+                validationRecordedAt = $evidence.recordedAt
             }
-        if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -ne '1') {
-            & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
-                -ProjectPath $project.Path `
-                -Refresh | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw 'Code passed validation, but Graphify refresh failed.'
-            }
-        }
+        Update-ProjectGraph -ProjectRoot $project.Path
         Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
         exit 0
     }
@@ -249,17 +275,11 @@ else {
                 validatedAt   = [DateTime]::UtcNow.ToString('o')
                 reviewedBy    = $ReviewedBy
                 validationPassed = [bool]$ValidationPassed
+                validationRecordedAt = $evidence.recordedAt
                 worktreeActive = $false
             }
 
-        if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -ne '1') {
-            & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
-                -ProjectPath $project.Path `
-                -Refresh | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw 'Code passed validation, but Graphify refresh failed.'
-            }
-        }
+        Update-ProjectGraph -ProjectRoot $project.Path
     }
     else {
         if ($null -eq $CorrectionFeedback -or $CorrectionFeedback.Trim().Length -eq 0) {

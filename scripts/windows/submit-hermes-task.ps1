@@ -38,8 +38,11 @@ param(
     [ValidateRange(0, 10000)]
     [int]$MaxRemovedLines = 200,
 
+    # A patch the director has to read is a direct context cost: 256 KB is roughly
+    # 65k tokens, which cancels out the saving delegation is meant to produce.
+    # Raise it deliberately per task when a change genuinely needs more room.
     [ValidateRange(1024, 10485760)]
-    [int]$MaxPatchBytes = 262144,
+    [int]$MaxPatchBytes = 32768,
 
     [switch]$ForbidLiteralEscapedNewlines,
 
@@ -55,6 +58,11 @@ param(
     [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
     [string]$RequestedBy = 'Codex',
 
+    # Pins the task to one prepared model. Recorded in the contract so a result
+    # can always be attributed to the model that actually produced it.
+    [ValidateSet('gemma', 'qwen')]
+    [string]$Model = 'gemma',
+
     [ValidateRange(1, 3)]
     [int]$Attempt = 1,
 
@@ -65,7 +73,16 @@ param(
 
     [switch]$ModificationAuthorized,
 
-    [switch]$Wait
+    [switch]$Wait,
+
+    # -Wait blocks for up to TimeoutSeconds. An AI director's tool calls cap out
+    # around 600 s, so a long -Wait cannot return and forces token-costly status
+    # polling instead. Use wait-hermes-task.ps1, or opt in from a real terminal.
+    [switch]$AllowLongWait,
+
+    # Validates and queues the task without starting the worker, so the caller can
+    # finish releasing Git resources before Start-HermesWorker is invoked.
+    [switch]$DeferWorker
 )
 
 $ErrorActionPreference = 'Stop'
@@ -127,6 +144,13 @@ if ($Mode -eq 'execute') {
         throw 'Execute mode requires -ModificationAuthorized.'
     }
 }
+if ($Wait -and $TimeoutSeconds -gt 570 -and -not $AllowLongWait) {
+    throw (
+        'A blocking -Wait of ' + $TimeoutSeconds + 's exceeds the tool-call ' +
+        'budget of an AI director. Submit without -Wait and follow with ' +
+        'wait-hermes-task.ps1, or pass -AllowLongWait from an interactive shell.'
+    )
+}
 
 $taskId = 'hermes-{0}-{1}' -f (
     [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
@@ -142,6 +166,8 @@ $contract = [ordered]@{
     projectName = $project.Name
     projectRoot = $project.Path
     requestedBy = $RequestedBy
+    model = $Model
+    modelKey = Get-HermesModelKey -Alias $Model
     objective = $Objective
     acceptanceCriteria = @($AcceptanceCriteria)
     constraints = @($Constraints)
@@ -186,6 +212,7 @@ Set-TaskStatus `
         projectId = $project.Id
         projectName = $project.Name
         requestedBy = $RequestedBy
+        model = $Model
         mode = $Mode
         phase = $Phase
         createdAt = $contract.createdAt
@@ -203,21 +230,13 @@ Set-TaskStatus `
         progressKind = 'queued'
     }
 
-$worker = Join-Path $PSScriptRoot 'invoke-hermes-task.ps1'
 if ($Wait) {
+    $worker = Join-Path $PSScriptRoot 'invoke-hermes-task.ps1'
     & $worker -TaskId $taskId
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
-else {
-    if ($env:HERMES_TEST_DEFER_WORKER -ne '1') {
-        $argumentLine = '-NoProfile -NonInteractive -ExecutionPolicy Bypass ' +
-            "-File `"$worker`" -TaskId `"$taskId`""
-        Start-Process `
-            -FilePath 'powershell.exe' `
-            -ArgumentList $argumentLine `
-            -WorkingDirectory (Get-OrchestratorRoot) `
-            -WindowStyle Hidden | Out-Null
-    }
+elseif (-not $DeferWorker) {
+    Start-HermesWorker -TaskId $taskId
 }
 
 Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
