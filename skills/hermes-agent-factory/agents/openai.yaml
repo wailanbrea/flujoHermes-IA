@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Agent Factory"
+  short_description: "Selecciona expertos asesores de solo lectura"
+  default_prompt: "Selecciona perfiles expertos de Hermes y devuelve briefs acotados sin editar código."

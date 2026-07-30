@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-Creates a bounded local task for Hermes and optionally waits for its result.
+Creates an explicit legacy read-only advisory task for Hermes.
 
 .DESCRIPTION
-Codex supplies an exact project, objective, constraints, and acceptance criteria.
-The task is persisted locally; dashboard telemetry only reads sanitized status.
-Execute mode requires explicit modification authorization and an owned Git root.
+The task is persisted locally and dashboard telemetry reads sanitized status.
+Editable work moved to new-hermes-sandbox.ps1; this script only preserves
+bounded advisory analysis.
 #>
 [CmdletBinding()]
 param(
@@ -94,13 +94,24 @@ param(
 
     # Validates and queues the task without starting the worker, so the caller can
     # finish releasing Git resources before Start-HermesWorker is invoked.
-    [switch]$DeferWorker
+    [switch]$DeferWorker,
+
+    [switch]$LegacyReadOnly
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'hermes-task-common.ps1')
 
 $project = Get-AuthorizedProject -ProjectPath $ProjectPath
+if (-not $LegacyReadOnly) {
+    throw (
+        'Local task execution is deprecated. Use new-hermes-sandbox.ps1 for ' +
+        'director-authored changes, or pass -LegacyReadOnly for advisory analysis.'
+    )
+}
+if ($Mode -ne 'analysis' -or $Phase -eq 'edit' -or $ModificationAuthorized) {
+    throw 'Legacy Hermes tasks are read-only analysis only.'
+}
 if ($project.GitScope -ne 'own') {
     throw 'Hermes delegation currently requires a project-owned Git repository.'
 }
@@ -208,6 +219,7 @@ $contract = [ordered]@{
     projectName = $project.Name
     projectRoot = $project.Path
     requestedBy = $RequestedBy
+    executor = 'legacy-local-advisor'
     model = $Model
     modelKey = Get-HermesModelKey -Alias $Model
     objective = $Objective

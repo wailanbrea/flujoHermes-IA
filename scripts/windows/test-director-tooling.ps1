@@ -343,74 +343,47 @@ finally {
     }
 }
 
-# --- Model routing guard ---------------------------------------------------
-# submit-hermes-task.ps1 requires an explicit -Model above a proven-safe scope
-# rather than silently under-scoping to gemma-qat or over-escalating to qwen.
-# -DeferWorker keeps these calls from ever starting a real Hermes process; only
-# contract.json and status.json are written.
+# --- Legacy local worker guard --------------------------------------------
+# Model aliases remain available for optional advisory use, but local workers
+# must refuse every edit contract. Directors now use new-hermes-sandbox.ps1.
 $submitScript = Join-Path $PSScriptRoot 'submit-hermes-task.ps1'
-$routingFixtureIds = [Collections.Generic.List[string]]::new()
-
-$smallScopeResult = & $submitScript `
-    -ProjectPath (Get-OrchestratorRoot) `
-    -Objective 'Routing guard test: scope within the proven-safe threshold.' `
-    -AcceptanceCriteria @('n/a') `
-    -AllowedFiles @('README.md') `
-    -MaxAddedLines 10 -MaxRemovedLines 10 `
-    -Mode execute -Phase edit -ModificationAuthorized -DeferWorker |
-    ConvertFrom-Json
-$routingFixtureIds.Add($smallScopeResult.taskId)
-$smallScopeContract = Read-JsonFile -Path (
-    Join-Path (Get-TaskDirectory -TaskId $smallScopeResult.taskId) 'contract.json'
-)
 Assert-Condition `
-    ($smallScopeContract.model -eq 'gemma') `
-    'A small-scope contract without an explicit -Model did not use the default alias.'
-Assert-Condition `
-    ((Get-HermesModelKey -Alias $smallScopeContract.model) -eq 'google/gemma-4-12b-qat') `
+    ((Get-HermesModelKey -Alias 'gemma') -eq 'google/gemma-4-12b-qat') `
     'The default alias no longer resolves to gemma-qat.'
 
-$rejectedLargeScope = $false
+$rejectedLocalEdit = $false
 try {
     & $submitScript `
         -ProjectPath (Get-OrchestratorRoot) `
-        -Objective 'Routing guard test: scope past the proven-safe threshold.' `
+        -Objective 'The deprecated local worker must refuse this edit contract.' `
         -AcceptanceCriteria @('n/a') `
         -AllowedFiles @('README.md') `
-        -MaxAddedLines 200 -MaxRemovedLines 200 `
-        -Mode execute -Phase edit -ModificationAuthorized -DeferWorker |
+        -Mode execute -Phase edit -ModificationAuthorized -DeferWorker `
+        -LegacyReadOnly |
         Out-Null
 }
 catch {
-    $rejectedLargeScope = $true
+    $rejectedLocalEdit = $true
 }
 Assert-Condition `
-    $rejectedLargeScope `
-    'A large-scope contract without an explicit -Model was silently routed instead of rejected.'
+    $rejectedLocalEdit `
+    'The deprecated local worker accepted an edit contract.'
 
-$explicitLargeScopeResult = & $submitScript `
-    -ProjectPath (Get-OrchestratorRoot) `
-    -Objective 'Routing guard test: scope past threshold with an explicit model.' `
-    -AcceptanceCriteria @('n/a') `
-    -AllowedFiles @('README.md') `
-    -MaxAddedLines 200 -MaxRemovedLines 200 `
-    -Model qwen `
-    -Mode execute -Phase edit -ModificationAuthorized -DeferWorker |
-    ConvertFrom-Json
-$routingFixtureIds.Add($explicitLargeScopeResult.taskId)
-$explicitLargeScopeContract = Read-JsonFile -Path (
-    Join-Path (Get-TaskDirectory -TaskId $explicitLargeScopeResult.taskId) 'contract.json'
-)
-Assert-Condition `
-    ($explicitLargeScopeContract.model -eq 'qwen') `
-    'An explicit -Model past the threshold was not honoured.'
-
-foreach ($fixtureId in $routingFixtureIds) {
-    $fixtureDir = Get-TaskDirectory -TaskId $fixtureId
-    if (Test-Path -LiteralPath $fixtureDir) {
-        Remove-Item -LiteralPath $fixtureDir -Recurse -Force
-    }
+$explicitGuard = $false
+try {
+    & $submitScript `
+        -ProjectPath (Get-OrchestratorRoot) `
+        -Objective 'Legacy analysis requires an explicit opt-in switch.' `
+        -AcceptanceCriteria @('n/a') `
+        -Mode analysis -Phase plan -DeferWorker |
+        Out-Null
 }
+catch {
+    $explicitGuard = $true
+}
+Assert-Condition `
+    $explicitGuard `
+    'Legacy advisory analysis did not require -LegacyReadOnly.'
 
 # --- Project lookup -------------------------------------------------------
 $resolveScript = Join-Path $PSScriptRoot 'resolve-project.ps1'

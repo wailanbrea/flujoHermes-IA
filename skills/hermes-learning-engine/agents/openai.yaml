@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Learning Engine"
+  short_description: "Registra aprendizaje sólo desde resultados validados"
+  default_prompt: "Convierte evidencia validada en lecciones saneadas y candidatas a skill."

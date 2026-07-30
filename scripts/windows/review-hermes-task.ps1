@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Records Codex review, applies an approved patch, or completes validation.
+Reviews sealed director evidence and performs one idempotent integration.
 #>
 [CmdletBinding()]
 param(
@@ -29,284 +29,237 @@ $taskDirectory = Get-TaskDirectory -TaskId $TaskId
 $contract = Read-JsonFile -Path (Join-Path $taskDirectory 'contract.json')
 $status = Get-TaskStatus -TaskDirectory $taskDirectory
 $project = Get-AuthorizedProject -ProjectPath $contract.projectRoot
-$forbidSwitch = $false
-if ($null -ne $contract.patchPolicy.forbidLiteralEscapedNewlines) {
-    $forbidSwitch = [bool]$contract.patchPolicy.forbidLiteralEscapedNewlines
-}
 
-# A PowerShell script invoked with `&` does not set $LASTEXITCODE unless it calls
-# `exit`, so the old exit-code guard read a stale value from an unrelated native
-# command. ensure-project-graph.ps1 throws on failure; catch that instead.
 function Update-ProjectGraph([string]$ProjectRoot) {
     if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -eq '1') { return }
-    try {
-        & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
-            -ProjectPath $ProjectRoot `
-            -Refresh | Out-Null
-    }
-    catch {
-        throw "Code passed validation, but Graphify refresh failed: $($_.Exception.Message)"
+    & (Join-Path $PSScriptRoot 'ensure-project-graph.ps1') `
+        -ProjectPath $ProjectRoot `
+        -Refresh | Out-Null
+}
+
+function Clear-SealEvidence([string]$Directory) {
+    foreach ($name in @('changes.patch', 'patch-validation.json', 'validation.json')) {
+        $path = Join-Path $Directory $name
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Remove-Item -LiteralPath $path -Force
+        }
     }
 }
 
-function Request-HermesCorrection(
-    [string]$TaskId,
-    [string]$TaskDirectory,
-    [object]$Status,
-    [object]$Contract,
+function Return-ToEditing(
+    [object]$CurrentStatus,
     [string]$Feedback,
-    [string]$ReviewedBy,
-    [bool]$ForbidLiteralEscapedNewlines
+    [string]$Reviewer
 ) {
-    $sanitizedFeedback = Get-SanitizedCorrectionFeedback -Feedback $Feedback
-    $currentAttempt = if ($null -ne $Status.attempt) {
-        [int]$Status.attempt
+    Get-SanitizedCorrectionFeedback -Feedback $Feedback | Out-Null
+    if (
+        -not $CurrentStatus.worktreePath -or
+        -not (Test-Path -LiteralPath ([string]$CurrentStatus.worktreePath) -PathType Container)
+    ) {
+        throw 'The original sandbox is unavailable; correction cannot continue safely.'
     }
-    elseif ($null -ne $Contract.attempt) {
-        [int]$Contract.attempt
-    }
-    else {
-        1
-    }
-    $maxAttempts = if ($null -ne $Status.maxAttempts) {
-        [int]$Status.maxAttempts
-    }
-    elseif ($null -ne $Contract.maxAttempts) {
-        [int]$Contract.maxAttempts
-    }
-    else {
-        3
-    }
-    $maxAttempts = [Math]::Min(3, $maxAttempts)
-
-    if ($currentAttempt -ge $maxAttempts) {
-        Set-TaskStatus `
-            -TaskDirectory $taskDirectory `
-            -State 'blocked' `
-            -Message "Exceeded max attempts." `
-            -Fields @{ errorCode = 'correction-attempts-exhausted' }
-        return
-    }
-
-    $combinedConstraints = @($Contract.constraints | Select-Object -First 19)
-    $combinedConstraints += $sanitizedFeedback
-
-    $maxTurns = 18
-    if ($null -ne $Contract.maxTurns) {
-        $maxTurns = [Math]::Max(5, [Math]::Min(18, [int]$Contract.maxTurns))
-    }
-    $timeoutSeconds = 1200
-    if ($null -ne $Contract.timeoutSeconds) {
-        $timeoutSeconds = [int]$Contract.timeoutSeconds
-    }
-    $noProgressTimeout = 180
-    if ($null -ne $Contract.noProgressTimeoutSeconds) {
-        $noProgressTimeout = [int]$Contract.noProgressTimeoutSeconds
-    }
-    $modificationAuthorized = $true
-    if ($null -ne $Contract.modificationAuthorized) {
-        $modificationAuthorized = [bool]$Contract.modificationAuthorized
-    }
-    # Without this, a correction silently fell back to submit-hermes-task.ps1's
-    # own default model instead of staying on the one the parent task actually
-    # ran on - a qwen task's retry would have silently downgraded to gemma-qat.
-    $model = 'gemma'
-    if ($Contract.model) {
-        $model = [string]$Contract.model
-    }
-
-    $submitParams = [ordered]@{
-        ProjectPath          = $Contract.projectRoot
-        Objective            = $Contract.objective
-        AcceptanceCriteria   = @($Contract.acceptanceCriteria)
-        Constraints          = $combinedConstraints
-        Model                = $model
-        Mode                 = $Contract.mode
-        Phase                = $Contract.phase
-        AllowedFiles         = @($Contract.patchPolicy.allowedFiles)
-        MaxAddedLines        = [int]$Contract.patchPolicy.maxAddedLines
-        MaxRemovedLines      = [int]$Contract.patchPolicy.maxRemovedLines
-        MaxPatchBytes        = [int]$Contract.patchPolicy.maxPatchBytes
-        # The guard is on by default now, so a correction only carries the
-        # opt-out when the parent contract explicitly disabled it.
-        AllowLiteralEscapedNewlines = (-not $ForbidLiteralEscapedNewlines)
-        MaxTurns             = $maxTurns
-        TimeoutSeconds       = $timeoutSeconds
-        NoProgressTimeoutSeconds = $noProgressTimeout
-        RequestedBy          = $ReviewedBy
-        ModificationAuthorized = $modificationAuthorized
-        Wait                 = $false
-    }
-
-    $submitParams['Attempt']       = $currentAttempt + 1
-    $submitParams['MaxAttempts']   = $maxAttempts
-    $submitParams['CorrectionOf']  = $TaskId
-
-    # Three-step ordering, and the order is load-bearing. Queue the child first
-    # but keep its worker deferred, so a rejected contract leaves the parent's
-    # worktree intact as evidence. Only once the child is known valid is the
-    # parent's worktree released, and only then is the worker started: the
-    # child's `git worktree add` must never run while `worktree prune` is
-    # removing the parent's metadata from the same repository.
-    $submitParams['DeferWorker'] = $true
-
-    $submitScript = Join-Path $PSScriptRoot 'submit-hermes-task.ps1'
-    $childResult = & $submitScript @submitParams
-    if ($null -eq $childResult) {
-        throw 'Submit-hermes-task returned null.'
-    }
-
-    $childStatus = $null
-    try {
-        $childStatus = $childResult | ConvertFrom-Json
-    }
-    catch {
-        throw "Could not parse child task status: $_"
-    }
-
-    if ($null -eq $childStatus) {
-        throw 'Parsed child task status is null.'
-    }
-
-    if (-not $childStatus.taskId) {
-        throw 'Child task must have a valid ID.'
-    }
-
-    if ($Status.worktreePath) {
-        Remove-TaskWorktree `
-            -ProjectRoot $project.Path `
-            -WorktreePath ([string]$Status.worktreePath)
-    }
-    Remove-TaskExchange -TaskId $TaskId
-
+    Clear-SealEvidence -Directory $taskDirectory
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
-        -State 'correction-requested' `
-        -Message "Correction requested (attempt $($currentAttempt + 1))." `
+        -State 'editing' `
+        -Message 'Independent validation requested a correction in the same sandbox.' `
         -Fields @{
-            reviewedAt   = [DateTime]::UtcNow.ToString('o')
-            reviewedBy   = $ReviewedBy
-            worktreeActive = $false
-            childTaskId  = $childStatus.taskId
+            reviewedAt = [DateTime]::UtcNow.ToString('o')
+            reviewedBy = $Reviewer
+            worktreeActive = $true
+            validationPassed = $false
+            patchPolicyPassed = $null
+            patchBytes = 0
+            filesChanged = 0
+            errorCode = 'validation-failed'
+            progressKind = 'editing'
         }
-
-    Start-HermesWorker -TaskId ([string]$childStatus.taskId)
-
-    return
 }
 
 if ($Decision -eq 'RequestChanges') {
-    if ($status.state -notin @('awaiting-review', 'failed', 'blocked')) {
-        throw 'Only a reviewable Hermes task can have changes requested.'
+    if ($status.state -notin @('sealed', 'awaiting-review', 'validating', 'blocked')) {
+        throw 'Only a sealed, validating, or policy-blocked task can return to editing.'
     }
-    Request-HermesCorrection `
-        -TaskId $TaskId `
-        -TaskDirectory $taskDirectory `
-        -Status $status `
-        -Contract $contract `
+    if (-not $CorrectionFeedback) {
+        throw 'RequestChanges requires -CorrectionFeedback.'
+    }
+    Return-ToEditing `
+        -CurrentStatus $status `
         -Feedback $CorrectionFeedback `
-        -ReviewedBy $ReviewedBy `
-        -ForbidLiteralEscapedNewlines $forbidSwitch
-
+        -Reviewer $ReviewedBy
+    Update-HermesBrainProjection
+    Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
+    exit 0
 }
-elseif ($Decision -eq 'Approve') {
-    if ($status.state -ne 'awaiting-review') {
-        throw 'Only an awaiting-review task can be approved.'
+
+if ($Decision -eq 'Approve') {
+    if ($status.state -notin @('sealed', 'awaiting-review')) {
+        throw 'Only a sealed task can be approved.'
     }
     Assert-CleanGitRepository -ProjectRoot $project.Path
-    $patchValidation = Assert-PatchEvidence `
+    Assert-PatchEvidence `
         -ProjectRoot $project.Path `
-        -TaskDirectory $taskDirectory
-
+        -TaskDirectory $taskDirectory | Out-Null
     Set-TaskStatus `
         -TaskDirectory $taskDirectory `
         -State 'validating' `
-        -Message "Parche aprobado; codex debe ejecutar la validacion." `
+        -Message 'Evidence approved; independent validation is required.' `
         -Fields @{
-            reviewedAt   = [DateTime]::UtcNow.ToString('o')
-            reviewedBy    = $ReviewedBy
+            reviewedAt = [DateTime]::UtcNow.ToString('o')
+            reviewedBy = $ReviewedBy
             worktreeActive = $true
+            progressKind = 'validating'
         }
+    Update-HermesBrainProjection
+    Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
+    exit 0
 }
-else {
-    if ($status.state -ne 'validating') {
-        throw 'Only a validating task can be completed.'
-    }
-    if ($null -eq $ValidationPassed -or -not $ValidationSummary) {
-        throw 'Complete requires -ValidationPassed and -ValidationSummary.'
-    }
 
-    # Recorded before any state change so the evidence survives a later failure.
-    $evidence = Write-ValidationEvidence `
+if ($status.state -notin @('validating', 'applied-cleanup-pending')) {
+    throw 'Only a validating or cleanup-pending task can be completed.'
+}
+if ($null -eq $ValidationPassed -or -not $ValidationSummary) {
+    throw 'Complete requires -ValidationPassed and -ValidationSummary.'
+}
+
+if (-not [bool]$ValidationPassed) {
+    if (-not $CorrectionFeedback) {
+        throw 'Failed Complete requires -CorrectionFeedback.'
+    }
+    Write-ValidationEvidence `
         -TaskDirectory $taskDirectory `
         -Summary $ValidationSummary `
-        -Passed ([bool]$ValidationPassed) `
-        -ReviewedBy $ReviewedBy
+        -Passed $false `
+        -ReviewedBy $ReviewedBy | Out-Null
+    Return-ToEditing `
+        -CurrentStatus $status `
+        -Feedback $CorrectionFeedback `
+        -Reviewer $ReviewedBy
+    Update-HermesBrainProjection
+    Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
+    exit 0
+}
 
-    if ($ValidationPassed -and -not [bool]$status.worktreeActive) {
-        Set-TaskStatus `
-            -TaskDirectory $taskDirectory `
-            -State 'completed' `
-            -Message 'Codex valido una tarea aplicada por el flujo anterior.' `
-            -Fields @{
-                validatedAt = [DateTime]::UtcNow.ToString('o')
-                reviewedBy = $ReviewedBy
-                validationPassed = $true
-                validationRecordedAt = $evidence.recordedAt
-            }
-        Update-ProjectGraph -ProjectRoot $project.Path
-        Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
-        exit 0
+$evidence = Write-ValidationEvidence `
+    -TaskDirectory $taskDirectory `
+    -Summary $ValidationSummary `
+    -Passed $true `
+    -ReviewedBy $ReviewedBy
+$patchValidation = Read-JsonFile -Path (
+    Join-Path $taskDirectory 'patch-validation.json'
+)
+$patchPath = Join-Path $taskDirectory 'changes.patch'
+$integrationPath = Join-Path $taskDirectory 'integration.json'
+$integration = $null
+if (Test-Path -LiteralPath $integrationPath -PathType Leaf) {
+    $integration = Read-JsonFile -Path $integrationPath
+    if ($integration.patchSha256 -ne $patchValidation.patchSha256) {
+        throw 'Integration record does not match the sealed patch.'
     }
+}
 
-    if ($ValidationPassed) {
+if ($null -eq $integration) {
+    $sourceClean = $true
+    try {
         Assert-CleanGitRepository -ProjectRoot $project.Path
-        $patchValidation = Assert-PatchEvidence `
+    }
+    catch {
+        $sourceClean = $false
+    }
+    if ($sourceClean) {
+        Assert-PatchEvidence `
             -ProjectRoot $project.Path `
-            -TaskDirectory $taskDirectory
-        $patchPath = Join-Path $taskDirectory 'changes.patch'
+            -TaskDirectory $taskDirectory | Out-Null
         if ([int64]$patchValidation.patchBytes -gt 0) {
             & git.exe -C $project.Path apply $patchPath
             if ($LASTEXITCODE -ne 0) {
-                throw 'Git failed while applying the reviewed Hermes patch.'
+                throw 'Git failed while applying the reviewed director patch.'
             }
         }
-
-        Remove-TaskWorktree `
-            -ProjectRoot $project.Path `
-            -WorktreePath ([string]$status.worktreePath)
-        Remove-TaskExchange -TaskId $TaskId
-
-        Set-TaskStatus `
-            -TaskDirectory $taskDirectory `
-            -State 'completed' `
-            -Message 'Codex valido el trabajo local.' `
-            -Fields @{
-                validatedAt   = [DateTime]::UtcNow.ToString('o')
-                reviewedBy    = $ReviewedBy
-                validationPassed = [bool]$ValidationPassed
-                validationRecordedAt = $evidence.recordedAt
-                worktreeActive = $false
-            }
-
-        Update-ProjectGraph -ProjectRoot $project.Path
     }
     else {
-        if ($null -eq $CorrectionFeedback -or $CorrectionFeedback.Trim().Length -eq 0) {
-            throw 'Failed Complete requires -CorrectionFeedback.'
+        & git.exe -C $project.Path apply --reverse --check $patchPath
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Source is dirty and does not exactly contain the sealed patch.'
         }
-
-        Request-HermesCorrection `
-            -TaskId $TaskId `
-            -TaskDirectory $taskDirectory `
-            -Status $status `
-            -Contract $contract `
-            -Feedback $CorrectionFeedback `
-            -ReviewedBy $ReviewedBy `
-            -ForbidLiteralEscapedNewlines $forbidSwitch
-
     }
-
+    $integration = [ordered]@{
+        schemaVersion = 1
+        taskId = $TaskId
+        patchSha256 = $patchValidation.patchSha256
+        appliedAt = [DateTime]::UtcNow.ToString('o')
+        appliedBy = $ReviewedBy
+    }
+    Write-JsonAtomic -Path $integrationPath -Value $integration
 }
 
+Set-TaskStatus `
+    -TaskDirectory $taskDirectory `
+    -State 'applied-cleanup-pending' `
+    -Message 'Patch applied once; sandbox cleanup is pending.' `
+    -Fields @{
+        integrationApplied = $true
+        integrationAppliedAt = $integration.appliedAt
+        validationPassed = $true
+        validationRecordedAt = $evidence.recordedAt
+        progressKind = 'cleanup'
+        errorCode = 'cleanup-pending'
+    }
+
+try {
+    if ($env:HERMES_TEST_FORCE_CLEANUP_FAILURE -eq '1') {
+        throw 'Injected cleanup failure.'
+    }
+    Remove-TaskWorktree `
+        -ProjectRoot $project.Path `
+        -WorktreePath ([string]$status.worktreePath)
+    Remove-TaskExchange -TaskId $TaskId
+}
+catch {
+    Set-TaskStatus `
+        -TaskDirectory $taskDirectory `
+        -State 'applied-cleanup-pending' `
+        -Message 'Patch is applied; cleanup can be retried safely.' `
+        -Fields @{
+            worktreeActive = Test-Path -LiteralPath ([string]$status.worktreePath)
+            errorCode = 'cleanup-pending'
+        }
+    Update-HermesBrainProjection
+    Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress
+    exit 0
+}
+
+Set-TaskStatus `
+    -TaskDirectory $taskDirectory `
+    -State 'completed' `
+    -Message 'Director change passed validation and was integrated once.' `
+    -Fields @{
+        validatedAt = [DateTime]::UtcNow.ToString('o')
+        reviewedBy = $ReviewedBy
+        validationPassed = $true
+        validationRecordedAt = $evidence.recordedAt
+        worktreeActive = $false
+        errorCode = $null
+        progressKind = 'completed'
+    }
+
+try {
+    & (Join-Path $PSScriptRoot 'record-hermes-learning.ps1') `
+        -TaskId $TaskId `
+        -Domain ([string]$contract.projectName) `
+        -ProblemPattern 'Validated repository change completed in an isolated sandbox.' `
+        -RootCause 'The requested modification required an evidence-gated implementation.' `
+        -SolutionSummary 'A cloud director produced a sealed patch that passed independent validation.' `
+        -PassedCommands @($ValidationSummary) | Out-Null
+}
+catch {
+    Set-TaskStatus `
+        -TaskDirectory $taskDirectory `
+        -State 'completed' `
+        -Message 'Integrated successfully; sanitized learning capture needs review.' `
+        -Fields @{ learningState = 'failed'; learningErrorCode = 'learning-capture-failed' }
+}
+
+Update-ProjectGraph -ProjectRoot $project.Path
+Update-HermesBrainProjection
 Get-TaskStatus -TaskDirectory $taskDirectory | ConvertTo-Json -Compress

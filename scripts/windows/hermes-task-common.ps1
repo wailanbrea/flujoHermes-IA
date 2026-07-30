@@ -336,6 +336,27 @@ function Write-JsonAtomic(
     }
 }
 
+function Update-HermesBrainProjection {
+    if ($env:HERMES_TEST_SKIP_BRAIN_PROJECTION -eq '1') { return }
+    $root = Get-OrchestratorRoot
+    $configPath = Join-Path $root 'config\hermes-brain.json'
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return }
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = Join-Path $root 'src'
+        & py.exe -3 -m hermes_brain.cli build-status `
+            --repo $root `
+            --output (Join-Path $root 'telemetry\runtime\hermes-brain-status.json') |
+            Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not refresh the Hermes Brain dashboard projection.'
+        }
+    }
+    finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
+}
+
 function Get-FileSha256([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw 'Cannot hash a missing file.'

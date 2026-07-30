@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Brain"
+  short_description: "Controla el plano organizacional persistente"
+  default_prompt: "Usa Hermes Brain para coordinar una tarea con Graphify, sandbox, evidencia y aprendizaje."

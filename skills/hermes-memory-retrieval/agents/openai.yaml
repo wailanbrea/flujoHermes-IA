@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Memory Retrieval"
+  short_description: "Recupera contexto acotado con Graphify"
+  default_prompt: "Consulta primero Graphify y devuelve sólo contexto estructural pertinente."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Model Router"
+  short_description: "Enruta capacidades locales y cloud con seguridad"
+  default_prompt: "Clasifica la capacidad necesaria y conserva la IA local fuera del camino crítico."

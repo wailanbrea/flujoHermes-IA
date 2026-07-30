@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Executes one queued Hermes task in an isolated Git worktree.
+Executes one explicit legacy read-only Hermes advisory task.
 #>
 [CmdletBinding()]
 param(
@@ -16,6 +16,13 @@ $taskDirectory = Get-TaskDirectory -TaskId $TaskId
 $contractPath = Join-Path $taskDirectory 'contract.json'
 $contract = Read-JsonFile -Path $contractPath
 $status = Get-TaskStatus -TaskDirectory $taskDirectory
+if (
+    $contract.mode -ne 'analysis' -or
+    $contract.phase -eq 'edit' -or
+    $contract.executor -ne 'legacy-local-advisor'
+) {
+    throw 'The deprecated local worker refuses code generation and edit tasks.'
+}
 if ($status.state -ne 'queued') {
     throw 'Hermes worker only accepts queued tasks.'
 }

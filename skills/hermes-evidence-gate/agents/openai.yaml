@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Evidence Gate"
+  short_description: "Sella y verifica parches reproducibles"
+  default_prompt: "Valida allowlists, hashes, diff e integración idempotente de un sandbox."
