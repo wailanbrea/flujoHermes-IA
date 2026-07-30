@@ -35,6 +35,35 @@ interface DiagramNode {
   subtitle: string;
 }
 
+interface ExecutionStage {
+  label: string;
+  nodes: NodeId[];
+  edgeIndexes: number[];
+}
+
+const EXECUTION_STEP_MS = 1_100;
+
+const executionStages: ExecutionStage[] = [
+  { label: "Entrada autorizada", nodes: ["user"], edgeIndexes: [] },
+  { label: "Hermes Brain coordina", nodes: ["brain"], edgeIndexes: [0] },
+  {
+    label: "Consulta, routing y selección",
+    nodes: ["memory", "router", "agents"],
+    edgeIndexes: [1, 2, 3],
+  },
+  {
+    label: "Contexto, motor y especialistas",
+    nodes: ["cases", "engines", "experts"],
+    edgeIndexes: [4, 5, 6],
+  },
+  { label: "Plan verificable", nodes: ["plan"], edgeIndexes: [7, 8, 9] },
+  { label: "Ejecución aislada", nodes: ["sandbox"], edgeIndexes: [10] },
+  { label: "Tests, revisión y evidencia", nodes: ["evidence"], edgeIndexes: [11] },
+  { label: "Integración validada", nodes: ["validated"], edgeIndexes: [12] },
+  { label: "Aprendizaje saneado", nodes: ["learning"], edgeIndexes: [13] },
+  { label: "Benchmark y promoción", nodes: ["promotion"], edgeIndexes: [14] },
+];
+
 const nodes: DiagramNode[] = [
   { id: "user", x: 410, y: 14, width: 180, height: 42, title: "Usuario", subtitle: "Objetivo y límites" },
   { id: "brain", x: 360, y: 82, width: 280, height: 58, title: "HERMES BRAIN", subtitle: "Plano de control persistente" },
@@ -121,6 +150,12 @@ function BrainDiagram({
 }) {
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[1];
   const diagramScroller = useRef<HTMLDivElement>(null);
+  const [activeStageIndex, setActiveStageIndex] = useState(0);
+  const [isSequencePlaying, setIsSequencePlaying] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [motionOverride, setMotionOverride] = useState(false);
+  const motionAllowed = !prefersReducedMotion || motionOverride;
+  const activeStage = executionStages[activeStageIndex];
 
   useEffect(() => {
     const centerOnEntry = () => {
@@ -134,8 +169,69 @@ function BrainDiagram({
     return () => window.removeEventListener("resize", centerOnEntry);
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updateMotionPreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updateMotionPreference();
+    mediaQuery.addEventListener("change", updateMotionPreference);
+    return () => mediaQuery.removeEventListener("change", updateMotionPreference);
+  }, []);
+
+  useEffect(() => {
+    if (!isSequencePlaying || !motionAllowed) return;
+    const interval = window.setInterval(() => {
+      setActiveStageIndex((current) => (current + 1) % executionStages.length);
+    }, EXECUTION_STEP_MS);
+    return () => window.clearInterval(interval);
+  }, [isSequencePlaying, motionAllowed]);
+
   return (
-    <div className="diagram-layout">
+    <div className={`diagram-layout${motionAllowed ? "" : " reduced-motion"}`}>
+      <div className="execution-sequence" aria-live="polite">
+        <div className="execution-readout">
+          <span>Secuencia operativa</span>
+          <strong>
+            {String(activeStageIndex + 1).padStart(2, "0")}
+            <i>/</i>
+            {String(executionStages.length).padStart(2, "0")}
+            <b>{activeStage.label}</b>
+          </strong>
+        </div>
+        <div
+          className="execution-progress"
+          aria-label={`Fase ${activeStageIndex + 1} de ${executionStages.length}: ${activeStage.label}`}
+          role="progressbar"
+          aria-valuemin={1}
+          aria-valuemax={executionStages.length}
+          aria-valuenow={activeStageIndex + 1}
+        >
+          {executionStages.map((stage, index) => (
+            <i
+              className={index === activeStageIndex ? "active" : index < activeStageIndex ? "passed" : ""}
+              key={stage.label}
+            />
+          ))}
+        </div>
+        <button
+          className="sequence-toggle"
+          type="button"
+          onClick={() => {
+            if (!motionAllowed) {
+              setMotionOverride(true);
+              setIsSequencePlaying(true);
+              return;
+            }
+            setIsSequencePlaying((current) => !current);
+          }}
+          aria-pressed={!isSequencePlaying}
+        >
+          {!motionAllowed
+            ? "Activar animación"
+            : isSequencePlaying
+              ? "Pausar secuencia"
+              : "Reanudar secuencia"}
+        </button>
+      </div>
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
         <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
           <title id="brain-title">Flujo operativo de Hermes Brain</title>
@@ -144,20 +240,35 @@ function BrainDiagram({
             <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" />
             </marker>
+            <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" />
+            </marker>
           </defs>
           <g className="brain-links">
-            {paths.map((path) => <path d={path} key={path} />)}
+            {paths.map((path, index) => {
+              const isTraversing = activeStage.edgeIndexes.includes(index);
+              return (
+                <path
+                  className={isTraversing ? "sequence-active" : ""}
+                  d={path}
+                  key={path}
+                  markerEnd={isTraversing ? "url(#arrow-active)" : "url(#arrow)"}
+                />
+              );
+            })}
           </g>
           {nodes.map((node) => {
             const state = nodeState(node.id, brain);
             const active = node.id === selected;
+            const isSequenceActive = activeStage.nodes.includes(node.id);
             return (
               <g
-                className={`brain-node ${stateClass(state)}${active ? " selected" : ""}`}
+                className={`brain-node ${stateClass(state)}${active ? " selected" : ""}${isSequenceActive ? " sequence-active" : ""}`}
                 key={node.id}
                 role="button"
                 tabIndex={0}
                 aria-label={`${node.title}: ${node.subtitle}`}
+                aria-current={isSequenceActive ? "step" : undefined}
                 onClick={() => onSelect(node.id)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") onSelect(node.id);
