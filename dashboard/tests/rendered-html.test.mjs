@@ -29,33 +29,21 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(page, /snapshot\.brain/);
   assert.match(page, /node-inspector/);
   assert.match(page, /const executionStages/);
-  assert.match(page, /setInterval/);
-  assert.match(page, /clearInterval/);
-  assert.match(page, /prefers-reduced-motion: reduce/);
   assert.match(page, /snapshot\.execution/);
-  assert.match(page, /Modo guía/);
   assert.match(page, /En vivo/);
-  assert.match(page, /Pausar movimiento/);
-  assert.match(page, /Volver a telemetría/);
-  assert.match(page, /Activar animación/);
-  assert.match(page, /motionOverride/);
-  assert.match(page, /guideMode/);
-  assert.match(page, /trama\.motion-enabled/);
-  assert.match(page, /localStorage\.setItem/);
-  assert.match(page, /pauseAnimations/);
-  assert.match(page, /unpauseAnimations/);
-  assert.match(page, /animateMotion/);
-  assert.match(page, /execution-pulse/);
-  assert.match(page, /Respetar sistema/);
+  assert.match(page, /Flujo continuo/);
+  assert.match(page, /pathStageIndexes/);
+  assert.match(page, /animationDelay/);
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
   assert.match(css, /overflow-x: auto/);
   assert.match(css, /max-width: 1500px/);
-  assert.match(css, /@keyframes execution-route/);
-  assert.match(css, /@keyframes execution-node/);
-  assert.match(css, /brain-links path\.sequence-active/);
-  assert.match(css, /\.execution-pulse/);
-  assert.doesNotMatch(page, /diagram-spread|draggingId|onPointerMove/);
+  assert.match(css, /@keyframes workflow-flow/);
+  assert.match(css, /brain-links path\.telemetry-active/);
+  assert.doesNotMatch(
+    page,
+    /diagram-spread|draggingId|onPointerMove|setInterval|localStorage|matchMedia|animateMotion|Activar animación/,
+  );
   assert.doesNotMatch(page, /Ahorro vs|Tokens delegados|Hermes Lab|worker principal/i);
 });
 

@@ -10,7 +10,6 @@ import type {
 import "./globals.css";
 
 const API_URL = "http://127.0.0.1:4311";
-const MOTION_PREFERENCE_KEY = "trama.motion-enabled";
 
 type StreamState = "connecting" | "live" | "retrying";
 type NodeId =
@@ -45,8 +44,6 @@ interface ExecutionStage {
   nodes: NodeId[];
   edgeIndexes: number[];
 }
-
-const EXECUTION_STEP_MS = 1_100;
 
 const executionStages: ExecutionStage[] = [
   { ...WORKFLOW_STAGES[0], nodes: ["user"], edgeIndexes: [] },
@@ -118,6 +115,8 @@ const paths = [
   "M500 734 V746",
 ];
 
+const pathStageIndexes = [1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 6, 7, 8, 9];
+
 const nodeCopy: Record<NodeId, string> = {
   user: "Entrega el objetivo, el alcance y la autorización. No decide detalles internos del runtime.",
   brain: "Coordina memoria, routing, expertos, sandboxes, evidencia y aprendizaje. Sólo escribe dentro de ámbitos autorizados.",
@@ -171,34 +170,18 @@ function BrainDiagram({
 }) {
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[1];
   const diagramScroller = useRef<HTMLDivElement>(null);
-  const brainSvg = useRef<SVGSVGElement>(null);
-  const [guideStageIndex, setGuideStageIndex] = useState(0);
-  const [guideMode, setGuideMode] = useState(false);
-  const [isMotionPlaying, setIsMotionPlaying] = useState(true);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const [motionOverride, setMotionOverride] = useState(() => {
-    try {
-      return window.localStorage.getItem(MOTION_PREFERENCE_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-  const motionAllowed = !prefersReducedMotion || motionOverride;
-  const activeStageIndex = guideMode ? guideStageIndex : execution.stageIndex;
+  const activeStageIndex = execution.stageIndex;
   const activeStage = executionStages[activeStageIndex];
-  const executionMode = guideMode ? "guide" : execution.mode;
+  const executionMode = execution.mode;
   const executionModeLabel = {
-    guide: "Modo guía",
     idle: "Sin tarea",
     live: "En vivo",
     waiting: "En espera",
     last: "Último resultado",
   }[executionMode];
-  const executionDetail = guideMode
-    ? "Demostración local; no representa una tarea activa"
-    : execution.taskId
-      ? `${execution.projectName} · ${execution.requestedBy} · ${execution.taskState}`
-      : "Esperando una tarea autorizada";
+  const executionDetail = execution.taskId
+    ? `${execution.projectName} · ${execution.requestedBy} · ${execution.taskState}`
+    : "Esperando una tarea autorizada";
 
   useEffect(() => {
     const centerOnEntry = () => {
@@ -212,65 +195,14 @@ function BrainDiagram({
     return () => window.removeEventListener("resize", centerOnEntry);
   }, []);
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotionPreference = () => setPrefersReducedMotion(mediaQuery.matches);
-    updateMotionPreference();
-    mediaQuery.addEventListener("change", updateMotionPreference);
-    return () => mediaQuery.removeEventListener("change", updateMotionPreference);
-  }, []);
-
-  useEffect(() => {
-    if (!guideMode || !isMotionPlaying || !motionAllowed) return;
-    const interval = window.setInterval(() => {
-      setGuideStageIndex((current) => (current + 1) % executionStages.length);
-    }, EXECUTION_STEP_MS);
-    return () => window.clearInterval(interval);
-  }, [guideMode, isMotionPlaying, motionAllowed]);
-
-  useEffect(() => {
-    if (execution.mode === "live" || execution.mode === "waiting") {
-      setGuideMode(false);
-      setIsMotionPlaying(true);
-    }
-  }, [execution.mode, execution.taskId, execution.taskState]);
-
-  useEffect(() => {
-    const svg = brainSvg.current;
-    if (!svg) return;
-    if (motionAllowed && isMotionPlaying) svg.unpauseAnimations();
-    else svg.pauseAnimations();
-  }, [isMotionPlaying, motionAllowed]);
-
-  const enableMotion = () => {
-    setMotionOverride(true);
-    setIsMotionPlaying(true);
-    try {
-      window.localStorage.setItem(MOTION_PREFERENCE_KEY, "true");
-    } catch {
-      // Motion still works for this session if browser storage is unavailable.
-    }
-  };
-
-  const respectSystemMotion = () => {
-    setMotionOverride(false);
-    try {
-      window.localStorage.removeItem(MOTION_PREFERENCE_KEY);
-    } catch {
-      // The in-memory preference remains authoritative for this session.
-    }
-  };
-
   return (
-    <div
-      className={`diagram-layout${motionAllowed ? "" : " reduced-motion"}${isMotionPlaying ? "" : " motion-paused"}`}
-      data-execution-mode={executionMode}
-    >
+    <div className="diagram-layout" data-execution-mode={executionMode}>
       <div className="execution-sequence" aria-live="polite">
         <div className="execution-readout">
           <span>
             Secuencia operativa
             <em className={`execution-mode mode-${executionMode}`}>{executionModeLabel}</em>
+            <em className="execution-mode mode-flow">Flujo continuo</em>
           </span>
           <strong>
             {String(activeStageIndex + 1).padStart(2, "0")}
@@ -295,55 +227,9 @@ function BrainDiagram({
             />
           ))}
         </div>
-        <div className="sequence-controls">
-          <button
-            className="sequence-toggle"
-            type="button"
-            onClick={() => {
-              if (!motionAllowed) {
-                enableMotion();
-                return;
-              }
-              if (guideMode || execution.mode === "live" || execution.mode === "waiting") {
-                setIsMotionPlaying((current) => !current);
-                return;
-              }
-              setGuideStageIndex(0);
-              setGuideMode(true);
-              setIsMotionPlaying(true);
-            }}
-            aria-pressed={
-              guideMode || execution.mode === "live" || execution.mode === "waiting"
-                ? !isMotionPlaying
-                : undefined
-            }
-          >
-            {!motionAllowed
-              ? "Activar animación"
-              : guideMode
-                ? isMotionPlaying
-                  ? "Pausar guía"
-                  : "Reanudar guía"
-                : execution.mode === "live" || execution.mode === "waiting"
-                  ? isMotionPlaying
-                    ? "Pausar movimiento"
-                    : "Reanudar movimiento"
-                  : "Recorrer flujo"}
-          </button>
-          {guideMode && (
-            <button className="sequence-toggle secondary" type="button" onClick={() => setGuideMode(false)}>
-              Volver a telemetría
-            </button>
-          )}
-          {prefersReducedMotion && motionOverride && !guideMode && (
-            <button className="sequence-toggle secondary" type="button" onClick={respectSystemMotion}>
-              Respetar sistema
-            </button>
-          )}
-        </div>
       </div>
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
-        <svg ref={brainSvg} className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
+        <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
           <title id="brain-title">Flujo operativo de Hermes Brain</title>
           <desc id="brain-desc">Del usuario a memoria, routing, agentes, sandbox, evidencia y aprendizaje.</desc>
           <defs>
@@ -359,24 +245,14 @@ function BrainDiagram({
               const isTraversing = activeStage.edgeIndexes.includes(index);
               return (
                 <path
-                  className={isTraversing ? "sequence-active" : ""}
+                  className={`flow-path${isTraversing ? " telemetry-active" : ""}`}
                   d={path}
                   key={path}
                   markerEnd={isTraversing ? "url(#arrow-active)" : "url(#arrow)"}
+                  style={{ animationDelay: `${(pathStageIndexes[index] - 1) * 0.6}s` }}
                 />
               );
             })}
-          </g>
-          <g className="execution-pulses" aria-hidden="true">
-            {activeStage.edgeIndexes.map((edgeIndex) => (
-              <circle className="execution-pulse" key={`${activeStage.id}-${edgeIndex}`} r="5">
-                <animateMotion
-                  dur="850ms"
-                  path={paths[edgeIndex]}
-                  repeatCount="indefinite"
-                />
-              </circle>
-            ))}
           </g>
           {nodes.map((node) => {
             const state = nodeState(node.id, brain);
