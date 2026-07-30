@@ -1,34 +1,41 @@
 ---
 name: bsolutions-mcp-integration
-description: Design, implement and review Model Context Protocol servers, clients and tool integrations with explicit schemas, transport lifecycle, capability negotiation, authorization boundaries, secret isolation, timeouts, idempotency, observability and contract tests. Use for MCP manifests, stdio or HTTP transports, tool/resource/prompt handlers, host integration, AppControl, JSON-RPC failures, or MCP security reviews.
+description: Diseñar, implementar y revisar servidores, clientes y herramientas MCP con descubrimiento progresivo, esquemas acotados, mínimo privilegio y pruebas de contrato. Usar para manifests, transportes stdio/HTTP, handlers, integración de hosts, JSON-RPC y seguridad MCP.
 ---
 
-# MCP Integration Engineering
+# Integración MCP
 
-1. Identify the MCP host, server, transport, trust boundary, authentication
-   mechanism and exact capabilities required. Prefer a skill over a custom tool
-   when existing terminal or web capabilities already solve the problem.
-2. Define narrow tool schemas with stable names, explicit descriptions, required
-   fields, bounded strings and arrays, and rejection of unknown or malformed
-   input. Treat every model-provided argument as untrusted.
-3. Separate protocol handling from domain services and infrastructure adapters.
-   Keep transport lifecycle, business logic, credentials and host registration
-   independently testable.
-4. Apply least privilege. Expose only required tools/resources, filter inherited
-   environment variables, redact secrets, restrict filesystem/network scope and
-   require approval for destructive or externally visible effects.
-5. Make operations timeout-aware, cancellable and idempotent where retries are
-   possible. Return structured errors without stack traces, tokens, private paths
-   or raw upstream payloads.
-6. Handle initialize/shutdown, capability negotiation, disconnects, partial
-   responses, invalid JSON-RPC messages and unavailable dependencies explicitly.
-7. Add contract tests for schemas and happy paths, negative tests for invalid
-   input and authorization, and integration tests for the real transport without
-   production credentials.
-8. Measure tool-schema context cost. Keep the exposed catalog small and use tool
-   search or role-specific profiles when an MCP server has a broad surface.
-9. Verify with the project's formatter, type checker, tests and a host-level
-   smoke test. Report the configured capabilities and evidence without secrets.
+## Descubrimiento de tres niveles
 
-Never enable an MCP server globally, reload credentials, contact third parties or
-publish a plugin without separate authorization.
+1. **Servidor:** confirmar host, servidor, transporte, frontera de confianza,
+   autenticación y capacidades requeridas. Decidir primero si basta una skill,
+   CLI o API existente.
+2. **Catálogo:** inspeccionar sólo nombres y descripciones de herramientas del
+   servidor elegido.
+3. **Esquema:** cargar el esquema exacto únicamente de la herramienta seleccionada.
+
+No exponer catálogos completos al modelo. Medir el costo de contexto de los
+esquemas y mantener superficies pequeñas por rol.
+
+## Implementación segura
+
+1. Definir nombres estables, campos requeridos, límites explícitos y rechazo de
+   entradas desconocidas. Tratar todo argumento del modelo como no confiable.
+2. Separar protocolo, transporte, servicios de dominio, credenciales y registro
+   del host para probarlos de forma independiente.
+3. Aplicar mínimo privilegio, filtrar variables heredadas, redactar secretos y
+   limitar filesystem, red y efectos externos.
+4. Hacer operaciones cancelables, con timeout e idempotentes cuando haya reintentos.
+5. Manejar initialize/shutdown, negociación, desconexiones, respuestas parciales,
+   JSON-RPC inválido y dependencias ausentes.
+6. Devolver errores estructurados sin stacks, tokens, rutas privadas ni payloads
+   upstream completos.
+
+## Verificación
+
+Agregar pruebas de contrato, casos negativos de entrada/autorización, integración
+del transporte sin credenciales productivas y smoke test del host. Reportar
+capacidades y evidencia sin secretos.
+
+No adoptar el daemon experimental Agentic-MCP, registros externos, instaladores
+remotos ni plugins globales sin evaluación y autorización separadas.

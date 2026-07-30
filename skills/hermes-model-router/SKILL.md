@@ -1,22 +1,24 @@
 ---
 name: hermes-model-router
-description: Enrutar una necesidad por capacidad, stack y riesgo entre perfiles Hermes locales, reglas deterministas y fallback cloud. Usar para seleccionar orquestación, investigación, Android, Laravel, TypeScript web, MCP, navegador, revisión, testing, seguridad o integración.
+description: Enrutar solicitudes entre perfiles Hermes locales con reglas deterministas, Graphify y contexto mínimo. Usar para elegir coordinación, implementación, investigación, navegador o revisión sin mezclar proyectos ni llamar servicios externos desde Hermes.
 ---
 
 # Hermes Model Router
 
-Leer `config/hermes-brain.json` y seleccionar capacidad antes que identidad:
+Aplicar esta precedencia:
 
-1. Usar reglas deterministas para inventario, estado, diff y pruebas.
-2. Usar `techlead` para descomposición Kanban sin implementación.
-3. Elegir el implementador específico: `android`, `laravel`, `frontend` o `mcp`.
-4. Usar `researchexpert` para hechos actuales y `browseroperator` para UI.
-5. Seleccionar un perfil read-only para revisión independiente.
-6. Escalar a un director cloud ante bloqueo, complejidad o seguridad crítica.
-7. Usar Evidence Gate para integración.
+1. Resolver proyecto y stack mediante catálogo y Graphify.
+2. Preferir comandos deterministas para inventario, estado, diff y pruebas.
+3. Usar `techlead` para especificación y Kanban, sin implementación.
+4. Elegir exactamente un implementador: `android`, `laravel`, `frontend` o `mcp`.
+5. Usar `researchexpert` para hechos actuales y `browseroperator` para UI.
+6. Elegir revisores read-only y Evidence Gate según riesgo.
+7. Usar `clasificador` sólo cuando las reglas anteriores no decidan.
 
-No enrutar por un nombre ambiguo cuando el catálogo o Graphify identifica el
-stack. No enviar secretos a ningún perfil. Qwen es manual y la caída local nunca
-bloquea al director.
+Seleccionar primero el perfil y después, por metadatos, como máximo cinco cuerpos
+de skills. No mezclar skills MCP o agentes de proyectos distintos cuando el
+catálogo identifica una raíz.
 
-No usar el router para aprobar evidencia o promover skills.
+No usar MoA, OpenRouter ni fallback externo desde Hermes. Si la capacidad local
+es insuficiente, devolver el control al director con evidencia del bloqueo. No
+enviar secretos, aprobar evidencia ni promover skills desde el router.

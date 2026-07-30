@@ -1,4 +1,4 @@
 interface:
   display_name: "Hermes Brain"
-  short_description: "Opera consultas, investigación, skills y sandboxes"
-  default_prompt: "Usa $hermes-brain para resolver esta tarea con las herramientas y controles apropiados."
+  short_description: "Coordina perfiles y skills locales con evidencia"
+  default_prompt: "Usa $hermes-brain para resolver esta tarea con contexto mínimo, Graphify y evidencia reproducible."

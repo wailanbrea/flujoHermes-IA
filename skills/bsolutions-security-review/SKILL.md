@@ -1,27 +1,31 @@
 ---
 name: bsolutions-security-review
-description: Perform scoped application and infrastructure security reviews covering trust boundaries, authorization, validation, secrets, dependencies, injection, data exposure, SSRF, file access, logging, and abuse cases. Use for authorized code, configuration, API, Laravel, Android, or local-agent reviews.
+description: Revisar seguridad de aplicaciones, infraestructura y agentes locales con análisis determinista, call graph y validación adversarial. Usar sobre alcance autorizado para evaluar confianza, autorización, entradas, secretos, dependencias y blast radius sin explotar ni auto-corregir.
 ---
 
-# Security review workflow
+# Security Review
 
-Require authorized scope, assets, data classification, trust boundaries,
-deployment context, threat actors, and change/diff. Review only; do not exploit
-external systems, read secrets, or mutate production.
+Requerir alcance autorizado, activos, clasificación de datos, fronteras de
+confianza, contexto de despliegue, actores y diff. La revisión es read-only.
 
-1. Build a compact data-flow and trust-boundary map.
-2. Identify entry points, identities, privileges, sensitive data, files,
-   networks, third parties, and irreversible actions.
-3. Review authentication, object/action authorization, session/token handling,
-   validation and encoding, injection, XSS/CSRF, SSRF, path traversal, uploads,
-   deserialization, command execution, race conditions, and denial of service.
-4. Review secret sources and redaction without printing values.
-5. Review dependency provenance, lockfiles, audits, update risk, and build hooks.
-6. Verify least privilege, loopback binding, egress limits, timeouts, rate/size
-   limits, secure defaults, logging, retention, backup, and incident evidence.
-7. Distinguish confirmed vulnerabilities from hypotheses. Use safe local tests
-   or static evidence; never claim a scanner/test was run when it was not.
+## Evidencia
 
-Report severity, confidence, evidence, attack preconditions, impact, fix, and
-verification. Escalate critical findings immediately. Stop after three failed
-verification approaches and document the blocker.
+1. Ejecutar pre-scan determinista sólo con scanners instalados o definidos por el
+   proyecto. Tratar cada resultado como hipótesis hasta confirmarlo.
+2. Construir un mapa compacto de flujo y confianza. Usar Graphify para seguir
+   callers, callees, entradas, sinks y blast radius.
+3. Revisar autenticación, autorización de objeto/acción, sesiones, validación,
+   encoding, inyección, XSS/CSRF, SSRF, traversal, uploads, deserialización,
+   comandos, carreras, límites y denegación de servicio.
+4. Revisar secretos y redacción sin imprimir valores; comprobar dependencias,
+   lockfiles, hooks, mínimo privilegio, egress, logging y retención.
+
+## Tres ángulos adversariales
+
+1. Rutas de entrada, límites ausentes y estados inesperados.
+2. Explotabilidad real, precondiciones y controles compensatorios.
+3. Impacto y blast radius sobre datos, servicios y consumidores.
+
+Distinguir vulnerabilidades confirmadas de hipótesis. Reportar severidad,
+confianza, evidencia, precondiciones, impacto, corrección y verificación. No
+auto-corregir, leer secretos, explotar sistemas externos ni mutar producción.

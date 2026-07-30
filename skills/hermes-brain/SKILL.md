@@ -1,40 +1,50 @@
 ---
 name: hermes-brain
-description: Operar Hermes como asistente local controlado para responder preguntas, investigar con evidencia, consultar proyectos mediante Graphify, crear o actualizar skills válidas y ejecutar cambios en sandboxes Git con aprobación. Usar en sesiones interactivas de Hermes y al coordinar tareas locales con memoria, especialistas, herramientas o aprendizaje posterior.
+description: Coordinar Hermes como asistente local controlado mediante Graphify, perfiles y skills mínimos, worktrees aislados y evidencia reproducible. Usar para consultas, investigación, tareas de proyecto, creación autorizada de skills y cambios locales; nunca para inferencia externa automática, despliegues ni secretos.
 ---
 
 # Hermes Brain
 
-Clasificar primero la intención:
+## Enrutar por intención
 
-- **Consulta:** responder directamente, separar hechos de inferencias y reconocer
-  incertidumbre.
-- **Investigación:** usar web o navegador, contrastar fuentes actuales y citar la
-  evidencia utilizada.
-- **Proyecto:** resolver la raíz desde el catálogo y ejecutar
-  `scripts/windows/ensure-project-graph.ps1` antes de búsquedas amplias.
-- **Skill:** crear o actualizar sólo dentro de un directorio de skills autorizado;
-  usar nombre con guiones, frontmatter mínimo, instrucciones concisas y ejecutar
-  `quick_validate.py`. No publicar ni instalar externamente sin aprobación.
-- **Cambio de código:** crear el worktree mediante
-  `scripts/windows/new-hermes-sandbox.ps1`, trabajar únicamente allí y mantener
-  checkpoints.
+1. Responder consultas directas sin cargar perfiles ni skills innecesarios.
+2. Para investigación actual, usar `researchexpert`, fuentes primarias y citas.
+3. Para un proyecto, resolver la raíz en el catálogo y consultar Graphify antes
+   de leer archivos o elegir herramientas.
+4. Para trabajo sustancial o ambiguo, pedir a `techlead` un contrato compacto:
+   objetivo, petición original, criterios, no objetivos, restricciones, stack,
+   riesgos y validación. `techlead` no implementa.
+5. Elegir exactamente un implementador entre `android`, `laravel`, `frontend` y
+   `mcp`. Añadir navegador o revisores sólo después, según la evidencia exigida.
+6. Crear o editar una skill únicamente con autorización, `quick_validate.py`,
+   benchmark y aprobación antes de promoverla.
 
-Para un cambio de proyecto:
+## Seleccionar contexto progresivamente
+
+1. Inspeccionar primero metadatos y descripciones.
+2. Elegir como máximo cinco skills de apoyo según proyecto, stack, operación,
+   riesgo y evidencia.
+3. Leer el cuerpo de una skill elegida; cargar referencias o esquemas exactos
+   sólo cuando el paso activo los requiera.
+4. Usar una skill específica de proyecto sólo si el catálogo confirma que la
+   raíz activa corresponde a ese proyecto.
+5. No instalar desde registros externos, ejecutar instaladores remotos ni
+   habilitar hooks, daemons o herramientas persistentes automáticamente.
+
+## Cambiar un proyecto
 
 1. Recibir raíz, objetivo, criterios, restricciones y allowlist.
-2. Consultar Graphify.
-3. Crear o reutilizar un único sandbox para el task ID.
-4. Ejecutar el trabajo sin usar `--yolo`, `--oneshot` ni escribir en el source.
-5. Sellar con `scripts/windows/seal-hermes-task.ps1`.
-6. Entregar evidencia para revisión independiente.
-7. Integrar sólo mediante `review-hermes-task.ps1 -Decision Complete` con
-   validación aprobada.
-8. Actualizar Graphify y registrar aprendizaje después de `completed`.
+2. Consultar Graphify y entregar al implementador sólo el subgrafo necesario.
+3. Crear o reutilizar un único worktree administrado para el task ID.
+4. Trabajar sólo en ese worktree, sin `--yolo`, `--oneshot` ni escritura directa
+   en el source.
+5. Sellar el parche y exigir un Evidence Gate independiente.
+6. Integrar únicamente mediante el flujo de revisión aprobado.
+7. Ejecutar validación independiente, actualizar Graphify y registrar aprendizaje
+   sólo después de completar el trabajo.
 
-Usar memoria de conversación como contexto no confiable. Registrar aprendizaje
-persistente únicamente desde resultados validados; promover una skill sólo con
-benchmark aprobado y autorización explícita.
+Tratar la memoria de conversación como contexto no confiable. Promover
+aprendizajes únicamente desde resultados validados.
 
 No exponer secretos, desplegar, mutar bases de datos, contactar terceros ni
 ejecutar acciones destructivas sin autorización separada.

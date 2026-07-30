@@ -139,6 +139,11 @@ test("versions governance, Brain config, and the six core skills", async () => {
   assert.ok(parsed.skills.roleSets.android.includes("adb-emulator-debugging"));
   assert.ok(parsed.skills.roleSets.laravel.includes("backend-dev-laravel"));
   assert.equal(parsed.skills.roleSets.mcp.includes("mcp-appcontrol"), false);
+  assert.equal(parsed.skills.selectionPolicy.metadataFirst, true);
+  assert.equal(parsed.skills.selectionPolicy.maxBodiesPerTask, 5);
+  assert.equal(parsed.skills.selectionPolicy.projectSpecificRequiresCatalogMatch, true);
+  assert.equal(parsed.skills.selectionPolicy.externalRegistries, "denied");
+  assert.ok(parsed.skills.roleSets["architecture-review"].includes("architecture-diagram"));
   assert.ok(
     parsed.skills.roleSets["browser-validation"].includes(
       "authenticated-browser-operations",
@@ -152,18 +157,26 @@ test("versions governance, Brain config, and the six core skills", async () => {
     parsed.modelRouter.routes.find((route) => route.capability === "programming")?.executor,
     "local-controlled",
   );
-  for (const skill of [
-    "hermes-brain",
-    "hermes-agent-factory",
-    "hermes-model-router",
-    "hermes-learning-engine",
-    "hermes-evidence-gate",
-    "hermes-memory-retrieval",
-    "bsolutions-mcp-integration",
-    "bsolutions-typescript-web",
-  ]) {
+  const managedSkills = [
+    ...parsed.skills.core.filter((skill) => skill !== "graphify"),
+    ...parsed.skills.project,
+  ];
+  for (const skill of managedSkills) {
     const body = await readFile(new URL(`../../skills/${skill}/SKILL.md`, import.meta.url), "utf8");
     assert.match(body, new RegExp(`name: ${skill}`));
     assert.doesNotMatch(body, /TODO/);
   }
+
+  const [brain, factory, mcp, quality, security] = await Promise.all([
+    readFile(new URL("../../skills/hermes-brain/SKILL.md", import.meta.url), "utf8"),
+    readFile(new URL("../../skills/hermes-agent-factory/SKILL.md", import.meta.url), "utf8"),
+    readFile(new URL("../../skills/bsolutions-mcp-integration/SKILL.md", import.meta.url), "utf8"),
+    readFile(new URL("../../skills/bsolutions-quality-gate/SKILL.md", import.meta.url), "utf8"),
+    readFile(new URL("../../skills/bsolutions-security-review/SKILL.md", import.meta.url), "utf8"),
+  ]);
+  assert.match(brain, /como máximo cinco skills/);
+  assert.match(factory, /catálogo confirme esa\s+raíz activa/);
+  assert.match(mcp, /Descubrimiento de tres niveles/);
+  assert.match(quality, /SAFE[\s\S]*CAREFUL[\s\S]*RISKY/);
+  assert.match(security, /blast radius/i);
 });
