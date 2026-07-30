@@ -205,6 +205,25 @@ function Test-SkillExistsInRoot(
     return $false
 }
 
+function Get-DirectoryFingerprint([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return ''
+    }
+    $rootPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $entries = @(
+        Get-ChildItem -LiteralPath $rootPath -File -Recurse |
+            Where-Object { $_.FullName -notmatch '[\\/]__pycache__[\\/]' } |
+            Sort-Object FullName |
+            ForEach-Object {
+                $relative = $_.FullName.Substring($rootPath.Length).TrimStart('\')
+                "$($relative.Replace('\', '/')):$(
+                    (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                )"
+            }
+    )
+    return Get-TextSha256 -Value ($entries -join "`n")
+}
+
 if ($ValidateOnly) {
     $resolvedSkills = [Collections.Generic.HashSet[string]]::new(
         [StringComparer]::OrdinalIgnoreCase
@@ -296,6 +315,13 @@ function Sync-ProfileSkills(
             continue
         }
         $destination = Join-Path $destinationRoot $skillName
+        if (
+            (Test-Path -LiteralPath $destination -PathType Container) -and
+            (Get-DirectoryFingerprint -Path $source) -eq
+                (Get-DirectoryFingerprint -Path $destination)
+        ) {
+            continue
+        }
         if (Test-Path -LiteralPath $destination) {
             Remove-ManagedDirectory `
                 -Path $destination `
@@ -389,6 +415,31 @@ function Set-TerminalCompressionPlugin([string]$ProfileName) {
         $pluginAction 'rtk-rewrite' | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Could not $pluginAction RTK for $ProfileName."
+    }
+}
+
+function Sync-ProfileBundles([string]$ProfileName) {
+    $profileRoot = if ($ProfileName -eq 'default') {
+        Split-Path -Parent $profilesRoot
+    }
+    else {
+        Join-Path $profilesRoot $ProfileName
+    }
+    $destinationRoot = Join-Path $profileRoot 'skill-bundles'
+    New-Item -ItemType Directory -Path $destinationRoot -Force | Out-Null
+    foreach ($bundleProperty in $config.bundles.PSObject.Properties) {
+        $bundleName = [string]$bundleProperty.Name
+        $source = Join-Path $root "config\hermes-bundles\$bundleName.yaml"
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Managed Hermes bundle is missing: $bundleName"
+        }
+        $destination = Join-Path $destinationRoot "$bundleName.yaml"
+        if (@($bundleProperty.Value.profiles) -contains $ProfileName) {
+            Copy-Item -LiteralPath $source -Destination $destination -Force
+        }
+        elseif (Test-Path -LiteralPath $destination -PathType Leaf) {
+            Remove-Item -LiteralPath $destination -Force
+        }
     }
 }
 
@@ -637,6 +688,7 @@ Sync-ProfileSkills `
     -ProfileName 'default' `
     -SkillSet 'brain' `
     -PruneBundled $false
+Sync-ProfileBundles -ProfileName 'default'
 Set-DefaultBrainSafety
 
 & hermes.exe memory off | Out-Null
@@ -646,6 +698,10 @@ if ($LASTEXITCODE -ne 0) {
 & hermes.exe config set memory.write_approval true | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw 'Could not require approval for default memory writes.'
+}
+& hermes.exe config set skills.write_approval true | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not require approval for default skill writes.'
 }
 foreach ($setting in @(
     @{ key = 'agent.max_turns'; value = '120' },
@@ -681,6 +737,11 @@ foreach ($runtimeProfile in $runtimeProfiles) {
     if ($LASTEXITCODE -ne 0) {
         throw "Could not require memory approval for $profileName."
     }
+    & hermes.exe --profile $profileName config set skills.write_approval true |
+        Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not require skill approval for $profileName."
+    }
     foreach ($setting in @(
         @{ key = 'agent.max_turns'; value = [string]$modeConfig.maxTurns },
         @{ key = 'agent.verify_on_stop'; value = 'true' },
@@ -701,6 +762,7 @@ foreach ($runtimeProfile in $runtimeProfiles) {
         -ProfileName $profileName `
         -Mode $profileMode
     Set-TerminalCompressionPlugin -ProfileName $profileName
+    Sync-ProfileBundles -ProfileName $profileName
 }
 
 & (Join-Path $PSScriptRoot 'update-hermes-brain-status.ps1')

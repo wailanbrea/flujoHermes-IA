@@ -22,7 +22,6 @@ function Invoke-HermesSafe([string[]]$Arguments) {
 }
 
 $profileList = Invoke-HermesSafe -Arguments @('profile', 'list')
-$skillList = Invoke-HermesSafe -Arguments @('skills', 'list')
 $curator = Invoke-HermesSafe -Arguments @('curator', 'status')
 $kanban = Invoke-HermesSafe -Arguments @('kanban', 'stats')
 $moa = Invoke-HermesSafe -Arguments @('moa', 'list')
@@ -35,17 +34,56 @@ $presentProfiles = @($configuredProfiles | Where-Object {
     )
 } | ForEach-Object { [string]$_.id })
 $presentOperatorCount = @($configuredProfiles | Where-Object {
+    $mode = $brainConfig.profileModes.PSObject.Properties[[string]$_.mode].Value
     $presentProfiles -contains [string]$_.id -and
-    [string]$_.mode -eq 'controlled-operator'
+    [string]$mode.writeScope -eq 'managed-worktrees'
 }).Count
 $presentAdvisoryCount = @($presentProfiles).Count - $presentOperatorCount
 $configuredSkills = @($brainConfig.skills.core + $brainConfig.skills.project)
-$defaultSkillsRoot = Join-Path (
-    Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hermes'
-) 'skills'
-$presentSkills = @($configuredSkills | Where-Object {
-    Test-Path -LiteralPath (Join-Path $defaultSkillsRoot "$_\SKILL.md") -PathType Leaf
+$hermesRoot = Join-Path (
+    [Environment]::GetFolderPath('LocalApplicationData')
+) 'hermes'
+$profileSkillInventory = @($configuredProfiles | ForEach-Object {
+    $profile = $_
+    $profileRoot = Join-Path (Join-Path $hermesRoot 'profiles') ([string]$profile.runtimeId)
+    $required = @($brainConfig.skills.roleSets.PSObject.Properties[
+        [string]$profile.skillSet
+    ].Value)
+    $present = @($required | Where-Object {
+        Test-Path -LiteralPath (
+            Join-Path $profileRoot "skills\$_\SKILL.md"
+        ) -PathType Leaf
+    })
+    $approval = Invoke-HermesSafe -Arguments @(
+        '--profile',
+        [string]$profile.runtimeId,
+        'config',
+        'get',
+        'skills.write_approval'
+    )
+    [ordered]@{
+        profileId = [string]$profile.id
+        runtimeId = [string]$profile.runtimeId
+        configured = $required.Count
+        present = $present.Count
+        presentSkills = @($present)
+        missing = @($required | Where-Object { $_ -notin $present })
+        writeApproval = $approval.ok -and $approval.text -eq 'true'
+        state = if (
+            $present.Count -eq $required.Count -and
+            $approval.ok -and
+            $approval.text -eq 'true'
+        ) { 'healthy' } else { 'degraded' }
+    }
 })
+$presentSkills = @(
+    $profileSkillInventory |
+        ForEach-Object { @($_.presentSkills) } |
+        Sort-Object -Unique
+)
+$skillsHealthy = @($profileSkillInventory | Where-Object {
+    $_.state -ne 'healthy'
+}).Count -eq 0
 
 $inventory = [ordered]@{
     schemaVersion = 1
@@ -54,8 +92,10 @@ $inventory = [ordered]@{
     profiles = @($presentProfiles)
     operatorCount = $presentOperatorCount
     advisoryCount = $presentAdvisoryCount
-    skillsState = if ($presentSkills.Count -eq $configuredSkills.Count) { 'healthy' } else { 'degraded' }
+    skillsState = if ($skillsHealthy) { 'healthy' } else { 'degraded' }
     skills = @($presentSkills)
+    configuredSkillCount = $configuredSkills.Count
+    profileSkills = $profileSkillInventory
     curator = [ordered]@{
         state = if ($curator.ok) { 'healthy' } else { 'offline' }
         consolidation = if ($curator.text -match '(?i)consolidation off|consolidate:\s+off') { 'off' } else { 'unknown' }

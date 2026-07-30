@@ -119,6 +119,11 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
     const status = JSON.parse(statusText);
     assert.equal(status.promptBudget.estimation, "bytes-divided-by-four");
     assert.ok(Array.isArray(status.promptBudget.profiles));
+    assert.ok(status.delegation.failedCount <= status.delegation.totalTasks);
+    assert.ok(
+      status.services.some((service) => service.id === "rtk"),
+      "RTK service telemetry is missing.",
+    );
     assert.doesNotMatch(
       statusText,
       /must never reach TRAMA|feedback|skills_breakdown|toolsets_breakdown/i,

@@ -150,4 +150,30 @@ Assert-Condition `
     )) `
     -Message 'Hermes worktrees still live under the source repository.'
 
+$env:HERMES_TEST_SKIP_GRAPH_REFRESH = '1'
+try {
+    $graphEvidence = Get-GraphPreflightEvidence `
+        -ProjectPath $orchestratorRoot `
+        -Question 'Validate the bounded Graphify preflight fixture.'
+    Assert-GraphPreflightEvidence -Evidence $graphEvidence
+    $invalidGraphRejected = $false
+    try {
+        Assert-GraphPreflightEvidence -Evidence ([pscustomobject]@{
+            status = 'ready'
+            queryExecuted = $false
+            questionSha256 = '0' * 64
+            resultSha256 = '0' * 64
+        })
+    }
+    catch {
+        $invalidGraphRejected = $true
+    }
+    Assert-Condition `
+        -Condition $invalidGraphRejected `
+        -Message 'Graph evidence gate accepted a task without a query.'
+}
+finally {
+    Remove-Item Env:HERMES_TEST_SKIP_GRAPH_REFRESH -ErrorAction SilentlyContinue
+}
+
 'Hermes task lifecycle tests passed.'

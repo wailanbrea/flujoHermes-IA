@@ -1,0 +1,11 @@
+name: laravel-change
+description: Cambio Laravel gobernado con API, datos, seguridad y pruebas.
+skills:
+  - graphify
+  - bsolutions-laravel
+  - bsolutions-api-review
+  - bsolutions-mysql
+  - test-driven-development
+instruction: |
+  Resuelve el proyecto desde el catálogo y consulta Graphify primero.
+  Valida entrada, autorización, consultas e integración dentro del sandbox.

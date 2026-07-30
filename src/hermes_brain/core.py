@@ -164,21 +164,98 @@ def persist_learning(runtime_root: Path, record: LearningRecord) -> Path:
     return destination
 
 
+def validate_learning(
+    runtime_root: Path,
+    record_id: str,
+    *,
+    benchmark_artifact: Path,
+) -> dict[str, Any]:
+    path = runtime_root / "hermes-learning" / f"{record_id}.json"
+    record = read_json(path)
+    if not isinstance(record, dict):
+        raise ValueError("learning record was not found")
+    if record.get("state") not in {"candidate", "validated"}:
+        raise ValueError("only candidate learning can be benchmark-validated")
+    if not benchmark_artifact.is_file() or benchmark_artifact.is_symlink():
+        raise ValueError("benchmark artifact must be a regular file")
+
+    artifact_bytes = benchmark_artifact.read_bytes()
+    artifact_sha256 = hashlib.sha256(artifact_bytes).hexdigest()
+    try:
+        artifact = json.loads(artifact_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("benchmark artifact must be valid UTF-8 JSON") from error
+    if not isinstance(artifact, dict) or artifact.get("schemaVersion") != 1:
+        raise ValueError("benchmark artifact has an unsupported schema")
+    if artifact.get("recordId") != record_id:
+        raise ValueError("benchmark artifact does not match the learning record")
+    if artifact.get("taskId") != record.get("task_id"):
+        raise ValueError("benchmark artifact does not match the validated task")
+    if artifact.get("passed") is not True or artifact.get("validationPassed") is not True:
+        raise ValueError("benchmark artifact does not contain passing validation")
+    commands = artifact.get("commands")
+    if (
+        not isinstance(commands, list)
+        or not commands
+        or any(not isinstance(command, str) or len(command.strip()) < 3 for command in commands)
+    ):
+        raise ValueError("benchmark artifact must contain executed commands")
+    benchmark_id = sanitize_text(
+        str(artifact.get("benchmarkId", "")), "benchmark id", 100
+    )
+    executed_at = str(artifact.get("executedAt", ""))
+    try:
+        parsed_at = datetime.fromisoformat(executed_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("benchmark artifact has an invalid executedAt timestamp") from error
+    if parsed_at.tzinfo is None:
+        raise ValueError("benchmark artifact executedAt must include a timezone")
+    related_skill = record.get("related_skill")
+    if related_skill and artifact.get("relatedSkill") != related_skill:
+        raise ValueError("benchmark artifact does not match the related skill")
+
+    existing = record.get("benchmarkEvidence")
+    if record.get("state") == "validated" and isinstance(existing, dict):
+        if existing.get("artifactSha256") == artifact_sha256:
+            return record
+        raise ValueError("validated learning cannot replace its benchmark evidence")
+
+    record["state"] = "validated"
+    record["benchmarkEvidence"] = {
+        "benchmarkId": benchmark_id,
+        "artifactSha256": artifact_sha256,
+        "executedAt": executed_at,
+        "commandCount": len(commands),
+        "validatedAt": utc_now(),
+    }
+    atomic_json(path, record)
+    return record
+
+
 def promote_learning(
     runtime_root: Path,
     record_id: str,
     *,
-    benchmark_passed: bool,
+    benchmark_sha256: str,
     approved_by: str,
 ) -> dict[str, Any]:
     path = runtime_root / "hermes-learning" / f"{record_id}.json"
     record = read_json(path)
-    if not record:
+    if not isinstance(record, dict):
         raise ValueError("learning record was not found")
-    if not benchmark_passed:
-        raise ValueError("a learning record cannot be promoted without a passing benchmark")
+    if record.get("state") != "validated":
+        raise ValueError("learning must be benchmark-validated before promotion")
+    evidence = record.get("benchmarkEvidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("validated learning is missing benchmark evidence")
+    normalized_sha256 = benchmark_sha256.strip().lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", normalized_sha256):
+        raise ValueError("benchmark sha256 must be a lowercase SHA-256 digest")
+    if evidence.get("artifactSha256") != normalized_sha256:
+        raise ValueError("benchmark evidence digest does not match")
     record["state"] = "promoted"
     record["approvedBy"] = sanitize_text(approved_by, "approved by", 80)
+    record["approvedBenchmarkSha256"] = normalized_sha256
     record["promotedAt"] = utc_now()
     atomic_json(path, record)
     return record
@@ -239,6 +316,17 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
         )
     )
 
+    def task_is_stale(status: dict[str, Any]) -> bool:
+        if status.get("state") not in {"isolated", "editing", "validating"}:
+            return False
+        try:
+            updated_at = datetime.fromisoformat(
+                str(status.get("updatedAt", "")).replace("Z", "+00:00")
+            )
+        except ValueError:
+            return True
+        return (datetime.now(UTC) - updated_at).total_seconds() > 7200
+
     def public_task(status: dict[str, Any]) -> dict[str, Any]:
         return {
             "taskId": str(status.get("taskId", "")),
@@ -248,6 +336,7 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
             "updatedAt": str(status.get("updatedAt", "")),
             "filesChanged": int(status.get("filesChanged", 0) or 0),
             "patchBytes": int(status.get("patchBytes", 0) or 0),
+            "stale": task_is_stale(status),
         }
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -265,6 +354,10 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
                 "state": "healthy",
                 "routes": config["modelRouter"]["routes"],
                 "localOptional": True,
+                "enforced": all(
+                    isinstance(route.get("profile"), str)
+                    for route in config["modelRouter"]["routes"]
+                ),
             },
             "agents": {
                 "state": inventory.get("profilesState", "unknown"),
@@ -278,17 +371,24 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
             },
             "skills": {
                 "state": inventory.get("skillsState", "unknown"),
-                "configured": config["skills"]["core"],
+                "configured": sorted(
+                    set(config["skills"]["core"] + config["skills"]["project"])
+                ),
                 "installed": inventory.get("skills", []),
+                "roleAware": True,
+                "profiles": inventory.get("profileSkills", []),
             },
             "learning": {
                 "state": "healthy",
+                "promotionState": "healthy",
+                "pendingApproval": lesson_counts.get("validated", 0),
                 "counts": lesson_counts,
                 "last": lessons[-1] if lessons else None,
             },
             "sandbox": {
                 "state": "healthy",
                 "counts": task_counts,
+                "staleCount": sum(task_is_stale(status) for status in statuses),
                 "active": [
                     public_task(status)
                     for status in statuses

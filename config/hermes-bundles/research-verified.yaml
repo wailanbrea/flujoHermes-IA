@@ -1,0 +1,9 @@
+name: research-verified
+description: Investigación técnica con fuentes primarias y memoria saneada.
+skills:
+  - graphify
+  - tech-research-agent
+  - hermes-memory-retrieval
+instruction: |
+  Separa evidencia local de evidencia externa y cita fuentes primarias.
+  No conviertas conclusiones no verificadas en memoria persistente.

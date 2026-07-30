@@ -364,6 +364,151 @@ function Get-FileSha256([string]$Path) {
     return ([string](Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash).ToLowerInvariant()
 }
 
+function Get-TextSha256([string]$Value) {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Value)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString(
+            $sha256.ComputeHash($bytes)
+        ) -replace '-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-GraphPreflightEvidence(
+    [string]$ProjectPath,
+    [string]$Question
+) {
+    $normalizedQuestion = ($Question -replace '[\x00-\x1F\x7F]+', ' ').Trim()
+    $normalizedQuestion = $normalizedQuestion -replace '\s{2,}', ' '
+    if ($normalizedQuestion.Length -lt 10) {
+        throw 'Graph preflight requires a concrete project question.'
+    }
+    if ($normalizedQuestion.Length -gt 500) {
+        $normalizedQuestion = $normalizedQuestion.Substring(0, 500).Trim()
+    }
+    if ($env:HERMES_TEST_SKIP_GRAPH_REFRESH -eq '1') {
+        return [ordered]@{
+            schemaVersion = 1
+            status = 'ready'
+            action = 'test-fixture'
+            nodes = 1
+            edges = 0
+            queryExecuted = $true
+            questionSha256 = Get-TextSha256 -Value $normalizedQuestion
+            resultSha256 = Get-TextSha256 -Value 'test-fixture-graph-result'
+            checkedAt = [DateTime]::UtcNow.ToString('o')
+        }
+    }
+
+    $script = Join-Path $PSScriptRoot 'ensure-project-graph.ps1'
+    $lines = @(
+        & $script `
+            -ProjectPath $ProjectPath `
+            -Question $normalizedQuestion `
+            -Budget 1200
+    )
+    if ($LASTEXITCODE -ne 0 -or $lines.Count -lt 3) {
+        throw 'Graphify preflight failed before sandbox allocation.'
+    }
+    try {
+        $summary = ([string]$lines[0]) | ConvertFrom-Json
+    }
+    catch {
+        throw 'Graphify preflight did not return a valid summary.'
+    }
+    $markerIndex = [Array]::IndexOf(
+        [string[]]@($lines | ForEach-Object { [string]$_ }),
+        '--- GRAPH QUERY ---'
+    )
+    if ($summary.status -ne 'ready' -or $markerIndex -lt 1 -or $markerIndex -ge ($lines.Count - 1)) {
+        throw 'Graphify preflight did not produce bounded query evidence.'
+    }
+    $queryResult = @($lines | Select-Object -Skip ($markerIndex + 1)) -join "`n"
+    return [ordered]@{
+        schemaVersion = 1
+        status = [string]$summary.status
+        action = [string]$summary.action
+        nodes = [int]$summary.nodes
+        edges = [int]$summary.edges
+        queryExecuted = $true
+        questionSha256 = Get-TextSha256 -Value $normalizedQuestion
+        resultSha256 = Get-TextSha256 -Value $queryResult
+        checkedAt = [DateTime]::UtcNow.ToString('o')
+    }
+}
+
+function Assert-GraphPreflightEvidence([object]$Evidence) {
+    if (
+        $null -eq $Evidence -or
+        [string]$Evidence.status -ne 'ready' -or
+        [bool]$Evidence.queryExecuted -ne $true -or
+        [string]$Evidence.questionSha256 -notmatch '^[a-f0-9]{64}$' -or
+        [string]$Evidence.resultSha256 -notmatch '^[a-f0-9]{64}$'
+    ) {
+        throw 'Task contract is missing valid Graphify preflight evidence.'
+    }
+}
+
+function Get-HermesRouteDecision(
+    [string]$Capability,
+    [string[]]$ProjectSignals,
+    [string]$ManualModel = '',
+    [bool]$ManualModelAuthorized = $false
+) {
+    $root = Get-OrchestratorRoot
+    $arguments = [Collections.Generic.List[string]]::new()
+    foreach ($argument in @(
+        '-3',
+        '-m',
+        'hermes_brain.cli',
+        'route-task',
+        '--repo',
+        $root,
+        '--capability',
+        $Capability
+    )) {
+        $arguments.Add($argument)
+    }
+    foreach ($signal in @($ProjectSignals | Where-Object { $_ })) {
+        $arguments.Add('--project-signal')
+        $arguments.Add([string]$signal)
+    }
+    if ($ManualModel) {
+        $arguments.Add('--manual-model')
+        $arguments.Add($ManualModel)
+    }
+    if ($ManualModelAuthorized) {
+        $arguments.Add('--manual-model-authorized')
+    }
+
+    $previousPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = Join-Path $root 'src'
+        $result = Invoke-NativeCommand `
+            -Executable 'py.exe' `
+            -Arguments @($arguments)
+    }
+    finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
+    if ($result.ExitCode -ne 0) {
+        throw 'Hermes model router rejected the task contract.'
+    }
+    try {
+        $decision = ([string]$result.Output) | ConvertFrom-Json
+    }
+    catch {
+        throw 'Hermes model router returned invalid output.'
+    }
+    if (-not $decision.profile -or -not $decision.executor -or -not $decision.reason) {
+        throw 'Hermes model router returned an incomplete decision.'
+    }
+    return $decision
+}
+
 function Get-SanitizedCorrectionFeedback([string]$Feedback) {
     if (-not $Feedback) {
         throw 'Correction feedback must be concrete and nonblank.'

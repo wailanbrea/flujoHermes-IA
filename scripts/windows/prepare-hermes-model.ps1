@@ -23,6 +23,9 @@ $parallel = 4
 $modelKey = Get-HermesModelKey -Alias $Model
 # Only the 35B exceeds the card and has to be split; the 12B builds fit whole.
 $gpuOffload = if ($Model -eq 'qwen') { '0.50' } else { 'max' }
+# The primary model is intentionally resident. The manually selected 35B is
+# evicted after fifteen idle minutes so its RAM/VRAM split cannot linger.
+$ttlSeconds = if ($Model -eq 'qwen') { 900 } else { $null }
 
 function Get-LoadedModels([string]$Executable) {
     $result = Invoke-NativeCommand -Executable $Executable -Arguments @('ps', '--json')
@@ -104,17 +107,21 @@ foreach ($unsafeTarget in $targets) {
         -FailureMessage 'LM Studio could not unload the unsafe target instance.'
 }
 
-$loadResult = Invoke-NativeCommand `
-    -Executable $LmsExecutable `
-    -Arguments @(
+$loadArguments = @(
         'load', $modelKey,
         '--identifier', $modelKey,
         '--context-length', [string]$contextLength,
         '--parallel', [string]$parallel,
         '--gpu', $gpuOffload,
-        '--no-speculative-draft-mtp',
-        '--yes'
-    )
+        '--no-speculative-draft-mtp'
+)
+if ($null -ne $ttlSeconds) {
+    $loadArguments += @('--ttl', [string]$ttlSeconds)
+}
+$loadArguments += '--yes'
+$loadResult = Invoke-NativeCommand `
+    -Executable $LmsExecutable `
+    -Arguments @($loadArguments)
 if ($loadResult.ExitCode -ne 0) {
     throw 'LM Studio could not load the selected Hermes model safely.'
 }
@@ -134,5 +141,7 @@ if ($verifiedLlms.Count -ne 1 -or $verifiedTarget.Count -ne 1) {
 
 Write-Output (
     "Hermes model loaded: $modelKey; context $contextLength; " +
-    "parallel $parallel; GPU $gpuOffload; MTP disabled."
+    "parallel $parallel; GPU $gpuOffload; " +
+    $(if ($null -eq $ttlSeconds) { 'resident' } else { "TTL ${ttlSeconds}s" }) +
+    '; MTP disabled.'
 )

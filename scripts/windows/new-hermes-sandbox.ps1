@@ -33,7 +33,14 @@ param(
     [int]$MaxPatchBytes = 262144,
 
     [ValidateSet('Codex', 'Claude', 'Antigravity', 'OpenCode')]
-    [string]$RequestedBy = 'Codex'
+    [string]$RequestedBy = 'Codex',
+
+    [ValidateSet('programming', 'skill-authoring')]
+    [string]$Capability = 'programming',
+
+    [string]$ManualModel = '',
+
+    [switch]$ManualModelAuthorized
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,6 +51,9 @@ if ($project.GitScope -ne 'own') {
     throw 'A director sandbox requires a project-owned Git repository.'
 }
 Assert-CleanGitRepository -ProjectRoot $project.Path
+$graphEvidence = Get-GraphPreflightEvidence `
+    -ProjectPath $project.Path `
+    -Question $Objective
 
 $normalizedAllowedFiles = @($AllowedFiles | ForEach-Object {
     $candidate = ([string]$_).Trim().Replace('\', '/')
@@ -62,6 +72,21 @@ $normalizedAllowedFiles = @($AllowedFiles | ForEach-Object {
     }
     $candidate
 } | Sort-Object -Unique)
+$routeProjectSignals = [Collections.Generic.List[string]]::new()
+$routeProjectSignals.Add([string]$project.Path)
+$routeProjectSignals.Add([string]$project.Name)
+foreach ($propertyName in @('rootAlias', 'relativePath')) {
+    $property = $project.PSObject.Properties[$propertyName]
+    if ($null -ne $property -and $property.Value) {
+        $routeProjectSignals.Add([string]$property.Value)
+    }
+}
+$routeProjectSignals.AddRange([string[]]$normalizedAllowedFiles)
+$routeDecision = Get-HermesRouteDecision `
+    -Capability $Capability `
+    -ProjectSignals @($routeProjectSignals) `
+    -ManualModel $ManualModel `
+    -ManualModelAuthorized $ManualModelAuthorized.IsPresent
 
 $taskId = 'hermes-{0}-{1}' -f (
     [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
@@ -82,10 +107,12 @@ $contract = [ordered]@{
     projectName = $project.Name
     projectRoot = $project.Path
     requestedBy = $RequestedBy
-    executor = 'director'
+    executor = 'managed-sandbox'
     objective = $Objective
     acceptanceCriteria = @($AcceptanceCriteria)
     constraints = @($Constraints)
+    graphEvidence = $graphEvidence
+    routeDecision = $routeDecision
     mode = 'execute'
     phase = 'edit'
     modificationAuthorized = $true
@@ -100,7 +127,8 @@ $contract = [ordered]@{
     }
     executionPolicy = [ordered]@{
         author = $RequestedBy
-        localAi = 'advisory-read-only'
+        editingActors = @($RequestedBy, 'HermesBrain')
+        localAi = 'controlled-write'
         externalNetwork = 'director-controlled'
         secrets = 'denied'
         deployments = 'denied'
@@ -121,7 +149,7 @@ Set-TaskStatus `
         projectId = $project.Id
         projectName = $project.Name
         requestedBy = $RequestedBy
-        executor = 'director'
+        executor = 'managed-sandbox'
         mode = 'execute'
         phase = 'edit'
         createdAt = $createdAt
@@ -133,6 +161,8 @@ Set-TaskStatus `
         sealGeneration = 0
         errorCode = $null
         progressKind = 'isolated'
+        routeProfile = [string]$routeDecision.profile
+        routeModel = [string]$routeDecision.model
     }
 
 try {
@@ -170,4 +200,6 @@ Update-HermesBrainProjection
     projectName = $project.Name
     state = 'editing'
     requestedBy = $RequestedBy
+    routeProfile = [string]$routeDecision.profile
+    routeModel = [string]$routeDecision.model
 } | ConvertTo-Json -Compress

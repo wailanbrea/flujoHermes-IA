@@ -105,7 +105,7 @@ function nodeState(id: NodeId, brain: BrainSummary): HealthState {
   if (["agents", "experts"].includes(id)) return brain.agents.state;
   if (id === "sandbox") return brain.sandbox.state;
   if (id === "learning") return brain.learning.state;
-  if (id === "promotion") return brain.skills.state;
+  if (id === "promotion") return brain.learning.promotionState;
   if (id === "validated") return brain.lastValidatedOutcome ? "healthy" : "unknown";
   return brain.state;
 }
@@ -219,7 +219,7 @@ function Home() {
   }, []);
 
   const healthy = snapshot?.services.filter((service) => service.state === "healthy").length ?? 0;
-  const activeSandboxes = snapshot?.brain.sandbox.active ?? [];
+  const activeSandboxes = snapshot?.brain.sandbox.active.filter((task) => !task.stale) ?? [];
   const routes = snapshot?.brain.router.routes ?? [];
   const learningTotal = useMemo(
     () => Object.values(snapshot?.brain.learning.counts ?? {}).reduce((sum, value) => sum + value, 0),
@@ -288,7 +288,7 @@ function Home() {
         </article>
         <article className="control-card">
           <header><span>04</span><h3>Skills</h3><i className={stateClass(snapshot?.brain.skills.state ?? "unknown")} /></header>
-          <strong>{snapshot?.brain.skills.installed.length ?? 0}/{snapshot?.brain.skills.configured.length ?? 0} núcleo sincronizado</strong>
+          <strong>{snapshot?.brain.skills.configured.length ?? 0} skills · {snapshot?.brain.skills.profiles.filter((profile) => profile.state === "healthy").length ?? 0}/{snapshot?.brain.skills.profiles.length ?? 0} perfiles conformes</strong>
           <div className="chips">{snapshot?.brain.skills.configured.slice(0, 8).map((skill) => <span key={skill}>{skill}</span>)}</div>
         </article>
         <article className="control-card">
@@ -298,7 +298,7 @@ function Home() {
         </article>
         <article className="control-card">
           <header><span>06</span><h3>Sandbox y evidencia</h3><i className={stateClass(snapshot?.brain.sandbox.state ?? "unknown")} /></header>
-          <strong>{activeSandboxes.length} tareas en curso</strong>
+          <strong>{activeSandboxes.length} tareas en curso · {snapshot?.brain.sandbox.staleCount ?? 0} obsoletas</strong>
           <ul>{Object.entries(snapshot?.brain.sandbox.counts ?? {}).filter(([, count]) => count > 0).map(([state, count]) => <li key={state}><b>{state}</b><span>{count}</span></li>)}</ul>
         </article>
         <article className="control-card">

@@ -12,16 +12,23 @@
     "hermesExternalInference": "disabled",
     "localTimeoutSeconds": 45,
     "routes": [
-      { "capability": "classification", "executor": "local-optional", "fallback": "director" },
-      { "capability": "sanitized-summary", "executor": "local-optional", "fallback": "director" },
-      { "capability": "research", "executor": "local-controlled", "fallback": "director" },
-      { "capability": "skill-authoring", "executor": "local-controlled", "fallback": "director" },
-      { "capability": "architecture", "executor": "local-advisory", "fallback": "cloud-director" },
-      { "capability": "programming", "executor": "local-controlled", "fallback": "cloud-director" },
-      { "capability": "critical-security", "executor": "local-advisory", "fallback": "cloud-security-expert" },
-      { "capability": "testing", "executor": "deterministic-scripts", "fallback": "local-advisory" },
-      { "capability": "integration", "executor": "evidence-gate", "fallback": "blocked" }
+      { "capability": "classification", "profile": "clasificador", "executor": "local-optional", "fallback": "director" },
+      { "capability": "sanitized-summary", "profile": "hermesbrain", "executor": "local-optional", "fallback": "director" },
+      { "capability": "research", "profile": "researchexpert", "executor": "local-controlled", "fallback": "director" },
+      { "capability": "skill-authoring", "profile": "hermesbrain", "executor": "local-controlled", "fallback": "director" },
+      { "capability": "architecture", "profile": "architectureexpert", "executor": "local-advisory", "fallback": "cloud-director" },
+      { "capability": "programming", "profile": "auto", "executor": "local-controlled", "fallback": "cloud-director" },
+      { "capability": "critical-security", "profile": "securityexpert", "executor": "local-advisory", "fallback": "cloud-security-expert" },
+      { "capability": "testing", "profile": "testingexpert", "executor": "deterministic-scripts", "fallback": "local-advisory" },
+      { "capability": "integration", "profile": "quality", "executor": "evidence-gate", "fallback": "blocked" }
     ],
+    "stackProfiles": {
+      "android": "android",
+      "laravel": "laravel",
+      "frontend": "frontend",
+      "mcp": "mcp",
+      "default": "hermesbrain"
+    },
     "localModel": "google/gemma-4-12b-qat",
     "manualOnlyModels": ["qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"]
   },
@@ -160,6 +167,20 @@
       "classification": ["hermes-model-router", "hermes-memory-retrieval", "graphify"]
     }
   },
+  "bundles": {
+    "android-feature": {
+      "profiles": ["default", "localai", "hermesbrain", "android"]
+    },
+    "laravel-change": {
+      "profiles": ["default", "localai", "hermesbrain", "laravel"]
+    },
+    "research-verified": {
+      "profiles": ["default", "localai", "hermesbrain", "researchexpert"]
+    },
+    "skill-candidate": {
+      "profiles": ["default", "localai", "hermesbrain", "learningcurator"]
+    }
+  },
   "memory": {
     "policy": "validated-and-sanitized-only",
     "graphFirst": true,
@@ -168,7 +189,13 @@
   "learning": {
     "states": ["candidate", "validated", "promoted", "deprecated"],
     "requiresValidatedTask": true,
-    "promotionRequires": ["passing benchmark", "explicit approval"]
+    "skillWriteApproval": true,
+    "promotionRequires": [
+      "validated task",
+      "versioned benchmark artifact",
+      "matching SHA-256",
+      "explicit approval"
+    ]
   },
   "validators": [
     "clean-source",

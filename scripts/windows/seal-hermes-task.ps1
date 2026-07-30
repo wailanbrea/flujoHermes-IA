@@ -18,9 +18,10 @@ $status = Get-TaskStatus -TaskDirectory $taskDirectory
 if ($status.state -ne 'editing') {
     throw 'Only an editing task can be sealed.'
 }
-if ($contract.executor -ne 'director') {
-    throw 'Only director-authored tasks use the evidence sealing flow.'
+if ($contract.executor -ne 'managed-sandbox') {
+    throw 'Only managed sandbox tasks use the evidence sealing flow.'
 }
+Assert-GraphPreflightEvidence -Evidence $contract.graphEvidence
 
 $project = Get-AuthorizedProject -ProjectPath $contract.projectRoot
 Assert-CleanGitRepository -ProjectRoot $project.Path
@@ -150,7 +151,7 @@ $evidence = [ordered]@{
     schemaVersion = 2
     sealedAt = [DateTime]::UtcNow.ToString('o')
     sealGeneration = $generation
-    executor = 'director'
+    executor = 'managed-sandbox'
     passed = $uniqueViolations.Count -eq 0
     files = @($changedFiles)
     additions = $addedLines

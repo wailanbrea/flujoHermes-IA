@@ -110,6 +110,9 @@ exit 8
     Assert-Condition `
         (@($calls | Where-Object { $_ -like '*--no-speculative-draft-mtp*' }).Count -eq 1) `
         'MTP was not disabled.'
+    Assert-Condition `
+        (@($calls | Where-Object { $_ -like 'load|*--ttl*' }).Count -eq 0) `
+        'The resident Gemma model received an idle TTL.'
 
     # The core regression this test file exists to catch now: `lms.exe load`
     # resolves an unrecognised key by substring match against whatever is on
@@ -142,6 +145,23 @@ exit 8
     Assert-Condition `
         ($loadCallsAfterRejection.Count -eq 0) `
         'A missing model reached the load call instead of being rejected first.'
+
+    @(
+        [ordered]@{
+            type = 'llm'
+            modelKey = 'qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive'
+        }
+    ) | ConvertTo-Json | Set-Content -LiteralPath $catalogPath -Encoding UTF8
+    Clear-Content -LiteralPath $logPath
+    & (Join-Path $PSScriptRoot 'prepare-hermes-model.ps1') `
+        -Model qwen `
+        -LmsExecutable $fakeCommand | Out-Null
+    $qwenCalls = @(Get-Content -LiteralPath $logPath)
+    Assert-Condition `
+        (@($qwenCalls | Where-Object {
+            $_ -like 'load|*--gpu|0.50*--ttl|900*'
+        }).Count -eq 1) `
+        'The manual Qwen load did not use the safe split and idle TTL.'
 }
 finally {
     Remove-Item Env:HERMES_MODEL_TEST_STATE -ErrorAction SilentlyContinue

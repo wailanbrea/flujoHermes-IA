@@ -242,8 +242,11 @@ export interface HermesInsightsSummary {
 
 export interface HermesDelegationSummary {
   state: HealthState;
+  historyState: HealthState;
   checkedAt: string;
   totalTasks: number;
+  invalidTaskCount: number;
+  staleActiveCount: number;
   queuedCount: number;
   activeCount: number;
   awaitingReviewCount: number;
@@ -266,6 +269,7 @@ export interface HermesDelegationSummary {
 
 export interface BrainRoute {
   capability: string;
+  profile: string;
   executor: string;
   fallback: string;
 }
@@ -278,6 +282,7 @@ export interface BrainTask {
   updatedAt: string;
   filesChanged?: number;
   patchBytes?: number;
+  stale?: boolean;
 }
 
 export interface BrainSummary {
@@ -293,6 +298,7 @@ export interface BrainSummary {
     state: HealthState;
     routes: BrainRoute[];
     localOptional: boolean;
+    enforced: boolean;
   };
   agents: {
     state: HealthState;
@@ -305,15 +311,28 @@ export interface BrainSummary {
     state: HealthState;
     configured: string[];
     installed: string[];
+    roleAware: boolean;
+    profiles: Array<{
+      profileId: string;
+      runtimeId: string;
+      configured: number;
+      present: number;
+      missing: string[];
+      writeApproval: boolean;
+      state: HealthState;
+    }>;
   };
   learning: {
     state: HealthState;
+    promotionState: HealthState;
+    pendingApproval: number;
     counts: Record<string, number>;
     last: Record<string, unknown> | null;
   };
   sandbox: {
     state: HealthState;
     counts: Record<string, number>;
+    staleCount: number;
     active: BrainTask[];
   };
   lastValidatedOutcome: BrainTask | null;

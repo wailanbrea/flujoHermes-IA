@@ -1,0 +1,10 @@
+name: skill-candidate
+description: Creación de una skill candidata con evidencia y promoción bloqueada.
+skills:
+  - hermes-learning-engine
+  - hermes-evidence-gate
+  - hermes-agent-skill-authoring
+  - bsolutions-quality-gate
+instruction: |
+  Crea o modifica la skill únicamente como cambio pendiente.
+  Exige benchmark reproducible, SHA-256 y aprobación explícita antes de promoverla.

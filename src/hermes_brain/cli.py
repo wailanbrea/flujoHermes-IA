@@ -11,7 +11,9 @@ from .core import (
     persist_learning,
     promote_learning,
     read_json,
+    validate_learning,
 )
+from .router import route_task
 
 
 def parser() -> argparse.ArgumentParser:
@@ -37,11 +39,25 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--related-skill")
     record.add_argument("--benchmark-result")
 
+    validate_learning_command = commands.add_parser("validate-learning")
+    validate_learning_command.add_argument("--repo", required=True, type=Path)
+    validate_learning_command.add_argument("--record-id", required=True)
+    validate_learning_command.add_argument(
+        "--benchmark-artifact", required=True, type=Path
+    )
+
     promote = commands.add_parser("promote-learning")
     promote.add_argument("--repo", required=True, type=Path)
     promote.add_argument("--record-id", required=True)
-    promote.add_argument("--benchmark-passed", action="store_true")
+    promote.add_argument("--benchmark-sha256", required=True)
     promote.add_argument("--approved-by", required=True)
+
+    route = commands.add_parser("route-task")
+    route.add_argument("--repo", required=True, type=Path)
+    route.add_argument("--capability", required=True)
+    route.add_argument("--project-signal", action="append", default=[])
+    route.add_argument("--manual-model")
+    route.add_argument("--manual-model-authorized", action="store_true")
     return root
 
 
@@ -54,6 +70,7 @@ def validate_config(repo: Path) -> dict[str, object]:
         "profileModes",
         "profiles",
         "skills",
+        "bundles",
         "memory",
         "learning",
         "validators",
@@ -66,12 +83,19 @@ def validate_config(repo: Path) -> dict[str, object]:
     profile_modes = config["profileModes"]
     profiles = config["profiles"]
     role_sets = config["skills"].get("roleSets", {})
+    routes = config["modelRouter"].get("routes", [])
     if not isinstance(profile_modes, dict) or not profile_modes:
         raise ValueError("invalid Hermes Brain config; profileModes must be non-empty")
     if not isinstance(role_sets, dict) or not role_sets:
         raise ValueError("invalid Hermes Brain config; skills.roleSets must be non-empty")
     if not isinstance(profiles, list) or not profiles:
         raise ValueError("invalid Hermes Brain config; profiles must be non-empty")
+    if (
+        not isinstance(routes, list)
+        or not routes
+        or len({route.get("capability") for route in routes}) != len(routes)
+    ):
+        raise ValueError("invalid Hermes Brain config; model routes must be unique")
 
     profile_ids: set[str] = set()
     runtime_ids: set[str] = set()
@@ -146,6 +170,42 @@ def validate_config(repo: Path) -> dict[str, object]:
             "invalid Hermes Brain config; missing versioned skills: "
             + ", ".join(missing_skills)
         )
+    bundles = config["bundles"]
+    if not isinstance(bundles, dict) or not bundles:
+        raise ValueError("invalid Hermes Brain config; bundles must be non-empty")
+    allowed_bundle_profiles = runtime_ids.union({"default", "localai"})
+    for bundle_name, bundle in bundles.items():
+        if (
+            not isinstance(bundle, dict)
+            or not isinstance(bundle.get("profiles"), list)
+            or not bundle["profiles"]
+        ):
+            raise ValueError(f"invalid Hermes bundle: {bundle_name}")
+        if not (repo / "config" / "hermes-bundles" / f"{bundle_name}.yaml").is_file():
+            raise ValueError(f"missing Hermes bundle definition: {bundle_name}")
+        unknown_profiles = set(bundle["profiles"]).difference(allowed_bundle_profiles)
+        if unknown_profiles:
+            raise ValueError(
+                f"invalid Hermes bundle profiles for {bundle_name}: "
+                + ", ".join(sorted(unknown_profiles))
+            )
+    runtime_profiles = {str(profile["runtimeId"]) for profile in profiles}
+    stack_profiles = config["modelRouter"].get("stackProfiles", {})
+    routed_profiles = {
+        str(route.get("profile"))
+        for route in routes
+        if route.get("profile") != "auto"
+    }
+    routed_profiles.update(str(profile) for profile in stack_profiles.values())
+    unknown_routed_profiles = sorted(routed_profiles.difference(runtime_profiles))
+    if unknown_routed_profiles:
+        raise ValueError(
+            "invalid Hermes Brain config; routes select unknown profiles: "
+            + ", ".join(unknown_routed_profiles)
+        )
+    local_model = config["modelRouter"].get("localModel")
+    if local_model in set(config["modelRouter"].get("manualOnlyModels", [])):
+        raise ValueError("local default model cannot be manual-only")
     return {
         "valid": True,
         "schemaVersion": config["schemaVersion"],
@@ -177,14 +237,30 @@ def main() -> int:
         )
         destination = persist_learning(runtime, record)
         result = {"recordId": record.record_id, "state": record.state, "path": str(destination)}
-    else:
+    elif args.command == "validate-learning":
+        runtime = args.repo.resolve() / "telemetry" / "runtime"
+        result = validate_learning(
+            runtime,
+            args.record_id,
+            benchmark_artifact=args.benchmark_artifact.resolve(),
+        )
+    elif args.command == "promote-learning":
         runtime = args.repo.resolve() / "telemetry" / "runtime"
         result = promote_learning(
             runtime,
             args.record_id,
-            benchmark_passed=args.benchmark_passed,
+            benchmark_sha256=args.benchmark_sha256,
             approved_by=args.approved_by,
         )
+    else:
+        config = read_json(args.repo.resolve() / "config" / "hermes-brain.json")
+        result = route_task(
+            config,
+            capability=args.capability,
+            project_signals=args.project_signal,
+            manual_model=args.manual_model,
+            manual_model_authorized=args.manual_model_authorized,
+        ).as_dict()
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 0
 

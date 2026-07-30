@@ -1,0 +1,10 @@
+name: android-feature
+description: Implementación Android gobernada con Graphify, pruebas y revisión.
+skills:
+  - graphify
+  - bsolutions-kotlin-android
+  - test-driven-development
+  - requesting-code-review
+instruction: |
+  Confirma el proyecto y consulta Graphify antes de leer archivos.
+  Trabaja sólo dentro del sandbox autorizado y termina con pruebas reproducibles.

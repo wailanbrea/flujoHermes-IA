@@ -111,6 +111,7 @@ const brainTaskSchema = z.object({
   updatedAt: z.string(),
   filesChanged: z.number().int().nonnegative().optional(),
   patchBytes: z.number().int().nonnegative().optional(),
+  stale: z.boolean().optional(),
 });
 const brainStatusSchema = z.object({
   brain: z.object({
@@ -126,10 +127,12 @@ const brainStatusSchema = z.object({
       state: healthStateSchema,
       routes: z.array(z.object({
         capability: z.string(),
+        profile: z.string(),
         executor: z.string(),
         fallback: z.string(),
       })),
       localOptional: z.boolean(),
+      enforced: z.boolean(),
     }),
     agents: z.object({
       state: healthStateSchema,
@@ -142,15 +145,28 @@ const brainStatusSchema = z.object({
       state: healthStateSchema,
       configured: z.array(z.string()),
       installed: z.array(z.string()),
+      roleAware: z.boolean(),
+      profiles: z.array(z.object({
+        profileId: z.string(),
+        runtimeId: z.string(),
+        configured: z.number().int().nonnegative(),
+        present: z.number().int().nonnegative(),
+        missing: z.array(z.string()),
+        writeApproval: z.boolean(),
+        state: healthStateSchema,
+      })),
     }),
     learning: z.object({
       state: healthStateSchema,
+      promotionState: healthStateSchema,
+      pendingApproval: z.number().int().nonnegative(),
       counts: z.record(z.string(), z.number().int().nonnegative()),
       last: z.record(z.string(), z.unknown()).nullable(),
     }),
     sandbox: z.object({
       state: healthStateSchema,
       counts: z.record(z.string(), z.number().int().nonnegative()),
+      staleCount: z.number().int().nonnegative(),
       active: z.array(brainTaskSchema),
     }),
     lastValidatedOutcome: brainTaskSchema.nullable(),
@@ -557,7 +573,12 @@ const emptyBrain = (): BrainSummary => ({
     graphEdges: 0,
     policy: "validated-and-sanitized-only",
   },
-  router: { state: "unknown", routes: [], localOptional: true },
+  router: {
+    state: "unknown",
+    routes: [],
+    localOptional: true,
+    enforced: false,
+  },
   agents: {
     state: "unknown",
     profiles: [],
@@ -565,9 +586,21 @@ const emptyBrain = (): BrainSummary => ({
     advisoryCount: 0,
     advisoryOnly: true,
   },
-  skills: { state: "unknown", configured: [], installed: [] },
-  learning: { state: "unknown", counts: {}, last: null },
-  sandbox: { state: "unknown", counts: {}, active: [] },
+  skills: {
+    state: "unknown",
+    configured: [],
+    installed: [],
+    roleAware: true,
+    profiles: [],
+  },
+  learning: {
+    state: "unknown",
+    promotionState: "unknown",
+    pendingApproval: 0,
+    counts: {},
+    last: null,
+  },
+  sandbox: { state: "unknown", counts: {}, staleCount: 0, active: [] },
   lastValidatedOutcome: null,
   curator: { state: "unknown" },
   kanban: { state: "unknown", manualDecomposition: true },
@@ -787,13 +820,22 @@ async function probeLmStudio(): Promise<Probe> {
       model.loaded_instances.map((instance) => ({ model, instance })),
     );
     const active = loaded[0];
+    const activeName = active?.model.display_name.toLowerCase() ?? "";
+    const approvedModel =
+      activeName.includes("gemma-4-12b") ||
+      activeName.includes("qwen3.6-35b");
+    const approvedPreset =
+      loaded.length === 1 &&
+      approvedModel &&
+      active?.instance.config.context_length === 65_536 &&
+      active.instance.config.parallel === 4;
     return {
       protocol: "HTTP / REST",
       service: {
         id: "lm-studio",
         name: "LM Studio",
         role: "Inferencia local",
-        state: active ? "healthy" : "degraded",
+        state: approvedPreset ? "healthy" : "degraded",
         detail: active
           ? `${active.model.display_name} · ${(active.instance.config.context_length / 1024).toFixed(0)}K contexto`
           : "Servidor activo, sin modelo cargado",
@@ -803,6 +845,11 @@ async function probeLmStudio(): Promise<Probe> {
           loadedModels: loaded.length,
           contextTokens: active?.instance.config.context_length ?? 0,
           parallelSlots: active?.instance.config.parallel ?? 0,
+          approvedModel,
+          approvedPreset,
+          residencyPolicy: activeName.includes("qwen3.6-35b")
+            ? "manual-ttl-900"
+            : "primary-resident",
         },
       },
     };
@@ -1113,7 +1160,10 @@ async function probeGpu(): Promise<GpuProbe> {
         computePercent: z.number(),
       })
       .parse(JSON.parse(output));
-    const state: HealthState = metrics.sharedGiB > 0.75 ? "degraded" : "healthy";
+    const memoryPressure =
+      metrics.sharedGiB > 2 || metrics.dedicatedGiB > 15.5;
+    const activity = metrics.computePercent >= 1 ? "busy" : "idle";
+    const state: HealthState = memoryPressure ? "degraded" : "healthy";
     return {
       protocol: "Windows GPU counters",
       dedicatedUsedGiB: metrics.dedicatedGiB,
@@ -1124,13 +1174,16 @@ async function probeGpu(): Promise<GpuProbe> {
         name: "Radeon RX 9070",
         role: "Cómputo principal",
         state,
-        detail: `${metrics.computePercent.toFixed(1)}% compute · ${metrics.dedicatedGiB.toFixed(2)} GiB VRAM · ${metrics.sharedGiB.toFixed(2)} GiB compartida`,
+        detail: `${activity} · ${metrics.computePercent.toFixed(1)}% compute · ${metrics.dedicatedGiB.toFixed(2)}/16 GiB VRAM · ${metrics.sharedGiB.toFixed(2)} GiB compartida`,
         latencyMs: latency(start),
         checkedAt: checkedAt(),
         metrics: {
           dedicatedUsedGiB: metrics.dedicatedGiB,
           sharedUsedGiB: metrics.sharedGiB,
           computePercent: metrics.computePercent,
+          activity,
+          memoryPressure,
+          approvedSharedBaselineGiB: 1.16,
         },
       },
     };
@@ -1148,6 +1201,50 @@ async function probeGpu(): Promise<GpuProbe> {
       sharedUsedGiB: null,
       computePercent: null,
     };
+  }
+}
+
+async function probeRtk(): Promise<Probe> {
+  const start = performance.now();
+  try {
+    const [versionOutput, gainOutput] = await Promise.all([
+      run("rtk.exe", ["--version"]),
+      run("rtk.exe", ["gain", "--all", "--format", "json"]),
+    ]);
+    const gain = z.object({
+      summary: z.object({
+        total_commands: z.number().int().nonnegative(),
+        total_saved: z.number().int().nonnegative(),
+        avg_savings_pct: z.number().nonnegative(),
+      }),
+    }).parse(JSON.parse(gainOutput));
+    return {
+      protocol: "RTK local analytics",
+      service: {
+        id: "rtk",
+        name: "RTK",
+        role: "Compresión de terminal",
+        state: "healthy",
+        detail: `${gain.summary.total_commands} comandos · ${gain.summary.total_saved.toLocaleString("es-DO")} tokens evitados`,
+        latencyMs: latency(start),
+        checkedAt: checkedAt(),
+        metrics: {
+          version: versionOutput.trim(),
+          totalCommands: gain.summary.total_commands,
+          totalSavedTokens: gain.summary.total_saved,
+          averageSavingsPercent: gain.summary.avg_savings_pct,
+        },
+      },
+    };
+  } catch (error) {
+    return failedProbe(
+      "rtk",
+      "RTK",
+      "Compresión de terminal",
+      "RTK local analytics",
+      start,
+      error,
+    );
   }
 }
 
@@ -1192,8 +1289,11 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
   const checked = checkedAt();
   const empty: HermesDelegationSummary = {
     state: "offline",
+    historyState: "unknown",
     checkedAt: checked,
     totalTasks: 0,
+    invalidTaskCount: 0,
+    staleActiveCount: 0,
     queuedCount: 0,
     activeCount: 0,
     awaitingReviewCount: 0,
@@ -1265,11 +1365,18 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     ]);
     const failedStates = new Set(["failed", "blocked", "validation-failed"]);
     const latestTask = tasks[0] ?? null;
-    const state: HealthState =
+    const state: HealthState = "healthy";
+    const historyState: HealthState =
       invalidTaskCount > 0 ||
       (latestTask && failedStates.has(latestTask.state))
         ? "degraded"
         : "healthy";
+    const staleCutoff = Date.now() - 2 * 60 * 60 * 1000;
+    const staleActiveCount = tasks.filter(
+      (task) =>
+        activeStates.has(task.state) &&
+        Date.parse(task.updatedAt) < staleCutoff,
+    ).length;
     const reviewedTasks = tasks.filter((task) =>
       ["completed", "blocked", "validation-failed"].includes(task.state),
     );
@@ -1296,17 +1403,22 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     };
     const delegation: HermesDelegationSummary = {
       state,
+      historyState,
       checkedAt: checked,
-      totalTasks: tasks.length,
+      totalTasks: directories.length,
+      invalidTaskCount,
+      staleActiveCount,
       queuedCount: tasks.filter((task) => task.state === "queued").length,
-      activeCount: tasks.filter((task) => activeStates.has(task.state)).length,
+      activeCount: tasks.filter(
+        (task) =>
+          activeStates.has(task.state) &&
+          Date.parse(task.updatedAt) >= staleCutoff,
+      ).length,
       awaitingReviewCount: tasks.filter(
         (task) => ["sealed", "awaiting-review"].includes(task.state),
       ).length,
       completedCount: tasks.filter((task) => task.state === "completed").length,
-      failedCount:
-        tasks.filter((task) => failedStates.has(task.state)).length +
-        invalidTaskCount,
+      failedCount: tasks.filter((task) => failedStates.has(task.state)).length,
       latestTask,
       benchmark,
       modelPerformance,
@@ -1328,6 +1440,8 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
           totalTasks: delegation.totalTasks,
           activeTasks: delegation.activeCount,
           awaitingReview: delegation.awaitingReviewCount,
+          invalidTasks: delegation.invalidTaskCount,
+          staleActiveTasks: delegation.staleActiveCount,
           completedTasks: delegation.completedCount,
           benchmarkPassed: benchmark.passed,
           benchmarkTotal: benchmark.total,
@@ -1690,6 +1804,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     apacheProbe,
     graphProbe,
     gpuProbe,
+    rtkProbe,
     hermesBrokerProbe,
     brain,
     promptBudget,
@@ -1702,6 +1817,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeTcp("apache", "Apache", "Aplicaciones XAMPP", 80),
     probeGraphify(),
     probeGpu(),
+    probeRtk(),
     probeHermesBroker(),
     readBrainStatus(),
     readPromptBudget(),
@@ -1715,6 +1831,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     apacheProbe,
     graphProbe,
     gpuProbe,
+    rtkProbe,
     hermesBrokerProbe,
   ];
   const services = probes.map(({ service }) => service);
@@ -1798,6 +1915,9 @@ async function refreshHermesBroker(): Promise<void> {
       delegation: {
         totalTasks: current.delegation.totalTasks,
         activeCount: current.delegation.activeCount,
+        staleActiveCount: current.delegation.staleActiveCount,
+        invalidTaskCount: current.delegation.invalidTaskCount,
+        historyState: current.delegation.historyState,
         completedCount: current.delegation.completedCount,
         failedCount: current.delegation.failedCount,
         efficiency: current.delegation.efficiency,
@@ -1809,6 +1929,9 @@ async function refreshHermesBroker(): Promise<void> {
       delegation: {
         totalTasks: probe.delegation.totalTasks,
         activeCount: probe.delegation.activeCount,
+        staleActiveCount: probe.delegation.staleActiveCount,
+        invalidTaskCount: probe.delegation.invalidTaskCount,
+        historyState: probe.delegation.historyState,
         completedCount: probe.delegation.completedCount,
         failedCount: probe.delegation.failedCount,
         efficiency: probe.delegation.efficiency,

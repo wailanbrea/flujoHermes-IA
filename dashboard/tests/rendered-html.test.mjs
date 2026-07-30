@@ -52,6 +52,13 @@ test("keeps telemetry loopback-only, cached, and read-only", async () => {
   assert.match(server, /buildBrainWorkflow/);
   assert.match(server, /promptBudgetSchema/);
   assert.match(server, /readPromptBudget/);
+  assert.match(server, /probeRtk/);
+  assert.match(server, /metrics\.sharedGiB > 2/);
+  assert.match(server, /totalTasks: directories\.length/);
+  assert.doesNotMatch(
+    server,
+    /failedCount:\s*[\s\S]{0,160}invalidTaskCount/,
+  );
   assert.match(server, /const INTERVAL_MS = 15000/);
   assert.match(server, /watch\(/);
   assert.match(server, /:heartbeat/);
@@ -74,7 +81,7 @@ test("keeps automatic graph onboarding local, bounded, and structural", async ()
   assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
 });
 
-test("uses a director sandbox and an idempotent evidence gate", async () => {
+test("uses a managed sandbox and an idempotent evidence gate", async () => {
   const [sandbox, seal, review, learning, worker] = await Promise.all([
     readFile(new URL("../../scripts/windows/new-hermes-sandbox.ps1", import.meta.url), "utf8"),
     readFile(new URL("../../scripts/windows/seal-hermes-task.ps1", import.meta.url), "utf8"),
@@ -82,7 +89,10 @@ test("uses a director sandbox and an idempotent evidence gate", async () => {
     readFile(new URL("../../scripts/windows/record-hermes-learning.ps1", import.meta.url), "utf8"),
     readFile(new URL("../../scripts/windows/invoke-hermes-task.ps1", import.meta.url), "utf8"),
   ]);
-  assert.match(sandbox, /executor = 'director'/);
+  assert.match(sandbox, /executor = 'managed-sandbox'/);
+  assert.match(sandbox, /Get-GraphPreflightEvidence/);
+  assert.match(sandbox, /Get-HermesRouteDecision/);
+  assert.match(sandbox, /localAi = 'controlled-write'/);
   assert.match(sandbox, /worktree add --quiet --detach/);
   assert.doesNotMatch(sandbox, /Start-HermesWorker|hermes\.exe|lms\.exe/);
   assert.match(seal, /--binary --full-index/);
@@ -177,6 +187,12 @@ test("versions governance, Brain config, and the managed skills", async () => {
   assert.equal(parsed.skills.selectionPolicy.maxBodiesPerTask, 5);
   assert.equal(parsed.skills.selectionPolicy.projectSpecificRequiresCatalogMatch, true);
   assert.equal(parsed.skills.selectionPolicy.externalRegistries, "denied");
+  assert.deepEqual(
+    Object.keys(parsed.bundles).sort(),
+    ["android-feature", "laravel-change", "research-verified", "skill-candidate"],
+  );
+  assert.match(brainSync, /Sync-ProfileBundles/);
+  assert.match(brainSync, /skills\.write_approval true/);
   assert.ok(parsed.skills.roleSets["architecture-review"].includes("architecture-diagram"));
   assert.ok(
     parsed.skills.roleSets["browser-validation"].includes(
