@@ -138,7 +138,7 @@ test("versions governance, Brain config, and the six core skills", async () => {
   );
   assert.ok(parsed.skills.roleSets.android.includes("adb-emulator-debugging"));
   assert.ok(parsed.skills.roleSets.laravel.includes("backend-dev-laravel"));
-  assert.ok(parsed.skills.roleSets.mcp.includes("mcp-appcontrol"));
+  assert.equal(parsed.skills.roleSets.mcp.includes("mcp-appcontrol"), false);
   assert.ok(
     parsed.skills.roleSets["browser-validation"].includes(
       "authenticated-browser-operations",
