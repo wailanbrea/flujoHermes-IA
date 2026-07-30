@@ -83,7 +83,7 @@ h1 { font-size: clamp(30px, 4vw, 52px); letter-spacing: -.045em; line-height: 1;
 .execution-progress i { background: #1d3540; display: block; height: 2px; overflow: hidden; position: relative; }
 .execution-progress i.passed { background: #365967; }
 .execution-progress i.active { background: #4d8799; }
-.execution-progress i.active::after { animation: sequence-progress 1.1s linear infinite; background: #a4edff; box-shadow: 0 0 10px rgba(85, 184, 214, .85); content: ""; inset: 0 auto 0 0; position: absolute; width: 45%; }
+.execution-progress i.active::after { animation: sequence-progress .75s linear infinite; background: #d8f8ff; box-shadow: 0 0 12px rgba(85, 184, 214, .95); content: ""; inset: 0 auto 0 0; position: absolute; width: 45%; }
 .sequence-toggle { background: transparent; border: 1px solid #345462; color: #b9d2da; cursor: pointer; font: 8px var(--data); letter-spacing: .08em; padding: 7px 9px; text-transform: uppercase; }
 .sequence-toggle:hover, .sequence-toggle:focus-visible { border-color: var(--blue); color: var(--ink); outline: none; }
 .sequence-toggle:disabled { border-color: var(--line); color: var(--muted); cursor: default; }
@@ -92,9 +92,10 @@ h1 { font-size: clamp(30px, 4vw, 52px); letter-spacing: -.045em; line-height: 1;
 .diagram-scroll { min-width: 0; overflow-x: auto; }
 .brain-svg { display: block; height: min(60vh, 650px); min-width: 900px; width: 100%; }
 .brain-links path { fill: none; stroke: #54727f; stroke-width: 1.2; transition: opacity 180ms ease, stroke 180ms ease; vector-effect: non-scaling-stroke; }
-.brain-links path.sequence-active { animation: execution-route 1.1s linear infinite; filter: drop-shadow(0 0 5px rgba(85, 184, 214, .8)); stroke: #8fe8ff; stroke-dasharray: 3 8; stroke-width: 2.2; }
+.brain-links path.sequence-active { animation: execution-route .65s linear infinite; filter: drop-shadow(0 0 7px rgba(85, 184, 214, .95)); stroke: #c5f5ff; stroke-dasharray: 1 10; stroke-linecap: round; stroke-width: 3.4; }
 #arrow path { fill: #54727f; }
 #arrow-active path { fill: #a4edff; }
+.execution-pulse { fill: #effdff; filter: drop-shadow(0 0 7px #80e9ff); pointer-events: none; stroke: #67dff8; stroke-width: 2; }
 .brain-node { cursor: pointer; outline: none; }
 .brain-node rect { fill: #102630; stroke: #3a5965; stroke-width: 1; transition: fill 160ms ease, stroke 160ms ease; }
 .brain-node circle { fill: var(--muted); }
@@ -109,6 +110,7 @@ h1 { font-size: clamp(30px, 4vw, 52px); letter-spacing: -.045em; line-height: 1;
 .diagram-layout.motion-paused .brain-links path.sequence-active,
 .diagram-layout.motion-paused .brain-node.sequence-active rect,
 .diagram-layout.motion-paused .execution-progress i.active::after { animation-play-state: paused; }
+.diagram-layout.motion-paused .execution-pulse { opacity: .3; }
 .node-title { fill: var(--ink); font: 600 14px var(--display); pointer-events: none; }
 .node-subtitle { fill: var(--muted); font: 9px var(--data); pointer-events: none; }
 
@@ -209,4 +211,5 @@ footer { border-top: 1px solid var(--line); color: var(--muted); display: flex; 
   .diagram-layout.reduced-motion .brain-links path.sequence-active,
   .diagram-layout.reduced-motion .brain-node.sequence-active rect,
   .diagram-layout.reduced-motion .execution-progress i.active::after { animation: none !important; }
+  .diagram-layout.reduced-motion .execution-pulse { display: none; }
 }

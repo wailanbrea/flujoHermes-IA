@@ -10,6 +10,7 @@ import type {
 import "./globals.css";
 
 const API_URL = "http://127.0.0.1:4311";
+const MOTION_PREFERENCE_KEY = "trama.motion-enabled";
 
 type StreamState = "connecting" | "live" | "retrying";
 type NodeId =
@@ -170,11 +171,18 @@ function BrainDiagram({
 }) {
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[1];
   const diagramScroller = useRef<HTMLDivElement>(null);
+  const brainSvg = useRef<SVGSVGElement>(null);
   const [guideStageIndex, setGuideStageIndex] = useState(0);
   const [guideMode, setGuideMode] = useState(false);
   const [isMotionPlaying, setIsMotionPlaying] = useState(true);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const [motionOverride, setMotionOverride] = useState(false);
+  const [motionOverride, setMotionOverride] = useState(() => {
+    try {
+      return window.localStorage.getItem(MOTION_PREFERENCE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const motionAllowed = !prefersReducedMotion || motionOverride;
   const activeStageIndex = guideMode ? guideStageIndex : execution.stageIndex;
   const activeStage = executionStages[activeStageIndex];
@@ -227,6 +235,32 @@ function BrainDiagram({
     }
   }, [execution.mode, execution.taskId, execution.taskState]);
 
+  useEffect(() => {
+    const svg = brainSvg.current;
+    if (!svg) return;
+    if (motionAllowed && isMotionPlaying) svg.unpauseAnimations();
+    else svg.pauseAnimations();
+  }, [isMotionPlaying, motionAllowed]);
+
+  const enableMotion = () => {
+    setMotionOverride(true);
+    setIsMotionPlaying(true);
+    try {
+      window.localStorage.setItem(MOTION_PREFERENCE_KEY, "true");
+    } catch {
+      // Motion still works for this session if browser storage is unavailable.
+    }
+  };
+
+  const respectSystemMotion = () => {
+    setMotionOverride(false);
+    try {
+      window.localStorage.removeItem(MOTION_PREFERENCE_KEY);
+    } catch {
+      // The in-memory preference remains authoritative for this session.
+    }
+  };
+
   return (
     <div
       className={`diagram-layout${motionAllowed ? "" : " reduced-motion"}${isMotionPlaying ? "" : " motion-paused"}`}
@@ -267,8 +301,7 @@ function BrainDiagram({
             type="button"
             onClick={() => {
               if (!motionAllowed) {
-                setMotionOverride(true);
-                setIsMotionPlaying(true);
+                enableMotion();
                 return;
               }
               if (guideMode || execution.mode === "live" || execution.mode === "waiting") {
@@ -302,10 +335,15 @@ function BrainDiagram({
               Volver a telemetría
             </button>
           )}
+          {prefersReducedMotion && motionOverride && !guideMode && (
+            <button className="sequence-toggle secondary" type="button" onClick={respectSystemMotion}>
+              Respetar sistema
+            </button>
+          )}
         </div>
       </div>
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
-        <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
+        <svg ref={brainSvg} className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
           <title id="brain-title">Flujo operativo de Hermes Brain</title>
           <desc id="brain-desc">Del usuario a memoria, routing, agentes, sandbox, evidencia y aprendizaje.</desc>
           <defs>
@@ -328,6 +366,17 @@ function BrainDiagram({
                 />
               );
             })}
+          </g>
+          <g className="execution-pulses" aria-hidden="true">
+            {activeStage.edgeIndexes.map((edgeIndex) => (
+              <circle className="execution-pulse" key={`${activeStage.id}-${edgeIndex}`} r="5">
+                <animateMotion
+                  dur="850ms"
+                  path={paths[edgeIndex]}
+                  repeatCount="indefinite"
+                />
+              </circle>
+            ))}
           </g>
           {nodes.map((node) => {
             const state = nodeState(node.id, brain);

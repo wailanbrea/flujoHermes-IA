@@ -40,6 +40,13 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(page, /Activar animación/);
   assert.match(page, /motionOverride/);
   assert.match(page, /guideMode/);
+  assert.match(page, /trama\.motion-enabled/);
+  assert.match(page, /localStorage\.setItem/);
+  assert.match(page, /pauseAnimations/);
+  assert.match(page, /unpauseAnimations/);
+  assert.match(page, /animateMotion/);
+  assert.match(page, /execution-pulse/);
+  assert.match(page, /Respetar sistema/);
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
   assert.match(css, /overflow-x: auto/);
@@ -47,7 +54,8 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(css, /@keyframes execution-route/);
   assert.match(css, /@keyframes execution-node/);
   assert.match(css, /brain-links path\.sequence-active/);
-  assert.doesNotMatch(page, /diagram-spread|draggingId|onPointerMove|localStorage/);
+  assert.match(css, /\.execution-pulse/);
+  assert.doesNotMatch(page, /diagram-spread|draggingId|onPointerMove/);
   assert.doesNotMatch(page, /Ahorro vs|Tokens delegados|Hermes Lab|worker principal/i);
 });
 
