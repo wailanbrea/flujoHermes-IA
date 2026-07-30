@@ -102,11 +102,15 @@ export interface KnowledgeGraphSummary {
 }
 
 export type HermesTaskState =
+  | "isolated"
+  | "editing"
+  | "sealed"
   | "queued"
   | "preparing"
   | "executing"
   | "awaiting-review"
   | "validating"
+  | "applied-cleanup-pending"
   | "completed"
   | "failed"
   | "blocked"
@@ -260,6 +264,62 @@ export interface HermesDelegationSummary {
   };
 }
 
+export interface BrainRoute {
+  capability: string;
+  executor: string;
+  fallback: string;
+}
+
+export interface BrainTask {
+  taskId: string;
+  projectName: string;
+  requestedBy: "Codex" | "Claude" | "Antigravity" | "OpenCode";
+  state: string;
+  updatedAt: string;
+  filesChanged?: number;
+  patchBytes?: number;
+}
+
+export interface BrainSummary {
+  state: HealthState;
+  version: number;
+  memory: {
+    state: HealthState;
+    graphNodes: number;
+    graphEdges: number;
+    policy: string;
+  };
+  router: {
+    state: HealthState;
+    routes: BrainRoute[];
+    localOptional: boolean;
+  };
+  agents: {
+    state: HealthState;
+    profiles: string[];
+    advisoryOnly: boolean;
+  };
+  skills: {
+    state: HealthState;
+    configured: string[];
+    installed: string[];
+  };
+  learning: {
+    state: HealthState;
+    counts: Record<string, number>;
+    last: Record<string, unknown> | null;
+  };
+  sandbox: {
+    state: HealthState;
+    counts: Record<string, number>;
+    active: BrainTask[];
+  };
+  lastValidatedOutcome: BrainTask | null;
+  curator: { state: HealthState; consolidation?: string };
+  kanban: { state: HealthState; manualDecomposition?: boolean };
+  moa: { state: HealthState; active?: boolean; optional?: boolean };
+}
+
 export interface TelemetrySnapshot {
   generatedAt: string;
   sequence: number;
@@ -268,6 +328,7 @@ export interface TelemetrySnapshot {
   connections: ConnectionHealth[];
   events: TelemetryEvent[];
   graph: KnowledgeGraphSummary;
+  brain: BrainSummary;
   delegation: HermesDelegationSummary;
   workflow: {
     nodes: WorkflowNode[];

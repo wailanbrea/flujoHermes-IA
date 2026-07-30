@@ -15,6 +15,8 @@ dashboard/.vinext/
 dashboard/.wrangler/
 .codex/
 graphify-out/
+.playwright-cli/
+output/playwright/
 __pycache__/
 *.pyc
 *.zip

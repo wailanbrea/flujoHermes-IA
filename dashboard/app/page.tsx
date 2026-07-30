@@ -1,1546 +1,340 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  BrainSummary,
   HealthState,
-  HermesBenchmarkSummary,
-  HermesInsightsSummary,
-  HermesModelPerformance,
-  HermesTaskState,
-  HermesTaskSummary,
-  ServiceHealth,
   TelemetrySnapshot,
-  WorkflowEdge,
-  WorkflowNode,
 } from "../lib/telemetry";
+import "./globals.css";
 
-const API_URL =
-  typeof process !== "undefined" && process.env?.NEXT_PUBLIC_TELEMETRY_URL
-    ? process.env.NEXT_PUBLIC_TELEMETRY_URL
-    : "http://127.0.0.1:4311";
+const API_URL = "http://127.0.0.1:4311";
 
-const stateLabels: Record<HealthState, string> = {
-  healthy: "Operativo",
-  degraded: "Atención",
-  offline: "Sin conexión",
-  unknown: "Sin datos",
-};
+type StreamState = "connecting" | "live" | "retrying";
+type NodeId =
+  | "user"
+  | "brain"
+  | "memory"
+  | "router"
+  | "agents"
+  | "cases"
+  | "engines"
+  | "experts"
+  | "plan"
+  | "sandbox"
+  | "evidence"
+  | "validated"
+  | "learning"
+  | "promotion";
 
-const evidenceLabels: Record<WorkflowEdge["evidence"], string> = {
-  observed: "Observada ahora",
-  configured: "Configurada",
-  indexed: "Indexada",
-};
+interface DiagramNode {
+  id: NodeId;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  subtitle: string;
+}
 
-const taskStateLabels: Record<HermesTaskState, string> = {
-  queued: "En cola",
-  preparing: "Preparando",
-  executing: "Ejecutando",
-  "awaiting-review": "Esperando revisión",
-  validating: "Validando",
-  completed: "Completada",
-  failed: "Fallida",
-  blocked: "Bloqueada",
-  "validation-failed": "Validación fallida",
-};
-
-const taskStages: Array<{
-  state: HermesTaskState;
-  label: string;
-  nodeId: string;
-}> = [
-  { state: "queued", label: "Contrato", nodeId: "hermes-broker" },
-  { state: "preparing", label: "Contexto", nodeId: "graphify" },
-  { state: "executing", label: "Ejecución", nodeId: "hermes" },
-  { state: "awaiting-review", label: "Revisión", nodeId: "director-review" },
-  { state: "validating", label: "Validación", nodeId: "director-review" },
-  { state: "completed", label: "Cierre", nodeId: "director-review" },
+const nodes: DiagramNode[] = [
+  { id: "user", x: 410, y: 14, width: 180, height: 42, title: "Usuario", subtitle: "Objetivo y límites" },
+  { id: "brain", x: 360, y: 82, width: 280, height: 58, title: "HERMES BRAIN", subtitle: "Plano de control persistente" },
+  { id: "memory", x: 70, y: 190, width: 230, height: 54, title: "Memoria y Graphify", subtitle: "Recuperación estructural" },
+  { id: "router", x: 385, y: 190, width: 230, height: 54, title: "Model Router", subtitle: "Capacidad, no identidad" },
+  { id: "agents", x: 700, y: 190, width: 230, height: 54, title: "Agent Factory", subtitle: "Especialistas advisory" },
+  { id: "cases", x: 70, y: 286, width: 230, height: 48, title: "Casos anteriores", subtitle: "Sólo resultados validados" },
+  { id: "engines", x: 385, y: 286, width: 230, height: 48, title: "Local / Cloud", subtitle: "Motores reemplazables" },
+  { id: "experts", x: 700, y: 286, width: 230, height: 48, title: "Agentes expertos", subtitle: "Briefs de sólo lectura" },
+  { id: "plan", x: 385, y: 382, width: 230, height: 48, title: "Plan de solución", subtitle: "Decisión del director cloud" },
+  { id: "sandbox", x: 385, y: 458, width: 230, height: 48, title: "Ejecutor en sandbox", subtitle: "Worktree aislado" },
+  { id: "evidence", x: 350, y: 534, width: 300, height: 48, title: "Tests + revisión + evidencia", subtitle: "LF · SHA-256 · allowlist" },
+  { id: "validated", x: 385, y: 610, width: 230, height: 48, title: "Resultado validado", subtitle: "Integración idempotente" },
+  { id: "learning", x: 385, y: 686, width: 230, height: 48, title: "Learning Engine", subtitle: "Después de completar" },
+  { id: "promotion", x: 350, y: 746, width: 300, height: 30, title: "Memoria · Skill · Benchmark", subtitle: "" },
 ];
 
-const unsuccessfulTaskStates = new Set<HermesTaskState>([
-  "failed",
-  "blocked",
-  "validation-failed",
-]);
+const paths = [
+  "M500 56 V82",
+  "M500 140 V164 H185 V190",
+  "M500 140 V190",
+  "M500 164 H815 V190",
+  "M185 244 V286",
+  "M500 244 V286",
+  "M815 244 V286",
+  "M185 334 V356 H500 V382",
+  "M500 334 V382",
+  "M815 334 V356 H500 V382",
+  "M500 430 V458",
+  "M500 506 V534",
+  "M500 582 V610",
+  "M500 658 V686",
+  "M500 734 V746",
+];
 
-const progressLabels: Record<string, string> = {
-  queued: "En cola",
-  starting: "Iniciando agente",
-  "waiting-model": "Esperando al modelo",
-  "agent-cpu": "Procesando localmente",
-  "agent-event": "Interactuando con el modelo",
-  "workspace-change": "Editando el workspace",
-  "awaiting-review": "Listo para revisión",
-  stalled: "Sin progreso",
-  failed: "Interrumpido",
+const nodeCopy: Record<NodeId, string> = {
+  user: "Entrega el objetivo, el alcance y la autorización. No decide detalles internos del runtime.",
+  brain: "Coordina memoria, routing, expertos, sandboxes, evidencia y aprendizaje. No escribe código.",
+  memory: "Graphify localiza símbolos y relaciones antes de cualquier recorrido amplio.",
+  router: "Selecciona la capacidad requerida. La IA local es opcional y nunca bloquea.",
+  agents: "Convoca perfiles especializados que sólo entregan briefs estructurados.",
+  cases: "Recupera soluciones reproducibles y lecciones saneadas, nunca conversaciones completas.",
+  engines: "Codex, Claude, Antigravity y OpenCode programan; Gemma sólo asesora.",
+  experts: "Arquitectura, seguridad, testing, frontend, backend, datos y aprendizaje.",
+  plan: "El director integra hallazgos y define la implementación con criterios verificables.",
+  sandbox: "Todo cambio ocurre dentro del worktree creado para un único task ID.",
+  evidence: "El diff se sella en LF, se limita por allowlist y se verifica con hash y git apply.",
+  validated: "Sólo Complete true aplica el parche una vez después de pruebas independientes.",
+  learning: "Una tarea completada genera una lección pequeña y trazable.",
+  promotion: "Ninguna skill se promueve sin benchmark aprobado y autorización explícita.",
 };
 
-function formatTime(value: string): string {
-  return new Intl.DateTimeFormat("es-DO", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(new Date(value));
+function stateClass(state: HealthState): string {
+  return `state-${state}`;
 }
 
-function formatAge(value: string | null): string {
-  if (!value) return "sin fecha";
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 60) return `hace ${seconds} s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `hace ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `hace ${hours} h` : `hace ${Math.floor(hours / 24)} d`;
+function formatAge(value?: string | null): string {
+  if (!value) return "sin datos";
+  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(value)) / 1000));
+  if (seconds < 60) return `hace ${seconds}s`;
+  if (seconds < 3600) return `hace ${Math.floor(seconds / 60)}m`;
+  return `hace ${Math.floor(seconds / 3600)}h`;
 }
 
-function formatUptime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const days = Math.floor(hours / 24);
-  return days > 0 ? `${days} d ${hours % 24} h` : `${hours} h`;
+function nodeState(id: NodeId, brain: BrainSummary): HealthState {
+  if (["memory", "cases"].includes(id)) return brain.memory.state;
+  if (["router", "engines"].includes(id)) return brain.router.state;
+  if (["agents", "experts"].includes(id)) return brain.agents.state;
+  if (id === "sandbox") return brain.sandbox.state;
+  if (id === "learning") return brain.learning.state;
+  if (id === "promotion") return brain.skills.state;
+  if (id === "validated") return brain.lastValidatedOutcome ? "healthy" : "unknown";
+  return brain.state;
 }
 
-function StatePill({ state }: { state: HealthState }) {
-  return (
-    <span className={`state-pill state-${state}`}>
-      <span className="state-dot" aria-hidden="true" />
-      {stateLabels[state]}
-    </span>
-  );
-}
-
-function ServiceNode({
-  service,
-  index,
+function BrainDiagram({
+  brain,
+  selected,
+  onSelect,
 }: {
-  service: ServiceHealth;
-  index: number;
+  brain: BrainSummary;
+  selected: NodeId;
+  onSelect: (id: NodeId) => void;
 }) {
-  return (
-    <article
-      className={`service-node state-border-${service.state}`}
-      style={{ "--node-delay": `${index * 55}ms` } as React.CSSProperties}
-    >
-      <div className="node-terminal" aria-hidden="true" />
-      <div className="node-topline">
-        <span className="node-role">{service.role}</span>
-        <StatePill state={service.state} />
-      </div>
-      <h3>{service.name}</h3>
-      <p>{service.detail}</p>
-      <div className="node-meta">
-        <span>{service.latencyMs === null ? "—" : `${service.latencyMs} ms`}</span>
-        <span>{formatTime(service.checkedAt)}</span>
-      </div>
-    </article>
-  );
-}
-
-
-function TaskJourney({
-  task,
-  onNavigate,
-}: {
-  task: HermesTaskSummary | null;
-  onNavigate: (nodeId: string) => void;
-}) {
-  const currentIndex = task
-    ? taskStages.findIndex((stage) => stage.state === task.state)
-    : -1;
-  const unsuccessful = task ? unsuccessfulTaskStates.has(task.state) : false;
-
-  return (
-    <div className="task-journey" aria-label="Recorrido de la última tarea Hermes">
-      <div className="journey-heading">
-        <div>
-          <span>Recorrido de tarea</span>
-          <strong>
-            {task
-              ? `${task.requestedBy} → ${task.projectName}`
-              : "Sin tareas registradas"}
-          </strong>
-        </div>
-        <span className={`journey-state${unsuccessful ? " journey-state-error" : ""}`}>
-          {task ? taskStateLabels[task.state] : "En espera"}
-        </span>
-      </div>
-      <ol className="journey-stages">
-        {taskStages.map((stage, index) => {
-          const active = task?.state === stage.state;
-          const complete = currentIndex >= 0 && index < currentIndex;
-          return (
-            <li
-              key={stage.state}
-              className={`${active ? "stage-active" : ""}${
-                complete ? "stage-complete" : ""
-              }`}
-            >
-              <button type="button" onClick={() => onNavigate(stage.nodeId)}>
-                <i aria-hidden="true">{complete ? "✓" : index + 1}</i>
-                <span>{stage.label}</span>
-                <small>
-                  {active ? taskStateLabels[stage.state] : complete ? "Lista" : "Pendiente"}
-                </small>
-              </button>
-            </li>
-          );
-        })}
-        {unsuccessful && task && (
-          <li className="stage-active stage-error">
-            <button type="button" onClick={() => onNavigate("director-review")}>
-              <i aria-hidden="true">!</i>
-              <span>Incidencia</span>
-              <small>{taskStateLabels[task.state]}</small>
-            </button>
-          </li>
-        )}
-      </ol>
-      {task && (
-        <p className="journey-meta">
-          {task.phase} · {task.filesChanged} archivos · {task.patchBytes.toLocaleString("es-DO")} bytes
-          de parche · {progressLabels[task.progressKind] ?? task.progressKind} ·{" "}
-          {task.elapsedSeconds} s · actualizado {formatAge(task.updatedAt)}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function formatUsd(value: number): string {
-  return new Intl.NumberFormat("es-DO", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  }).format(value);
-}
-
-function HermesLab({
-  benchmark,
-  computePercent,
-  modelPerformance,
-  insights,
-}: {
-  benchmark: HermesBenchmarkSummary;
-  computePercent: number | null;
-  modelPerformance: HermesModelPerformance[];
-  insights: HermesInsightsSummary;
-}) {
-  const maxToolCalls = Math.max(...insights.tools.map((tool) => tool.calls), 1);
-  const maxDailySessions = Math.max(
-    ...insights.activity.byDay.map((day) => day.count),
-    1,
-  );
-
-  return (
-    <section className="hermes-lab" aria-labelledby="hermes-lab-title">
-      <div className="lab-intro">
-        <p className="eyebrow">Hermes Lab · evidencia local saneada</p>
-        <h3 id="hermes-lab-title">Modelos, uso y ahorro, en una sola lectura.</h3>
-        <p>
-          Métricas agregadas de SessionDB e InsightsEngine. No conserva prompts,
-          respuestas, IDs de sesión ni argumentos de herramientas.
-        </p>
-      </div>
-
-      <div className="model-rack" aria-label="Comparación de modelos Hermes">
-        {modelPerformance.map((model) => (
-          <article className={`model-card model-${model.role}`} key={model.model}>
-            <div className="model-heading">
-              <span>{model.role === "primary" ? "Principal" : "Fallback"}</span>
-              <strong>{model.displayName}</strong>
-              <small>{model.model}</small>
-            </div>
-            <div className="model-speed">
-              <strong>{model.tokensPerSecond.toFixed(2)}</strong>
-              <span>tokens / segundo sostenidos</span>
-            </div>
-            <dl>
-              <div><dt>Contexto</dt><dd>{(model.contextLength / 1024).toFixed(0)}K</dd></div>
-              <div><dt>Paralelo</dt><dd>{model.parallel}</dd></div>
-              <div><dt>GPU</dt><dd>{model.gpuOffload}</dd></div>
-              <div><dt>MTP</dt><dd>{model.mtpEnabled ? "Sí" : "No"}</dd></div>
-              <div><dt>Compute medio / pico</dt><dd>{model.gpuComputeAveragePercent}% / {model.gpuComputePeakPercent}%</dd></div>
-              <div><dt>VRAM / compartida</dt><dd>{model.dedicatedMemoryGiB} / {model.sharedMemoryGiB} GiB</dd></div>
-              <div><dt>Agente completo</dt><dd>PASS · {model.fullAgentPassSeconds} s</dd></div>
-            </dl>
-          </article>
-        ))}
-      </div>
-
-      <div className="insights-hero">
-        <div>
-          <span>Tokens locales</span>
-          <strong>{insights.overview.totalTokens.toLocaleString("es-DO")}</strong>
-          <small>{insights.overview.sessions} sesiones · {insights.overview.messages} mensajes</small>
-        </div>
-        <div className="savings-cell">
-          <span>Ahorro vs. GPT-5.6 Sol</span>
-          <strong>{formatUsd(insights.overview.avoidedGpt56SolCostUsd)}</strong>
-          <small>Costo local {formatUsd(insights.overview.localCostUsd)}</small>
-        </div>
-        <div>
-          <span>GPU ahora</span>
-          <strong>{computePercent === null ? "—" : `${computePercent.toFixed(1)}%`}</strong>
-          <small>Compute instantáneo RX 9070</small>
-        </div>
-        <div>
-          <span>Herramientas</span>
-          <strong>{insights.overview.toolCalls.toLocaleString("es-DO")}</strong>
-          <small>{insights.skills.totalLoads} cargas de skills</small>
-        </div>
-      </div>
-
-      <div className="insights-grid">
-        <article className="insight-panel token-ledger">
-          <header><span>Consumo agregado</span><strong>Tokens y sesiones</strong></header>
-          <dl className="dense-stats">
-            <div><dt>Entrada</dt><dd>{insights.overview.inputTokens.toLocaleString("es-DO")}</dd></div>
-            <div><dt>Salida</dt><dd>{insights.overview.outputTokens.toLocaleString("es-DO")}</dd></div>
-            <div><dt>Evitados en nube</dt><dd>{insights.overview.avoidedCloudTokens.toLocaleString("es-DO")}</dd></div>
-            <div><dt>Mensajes usuario</dt><dd>{insights.overview.userMessages}</dd></div>
-            <div><dt>Mensajes asistente</dt><dd>{insights.overview.assistantMessages}</dd></div>
-            <div><dt>Mensajes tool</dt><dd>{insights.overview.toolMessages}</dd></div>
-            <div><dt>Horas activas</dt><dd>{insights.overview.activeHours}</dd></div>
-            <div><dt>Promedio sesión</dt><dd>{insights.overview.averageSessionSeconds} s</dd></div>
-            <div><dt>Mensajes / sesión</dt><dd>{insights.overview.averageMessagesPerSession}</dd></div>
-          </dl>
-          <p className="pricing-note">
-            Referencia {insights.pricing.referenceModel}: {formatUsd(insights.pricing.inputPerMillionUsd)}/M entrada · {formatUsd(insights.pricing.outputPerMillionUsd)}/M salida · {insights.pricing.tier}
-          </p>
-        </article>
-
-        <article className="insight-panel model-usage">
-          <header><span>Distribución</span><strong>Uso por modelo</strong></header>
-          {insights.models.map((model) => (
-            <div className="usage-row" key={model.model}>
-              <strong>{model.model}</strong>
-              <span>{model.totalTokens.toLocaleString("es-DO")} tokens · {model.sessions} sesiones</span>
-              <small>
-                {model.inputTokens.toLocaleString("es-DO")} in · {model.outputTokens.toLocaleString("es-DO")} out · {model.reasoningTokens.toLocaleString("es-DO")} reasoning · {model.apiCalls} API · {model.toolCalls} tools · ahorro {formatUsd(model.avoidedGpt56SolCostUsd)} · local {formatUsd(model.localCostUsd)}
-              </small>
-            </div>
-          ))}
-        </article>
-
-        <article className="insight-panel tool-usage">
-          <header><span>Operación</span><strong>Herramientas</strong></header>
-          {insights.tools.map((tool) => (
-            <div className="meter-row" key={tool.tool}>
-              <span>{tool.tool}</span>
-              <i><b style={{ width: `${(tool.calls / maxToolCalls) * 100}%` }} /></i>
-              <strong>{tool.calls}</strong>
-              <small>{tool.percentage}%</small>
-            </div>
-          ))}
-        </article>
-
-        <article className="insight-panel platform-usage">
-          <header><span>Superficies</span><strong>Plataformas y skills</strong></header>
-          {insights.platforms.map((platform) => (
-            <div className="usage-row" key={platform.platform}>
-              <strong>{platform.platform}</strong>
-              <span>{platform.sessions} sesiones · {platform.messages} mensajes</span>
-              <small>{platform.totalTokens.toLocaleString("es-DO")} tokens · {platform.toolCalls} tools</small>
-            </div>
-          ))}
-          <div className="skill-summary">
-            <span>{insights.skills.distinct} skills distintas</span>
-            <strong>{insights.skills.totalLoads} cargas · {insights.skills.totalEdits} ediciones</strong>
-          </div>
-          {insights.skills.top.map((skill) => (
-            <div className="skill-row" key={skill.skill}>
-              <span>{skill.skill}</span>
-              <small>{skill.loads} cargas · {skill.edits} ediciones · {skill.total} total</small>
-            </div>
-          ))}
-        </article>
-
-        <article className="insight-panel activity-panel">
-          <header><span>Cadencia</span><strong>Actividad</strong></header>
-          <div className="day-bars">
-            {insights.activity.byDay.map((day) => (
-              <div key={day.day}>
-                <i><b style={{ height: `${(day.count / maxDailySessions) * 100}%` }} /></i>
-                <strong>{day.count}</strong>
-                <span>{day.day}</span>
-              </div>
-            ))}
-          </div>
-          <div className="activity-facts">
-            <span>Día pico <strong>{insights.activity.busiestDay}</strong></span>
-            <span>Hora pico <strong>{insights.activity.busiestHour}:00</strong></span>
-            <span>Días activos <strong>{insights.activity.activeDays}</strong></span>
-            <span>Racha máxima <strong>{insights.activity.maxStreak}</strong></span>
-          </div>
-          <div className="hour-strip" aria-label="Sesiones por hora">
-            {insights.activity.byHour.map((hour) => (
-              <span key={hour.hour} title={`${hour.hour}:00 · ${hour.count}`} data-active={hour.count > 0}>
-                {hour.count}
-              </span>
-            ))}
-          </div>
-        </article>
-
-        <article className="insight-panel records-panel">
-          <header><span>Récords saneados</span><strong>Sesiones destacadas</strong></header>
-          {insights.topSessions.map((session) => (
-            <div className="record-row" key={session.label}>
-              <span>{session.label}</span>
-              <strong>{session.value}</strong>
-              <small>{session.date}</small>
-            </div>
-          ))}
-          <div className="benchmark-mini">
-            <span>Prueba sintética</span>
-            <strong>{benchmark.total ? `${benchmark.passed}/${benchmark.total} PASS` : "Sin línea base"}</strong>
-            <small>
-              {benchmark.tokensPerSecond ? `${benchmark.tokensPerSecond.toFixed(1)} t/s · offload ${benchmark.gpuOffload * 100}%` : "Ejecuta el benchmark local"}
-            </small>
-          </div>
-          <div className="lab-tests">
-            {benchmark.tests.map((test) => (
-              <div key={test.id} className={test.passed ? "lab-pass" : "lab-fail"}>
-                <i aria-hidden="true" />
-                <span>{test.id.replaceAll("-", " ")} · {test.durationMs} ms</span>
-              </div>
-            ))}
-          </div>
-        </article>
-      </div>
-
-      <p className="lab-updated">
-        {insights.generatedAt
-          ? `Insights actualizados ${formatAge(insights.generatedAt)}`
-          : "Sin Insights todavía"}
-      </p>
-    </section>
-  );
-}
-
-const DIAGRAM_WIDTH = 960;
-const DIAGRAM_HEIGHT = 670;
-// The telemetry layout places nodes on the same row 16% of the width apart, so a
-// box wider than that fraction of the drawable area would overlap its neighbour.
-const NODE_WIDTH = 120;
-const NODE_HEIGHT = 54;
-// Half a node plus a margin, so a node at x=6 or x=89 is not clipped by the edge.
-const PAD_X = NODE_WIDTH / 2 + 10;
-const PAD_Y = NODE_HEIGHT / 2 + 10;
-// Below this, a pointer gesture is a click that selects rather than a drag.
-const DRAG_THRESHOLD = 4;
-
-type DiagramPoint = { x: number; y: number };
-
-// The canvas grows with the spread control while the boxes keep their size, so
-// raising it genuinely pushes nodes apart instead of just scaling the picture.
-const SPREAD_MIN = 1;
-const SPREAD_MAX = 2.5;
-
-// WorkflowNode.x and .y are percentages of the canvas, the convention the
-// telemetry server already emits. Keeping the stored layout in percentages means
-// a reordered diagram survives both a resize and a change of spread. The
-// percentages map into an inset region so a node can never hang off the edge.
-function toCanvas(
-  point: DiagramPoint,
-  width: number,
-  height: number,
-): DiagramPoint {
-  return {
-    x: PAD_X + (point.x / 100) * (width - PAD_X * 2),
-    y: PAD_Y + (point.y / 100) * (height - PAD_Y * 2),
-  };
-}
-
-function toPercent(
-  point: DiagramPoint,
-  width: number,
-  height: number,
-): DiagramPoint {
-  return {
-    x: ((point.x - PAD_X) / (width - PAD_X * 2)) * 100,
-    y: ((point.y - PAD_Y) / (height - PAD_Y * 2)) * 100,
-  };
-}
-
-type DiagramBox = { x: number; y: number; w: number; h: number };
-
-const LABEL_HEIGHT = 22;
-
-function labelWidthFor(text: string): number {
-  return Math.min(198, Math.max(60, text.length * 6.1 + 14));
-}
-
-function boxesOverlap(a: DiagramBox, b: DiagramBox): boolean {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-
-const LAYOUT_STORAGE_KEY = "trama-diagram-layout";
-
-type StoredArrangement = {
-  layout: Record<string, DiagramPoint>;
-  spread: number;
-};
-
-// Spread is stored beside the layout rather than inside it, so the layout map
-// keeps meaning exactly one thing: node id to position. Everything read back is
-// validated, because the value survives across deploys and can be stale, hand
-// edited, or written by an older build.
-function readStoredArrangement(): StoredArrangement {
-  const empty: StoredArrangement = { layout: {}, spread: 1 };
-  if (typeof window === "undefined") return empty;
-  try {
-    const raw = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
-    if (!raw) return empty;
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return empty;
-    const candidate = parsed as Partial<StoredArrangement>;
-
-    const layout: Record<string, DiagramPoint> = {};
-    for (const [id, point] of Object.entries(candidate.layout ?? {})) {
-      if (
-        point &&
-        typeof point === "object" &&
-        Number.isFinite((point as DiagramPoint).x) &&
-        Number.isFinite((point as DiagramPoint).y)
-      ) {
-        layout[id] = {
-          x: (point as DiagramPoint).x,
-          y: (point as DiagramPoint).y,
-        };
-      }
-    }
-
-    const spread =
-      typeof candidate.spread === "number" &&
-      candidate.spread >= SPREAD_MIN &&
-      candidate.spread <= SPREAD_MAX
-        ? candidate.spread
-        : 1;
-
-    return { layout, spread };
-  } catch {
-    // Storage can be disabled, full, or hold malformed JSON. None of that is a
-    // reason to fail rendering the diagram.
-    return empty;
-  }
-}
-
-// SVG has no text wrapping. Rather than truncate a node name, condense it to the
-// box width, which keeps every label readable and complete.
-function fitTextLength(text: string, fontSize: number): number | undefined {
-  const estimated = text.length * fontSize * 0.55;
-  const available = NODE_WIDTH - 14;
-  return estimated > available ? available : undefined;
-}
-
-// Anchors an edge on the node's border rather than its centre, so the arrowhead
-// meets the box from whichever side the node was dragged to.
-function anchorOnBorder(from: DiagramPoint, toward: DiagramPoint): DiagramPoint {
-  const dx = toward.x - from.x;
-  const dy = toward.y - from.y;
-  if (dx === 0 && dy === 0) return from;
-  const scale = Math.min(
-    dx === 0 ? Number.POSITIVE_INFINITY : NODE_WIDTH / 2 / Math.abs(dx),
-    dy === 0 ? Number.POSITIVE_INFINITY : NODE_HEIGHT / 2 / Math.abs(dy),
-  );
-  return { x: from.x + dx * scale, y: from.y + dy * scale };
-}
-
-function edgeGeometry(
-  source: DiagramPoint,
-  target: DiagramPoint,
-): { path: string; mid: DiagramPoint; label: DiagramPoint } {
-  const a = anchorOnBorder(source, target);
-  const b = anchorOnBorder(target, source);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  // Bending along the dominant axis keeps the curve readable whether the flow
-  // runs down the page or across it.
-  const vertical = Math.abs(dy) >= Math.abs(dx);
-  const bend = Math.max(28, Math.abs(vertical ? dy : dx) * 0.4);
-  const c1 = vertical ? { x: a.x, y: a.y + bend } : { x: a.x + bend, y: a.y };
-  const c2 = vertical ? { x: b.x, y: b.y - bend } : { x: b.x - bend, y: b.y };
-  // Cubic Bezier at t=0.5, so the anchor sits on the curve rather than on the
-  // straight line between node centres, which often ran through a third node.
-  const mid = {
-    x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8,
-    y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8,
-  };
-  // Neighbouring boxes are only ~16% of the width apart, so a label centred on
-  // the curve would cover them. Offsetting along the curve's normal moves it
-  // into the empty band between rows instead.
-  const tx =
-    0.75 * (c1.x - a.x) + 1.5 * (c2.x - c1.x) + 0.75 * (b.x - c2.x);
-  const ty =
-    0.75 * (c1.y - a.y) + 1.5 * (c2.y - c1.y) + 0.75 * (b.y - c2.y);
-  const length = Math.hypot(tx, ty) || 1;
-  let nx = -ty / length;
-  let ny = tx / length;
-  // Always take the upward normal, so labels read consistently above their edge.
-  if (ny > 0) {
-    nx = -nx;
-    ny = -ny;
-  }
-  // A near-horizontal edge runs between two boxes on the same row, so its label
-  // has to clear half a box plus its own height. A near-vertical edge only needs
-  // to step aside from the line itself.
-  const offset = 21 + Math.abs(ny) * 20;
-  return {
-    path: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,
-    mid,
-    label: { x: mid.x + nx * offset, y: mid.y + ny * offset },
-  };
-}
-
-function GovernanceDiagram({
-  nodes,
-  edges,
-  selectedNodeId,
-  onSelectNode,
-}: {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  selectedNodeId: string | null;
-  onSelectNode: (nodeId: string | null) => void;
-}) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  // Only nodes the user actually moved are stored, so incoming telemetry keeps
-  // driving every node that has not been repositioned by hand.
-  // Read once on mount and share it, so the two states cannot disagree and
-  // storage is not parsed twice.
-  const [restored] = useState(readStoredArrangement);
-  const [layout, setLayout] = useState<Record<string, DiagramPoint>>(
-    restored.layout,
-  );
-  const [spread, setSpread] = useState(restored.spread);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const canvasWidth = Math.round(DIAGRAM_WIDTH * spread);
-  const canvasHeight = Math.round(DIAGRAM_HEIGHT * spread);
+  const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[1];
+  const diagramScroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(
-        LAYOUT_STORAGE_KEY,
-        JSON.stringify({ layout, spread }),
-      );
-    } catch {
-      // A full or blocked store just means the arrangement is not remembered.
-    }
-  }, [layout, spread]);
-  const dragRef = useRef<{
-    id: string;
-    offsetX: number;
-    offsetY: number;
-    startX: number;
-    startY: number;
-    moved: boolean;
-  } | null>(null);
-
-  const placed = nodes.map((node) => {
-    const override = layout[node.id];
-    return {
-      node,
-      point: toCanvas(
-        override ?? { x: node.x, y: node.y },
-        canvasWidth,
-        canvasHeight,
-      ),
+    const centerOnEntry = () => {
+      const scroller = diagramScroller.current;
+      if (!scroller || window.innerWidth > 600) return;
+      scroller.scrollLeft = Math.max(0, (scroller.scrollWidth - scroller.clientWidth) / 2);
     };
-  });
-  const pointById = new Map(placed.map((item) => [item.node.id, item.point]));
-  const byId = new Map(nodes.map((node) => [node.id, node]));
 
-  // A single deterministic pass that nudges each label further along its normal
-  // until it clears the nodes and the labels already placed. Automatic layout
-  // cannot hand-place labels the way the original static drawing did, so this is
-  // what keeps a dense diagram legible.
-  const labelPositions = (() => {
-    const obstacles: DiagramBox[] = placed.map(({ point }) => ({
-      x: point.x - NODE_WIDTH / 2,
-      y: point.y - NODE_HEIGHT / 2,
-      w: NODE_WIDTH,
-      h: NODE_HEIGHT,
-    }));
-    const positions = new Map<string, DiagramPoint>();
-    for (const edge of edges) {
-      const source = pointById.get(edge.source);
-      const target = pointById.get(edge.target);
-      if (!source || !target) continue;
-      const geometry = edgeGeometry(source, target);
-      const width = labelWidthFor(edge.label);
-      const dx = geometry.label.x - geometry.mid.x;
-      const dy = geometry.label.y - geometry.mid.y;
-      const length = Math.hypot(dx, dy) || 1;
-      let position = geometry.label;
-      for (let attempt = 0; attempt < 6; attempt += 1) {
-        const box = {
-          x: position.x - width / 2,
-          y: position.y - LABEL_HEIGHT / 2,
-          w: width,
-          h: LABEL_HEIGHT,
-        };
-        if (!obstacles.some((obstacle) => boxesOverlap(box, obstacle))) break;
-        position = {
-          x: position.x + (dx / length) * 18,
-          y: position.y + (dy / length) * 18,
-        };
-      }
-      position = {
-        x: Math.min(Math.max(position.x, width / 2), canvasWidth - width / 2),
-        y: Math.min(
-          Math.max(position.y, LABEL_HEIGHT),
-          canvasHeight - LABEL_HEIGHT,
-        ),
-      };
-      obstacles.push({
-        x: position.x - width / 2,
-        y: position.y - LABEL_HEIGHT / 2,
-        w: width,
-        h: LABEL_HEIGHT,
-      });
-      positions.set(edge.id, position);
-    }
-    return positions;
-  })();
-
-  const selectedNode = selectedNodeId ? byId.get(selectedNodeId) ?? null : null;
-  const selectedEdges = selectedNode
-    ? edges.filter(
-        (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id,
-      )
-    : [];
-  const relatedNodeIds = new Set<string>([selectedNodeId ?? ""]);
-  for (const edge of selectedEdges) {
-    relatedNodeIds.add(edge.source);
-    relatedNodeIds.add(edge.target);
-  }
-
-  // The SVG preserves its aspect ratio, so one uniform scale converts a client
-  // coordinate into user units without needing the full CTM.
-  const toUserSpace = useCallback((clientX: number, clientY: number) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const rect = svg.getBoundingClientRect();
-    const scale = rect.width === 0 ? 1 : rect.width / canvasWidth;
-    return {
-      x: (clientX - rect.left) / scale,
-      y: (clientY - rect.top) / scale,
-    };
-  }, [canvasWidth]);
-
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent<SVGGElement>, nodeId: string) => {
-      if (event.button !== 0) return;
-      const point = pointById.get(nodeId);
-      if (!point) return;
-      const pointer = toUserSpace(event.clientX, event.clientY);
-      dragRef.current = {
-        id: nodeId,
-        offsetX: pointer.x - point.x,
-        offsetY: pointer.y - point.y,
-        startX: point.x,
-        startY: point.y,
-        moved: false,
-      };
-      setDraggingId(nodeId);
-      event.currentTarget.setPointerCapture(event.pointerId);
-      event.preventDefault();
-    },
-    [pointById, toUserSpace],
-  );
-
-  const handlePointerMove = useCallback(
-    (event: React.PointerEvent<SVGGElement>) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const pointer = toUserSpace(event.clientX, event.clientY);
-      const nextX = pointer.x - drag.offsetX;
-      const nextY = pointer.y - drag.offsetY;
-      // Measured against where the node was grabbed, not where it is now, so a
-      // slow drag cannot stay under the threshold forever and register as a click.
-      if (!drag.moved) {
-        const travelled = Math.hypot(nextX - drag.startX, nextY - drag.startY);
-        if (travelled >= DRAG_THRESHOLD) drag.moved = true;
-      }
-      // Keeping the centre inside the canvas stops a node from being dragged
-      // out of view with no way to retrieve it.
-      const clampedX = Math.min(Math.max(nextX, PAD_X), canvasWidth - PAD_X);
-      const clampedY = Math.min(Math.max(nextY, PAD_Y), canvasHeight - PAD_Y);
-      setLayout((current) => ({
-        ...current,
-        [drag.id]: toPercent(
-          { x: clampedX, y: clampedY },
-          canvasWidth,
-          canvasHeight,
-        ),
-      }));
-    },
-    [canvasHeight, canvasWidth, toUserSpace],
-  );
-
-  const handlePointerUp = useCallback(
-    (event: React.PointerEvent<SVGGElement>) => {
-      const drag = dragRef.current;
-      dragRef.current = null;
-      setDraggingId(null);
-      if (!drag) return;
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      // A gesture that never crossed the threshold was a click, not a drag.
-      if (!drag.moved) {
-        onSelectNode(selectedNodeId === drag.id ? null : drag.id);
-      }
-    },
-    [onSelectNode, selectedNodeId],
-  );
-
-  const moveWithKeyboard = useCallback(
-    (nodeId: string, deltaX: number, deltaY: number) => {
-      const point = pointById.get(nodeId);
-      if (!point) return;
-      const nextX = Math.min(
-        Math.max(point.x + deltaX, PAD_X),
-        canvasWidth - PAD_X,
-      );
-      const nextY = Math.min(
-        Math.max(point.y + deltaY, PAD_Y),
-        canvasHeight - PAD_Y,
-      );
-      setLayout((current) => ({
-        ...current,
-        [nodeId]: toPercent({ x: nextX, y: nextY }, canvasWidth, canvasHeight),
-      }));
-    },
-    [canvasHeight, canvasWidth, pointById],
-  );
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<SVGGElement>, nodeId: string) => {
-      const step = event.shiftKey ? 24 : 8;
-      switch (event.key) {
-        case "Enter":
-        case " ":
-          event.preventDefault();
-          onSelectNode(selectedNodeId === nodeId ? null : nodeId);
-          return;
-        case "ArrowLeft":
-          event.preventDefault();
-          moveWithKeyboard(nodeId, -step, 0);
-          return;
-        case "ArrowRight":
-          event.preventDefault();
-          moveWithKeyboard(nodeId, step, 0);
-          return;
-        case "ArrowUp":
-          event.preventDefault();
-          moveWithKeyboard(nodeId, 0, -step);
-          return;
-        case "ArrowDown":
-          event.preventDefault();
-          moveWithKeyboard(nodeId, 0, step);
-          return;
-        default:
-      }
-    },
-    [moveWithKeyboard, onSelectNode, selectedNodeId],
-  );
-
-  const reordered = Object.keys(layout).length > 0;
+    centerOnEntry();
+    window.addEventListener("resize", centerOnEntry);
+    return () => window.removeEventListener("resize", centerOnEntry);
+  }, []);
 
   return (
-    <div className="exact-flowchart-card" aria-label="Diagrama de Flujo Oficial TRAMA">
-      <div className="flowchart-header">
-        <span className="flow-badge">Arquitectura Oficial</span>
-        <h3>Diagrama de Gobernanza: IA Manager ($) → Hermes Worker ($0)</h3>
-        <p>Circuito 2D exacto de delegación, consulta AST, revisión y observabilidad privada en tiempo real.</p>
-        <div className="flowchart-controls">
-          <span className="flowchart-hint">
-            Arrastra un nodo para reordenar · flechas para ajustar
-          </span>
-          <label className="flowchart-spread" htmlFor="diagram-spread">
-            <span>Separación</span>
-            <input
-              id="diagram-spread"
-              type="range"
-              min={SPREAD_MIN}
-              max={SPREAD_MAX}
-              step={0.05}
-              value={spread}
-              onChange={(event) => setSpread(Number(event.target.value))}
-            />
-            <output htmlFor="diagram-spread">
-              {Math.round(spread * 100)}%
-            </output>
-          </label>
-          <button
-            type="button"
-            className="flowchart-reset"
-            onClick={() => {
-              setLayout({});
-              setSpread(1);
-              if (typeof window !== "undefined") {
-                try {
-                  window.localStorage.removeItem(LAYOUT_STORAGE_KEY);
-                } catch {
-                  // The effect above will overwrite it on the next change.
-                }
-              }
-            }}
-            disabled={!reordered && spread === 1}
-          >
-            Restablecer orden
-          </button>
-        </div>
-        <div className="flow-legend">
-          {Object.entries(evidenceLabels).map(([evidence, label]) => (
-            <span key={evidence} className={`legend-${evidence}`}>
-              <i />
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="svg-canvas-wrapper">
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
-          className={`exact-mermaid-svg${draggingId ? " diagram-dragging" : ""}`}
-          // Growing the drawn size with the spread keeps a user unit roughly a
-          // CSS pixel, so separating nodes adds room instead of shrinking text.
-          // The wrapper scrolls when the card is narrower than the canvas.
-          style={{ width: canvasWidth, maxWidth: "none" }}
-          xmlns="http://www.w3.org/2000/svg"
-        >
+    <div className="diagram-layout">
+      <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
+        <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
+          <title id="brain-title">Flujo operativo de Hermes Brain</title>
+          <desc id="brain-desc">Del usuario a memoria, routing, agentes, sandbox, evidencia y aprendizaje.</desc>
           <defs>
-            <marker
-              id="m-arrow-blue"
-              markerWidth="8"
-              markerHeight="8"
-              refX="7"
-              refY="4"
-              orient="auto"
-            >
-              <path d="M0,0 L8,4 L0,8 Z" fill="#69d7d1" />
-            </marker>
-            <marker
-              id="m-arrow-dash"
-              markerWidth="8"
-              markerHeight="8"
-              refX="7"
-              refY="4"
-              orient="auto"
-            >
-              <path d="M0,0 L8,4 L0,8 Z" fill="#91a8ae" />
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" />
             </marker>
           </defs>
-
-          {edges.map((edge) => {
-            const source = pointById.get(edge.source);
-            const target = pointById.get(edge.target);
-            if (!source || !target) return null;
-            const { path } = edgeGeometry(source, target);
-            const connected = selectedEdges.some((item) => item.id === edge.id);
+          <g className="brain-links">
+            {paths.map((path) => <path d={path} key={path} />)}
+          </g>
+          {nodes.map((node) => {
+            const state = nodeState(node.id, brain);
+            const active = node.id === selected;
             return (
               <g
-                key={edge.id}
-                className={`gov-edge evidence-${edge.evidence} state-stroke-${edge.state}${
-                  selectedNode ? (connected ? " edge-selected" : " edge-dimmed") : ""
-                }`}
-              >
-                <path
-                  d={path}
-                  markerEnd={`url(#${
-                    edge.evidence === "observed" ? "m-arrow-blue" : "m-arrow-dash"
-                  })`}
-                />
-                {edge.evidence === "observed" && !draggingId && (
-                  <circle key={path} r="3.5" className="gov-edge-pulse">
-                    <animateMotion dur="2.4s" repeatCount="indefinite" path={path} />
-                  </circle>
-                )}
-              </g>
-            );
-          })}
-
-          {placed.map(({ node, point }) => {
-            const selected = node.id === selectedNodeId;
-            const dimmed = selectedNode && !relatedNodeIds.has(node.id);
-            return (
-              <g
+                className={`brain-node ${stateClass(state)}${active ? " selected" : ""}`}
                 key={node.id}
-                className={`gov-node node-kind-${node.kind} state-border-${node.state}${
-                  selected ? " node-selected" : ""
-                }${dimmed ? " node-dimmed" : ""}${
-                  draggingId === node.id ? " node-dragging" : ""
-                }`}
                 role="button"
                 tabIndex={0}
-                aria-pressed={selected}
-                aria-controls="workflow-inspector"
-                aria-label={`${node.role}: ${node.label}`}
-                onPointerDown={(event) => handlePointerDown(event, node.id)}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
-                onKeyDown={(event) => handleKeyDown(event, node.id)}
+                aria-label={`${node.title}: ${node.subtitle}`}
+                onClick={() => onSelect(node.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onSelect(node.id);
+                }}
               >
-                <rect
-                  x={point.x - NODE_WIDTH / 2}
-                  y={point.y - NODE_HEIGHT / 2}
-                  width={NODE_WIDTH}
-                  height={NODE_HEIGHT}
-                  rx="4"
-                />
-                <text
-                  className="gov-node-label"
-                  x={point.x}
-                  y={point.y - 3}
-                  textAnchor="middle"
-                  textLength={fitTextLength(node.label, 13)}
-                  lengthAdjust="spacingAndGlyphs"
-                >
-                  {node.label}
+                <rect x={node.x} y={node.y} width={node.width} height={node.height} rx="4" />
+                <circle cx={node.x + 14} cy={node.y + 14} r="4" />
+                <text className="node-title" x={node.x + node.width / 2} y={node.y + (node.subtitle ? 23 : 20)} textAnchor="middle">
+                  {node.title}
                 </text>
-                <text
-                  className="gov-node-role"
-                  x={point.x}
-                  y={point.y + 14}
-                  textAnchor="middle"
-                  textLength={fitTextLength(node.role, 10)}
-                  lengthAdjust="spacingAndGlyphs"
-                >
-                  {node.role}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Labels are drawn last so a node can never cover the name of the
-              relationship that explains it. */}
-          {edges.map((edge) => {
-            const source = pointById.get(edge.source);
-            const target = pointById.get(edge.target);
-            if (!source || !target) return null;
-            const anchor = labelPositions.get(edge.id);
-            if (!anchor) return null;
-            const connected = selectedEdges.some((item) => item.id === edge.id);
-            const labelWidth = labelWidthFor(edge.label);
-            return (
-              <g
-                key={`label-${edge.id}`}
-                className={`gov-edge-labelling${
-                  selectedNode ? (connected ? "" : " edge-dimmed") : ""
-                }`}
-              >
-                <rect
-                  className="gov-edge-label"
-                  x={anchor.x - labelWidth / 2}
-                  y={anchor.y - 11}
-                  width={labelWidth}
-                  height="22"
-                  rx="3"
-                />
-                <text
-                  className="gov-edge-text"
-                  x={anchor.x}
-                  y={anchor.y + 4}
-                  textAnchor="middle"
-                  textLength={
-                    edge.label.length * 6.1 + 14 > 198 ? 184 : undefined
-                  }
-                  lengthAdjust="spacingAndGlyphs"
-                >
-                  {edge.label}
-                </text>
+                {node.subtitle && (
+                  <text className="node-subtitle" x={node.x + node.width / 2} y={node.y + 40} textAnchor="middle">
+                    {node.subtitle}
+                  </text>
+                )}
               </g>
             );
           })}
         </svg>
       </div>
-
-      <aside
-        className={`workflow-inspector${selectedNode ? " inspector-open" : ""}`}
-        id="workflow-inspector"
-        aria-live="polite"
-      >
-        {selectedNode ? (
-          <>
-            <div className="inspector-heading">
-              <div>
-                <span>{selectedNode.role}</span>
-                <h3>{selectedNode.label}</h3>
-              </div>
-              <button
-                type="button"
-                className="inspector-close"
-                onClick={() => onSelectNode(null)}
-                aria-label="Cerrar detalle del nodo"
-              >
-                Cerrar
-              </button>
-            </div>
-            <div className="inspector-summary">
-              <StatePill state={selectedNode.state} />
-              <p>{selectedNode.detail}</p>
-            </div>
-            <div className="inspector-connections">
-              {selectedEdges.length > 0 ? (
-                selectedEdges.map((edge) => {
-                  const outgoing = edge.source === selectedNode.id;
-                  const peer = byId.get(outgoing ? edge.target : edge.source);
-                  return (
-                    <article key={edge.id}>
-                      <span>{outgoing ? "Salida" : "Entrada"}</span>
-                      <strong>
-                        {outgoing ? "→" : "←"} {peer?.label ?? "Nodo desconocido"}
-                      </strong>
-                      <p>{edge.label}</p>
-                      <small>
-                        {evidenceLabels[edge.evidence]} · {stateLabels[edge.state]} ·{" "}
-                        {formatAge(edge.lastObservedAt)}
-                      </small>
-                    </article>
-                  );
-                })
-              ) : (
-                <p className="inspector-empty">Este nodo no tiene conexiones registradas.</p>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="inspector-placeholder">
-            <span>Explorar el circuito</span>
-            <p>Selecciona un nodo para ver qué recibe, qué entrega y cuándo se observó.</p>
-          </div>
-        )}
+      <aside className="node-inspector" aria-live="polite">
+        <span>Inspector</span>
+        <h3>{selectedNode.title}</h3>
+        <p>{nodeCopy[selectedNode.id]}</p>
+        <dl>
+          <div><dt>Estado</dt><dd className={stateClass(nodeState(selected, brain))}>{nodeState(selected, brain)}</dd></div>
+          <div><dt>Autoridad</dt><dd>{selected === "brain" ? "control" : "acotada"}</dd></div>
+        </dl>
       </aside>
     </div>
   );
 }
 
-export default function Home() {
+function Home() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [streamState, setStreamState] = useState<
-    "connecting" | "live" | "retrying"
-  >("connecting");
+  const [stream, setStream] = useState<StreamState>("connecting");
+  const [selected, setSelected] = useState<NodeId>("brain");
 
   useEffect(() => {
     let active = true;
     fetch(`${API_URL}/api/status`)
       .then((response) => {
-        if (!response.ok) throw new Error("telemetry unavailable");
+        if (!response.ok) throw new Error(`API ${response.status}`);
         return response.json() as Promise<TelemetrySnapshot>;
       })
-      .then((data) => active && setSnapshot(data))
-      .catch(() => active && setStreamState("retrying"));
-
+      .then((value) => active && setSnapshot(value))
+      .catch(() => active && setStream("retrying"));
     const source = new EventSource(`${API_URL}/api/events`);
     source.addEventListener("snapshot", (event) => {
-      if (!active) return;
-      setSnapshot(JSON.parse((event as MessageEvent<string>).data));
-      setStreamState("live");
+      setSnapshot(JSON.parse((event as MessageEvent).data) as TelemetrySnapshot);
+      setStream("live");
     });
-    source.onerror = () => active && setStreamState("retrying");
-
+    source.onopen = () => setStream("live");
+    source.onerror = () => setStream("retrying");
     return () => {
       active = false;
       source.close();
     };
   }, []);
 
-  useEffect(() => {
-    if (
-      selectedNodeId &&
-      snapshot &&
-      !snapshot.workflow.nodes.some((node) => node.id === selectedNodeId)
-    ) {
-      setSelectedNodeId(null);
-    }
-  }, [selectedNodeId, snapshot]);
-
-  const healthyCount =
-    snapshot?.services.filter((service) => service.state === "healthy").length ?? 0;
-
-  const activityCount =
-    snapshot?.connections.reduce(
-      (total, connection) =>
-        total + connection.successfulChecks + connection.failedChecks,
-      0,
-    ) ?? "—";
+  const healthy = snapshot?.services.filter((service) => service.state === "healthy").length ?? 0;
+  const activeSandboxes = snapshot?.brain.sandbox.active ?? [];
+  const routes = snapshot?.brain.router.routes ?? [];
+  const learningTotal = useMemo(
+    () => Object.values(snapshot?.brain.learning.counts ?? {}).reduce((sum, value) => sum + value, 0),
+    [snapshot],
+  );
 
   return (
     <main>
-      <header className="masthead">
-        <a className="brand" href="#top" aria-label="Ir al inicio">
-          <span className="brand-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span>
-            <strong>TRAMA</strong>
-            <small>Observador local</small>
-          </span>
-        </a>
-        <nav className="mast-nav" aria-label="Secciones">
-          <a href="#top">Diagrama</a>
-          <a href="#flujo">Flujo</a>
-          <a href="#grafo">Grafo</a>
-          <a href="#servicios">Servicios</a>
-        </nav>
-        <div className={`live-indicator stream-${streamState}`} role="status">
-          <span aria-hidden="true" />
-          {streamState === "live"
-            ? "Señal en vivo"
-            : streamState === "retrying"
-              ? "Reconectando"
-              : "Conectando"}
+      <header className="topbar">
+        <div>
+          <p className="kicker">TRAMA / Plano de control local</p>
+          <h1>Hermes Brain</h1>
+        </div>
+        <div className={`stream ${stream}`}>
+          <i />
+          <span>{stream === "live" ? "telemetría en vivo" : stream}</span>
         </div>
       </header>
 
-      <section className="official-flow-section" id="top" style={{ padding: "20px 24px 0" }}>
+      <section className="status-rail" aria-label="Resumen operativo">
+        <article><span>Brain</span><strong className={stateClass(snapshot?.brain.state ?? "unknown")}>{snapshot?.brain.state ?? "unknown"}</strong></article>
+        <article><span>Graphify</span><strong>{snapshot?.brain.memory.graphNodes.toLocaleString("es-DO") ?? "—"} nodos</strong></article>
+        <article><span>Servicios</span><strong>{healthy}/{snapshot?.services.length ?? 0} sanos</strong></article>
+        <article><span>Sandboxes</span><strong>{activeSandboxes.length} activos</strong></article>
+        <article><span>Aprendizajes</span><strong>{learningTotal}</strong></article>
+        <article><span>Actualizado</span><strong>{formatAge(snapshot?.generatedAt)}</strong></article>
+      </section>
+
+      <section className="diagram-section">
+        <header className="section-heading">
+          <div>
+            <p className="kicker">Flujo real</p>
+            <h2>Decisión, evidencia y memoria en un solo circuito</h2>
+          </div>
+          <p>La IA local asesora. El director cloud programa. La evidencia decide.</p>
+        </header>
         {snapshot ? (
-          <GovernanceDiagram
-            nodes={snapshot.workflow.nodes}
-            edges={snapshot.workflow.edges}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
-          />
+          <BrainDiagram brain={snapshot.brain} selected={selected} onSelect={setSelected} />
         ) : (
-          <div className="workflow-loading">Construyendo el circuito local…</div>
+          <div className="loading">Esperando snapshot saneado…</div>
         )}
       </section>
 
-      <section className="signal-room">
-        <div className="hero-copy">
-          <p className="eyebrow">Sistema local · lectura {snapshot?.sequence ?? "—"}</p>
-          <h1>
-            El trabajo,
-            <br />
-            <em>puesto en circuito.</em>
-          </h1>
-          <p className="hero-description">
-            Sigue el recorrido real entre agentes, modelo, GPU, herramientas y
-            proyectos. Las líneas continuas son señales observadas; las discontinuas,
-            rutas configuradas.
-          </p>
-        </div>
-
-        <div className="signal-summary" aria-label="Resumen del sistema">
-          <div className="summary-dial">
-            <span
-              className={`dial-core state-bg-${snapshot?.overallState ?? "unknown"}`}
-            >
-              {healthyCount}
-            </span>
-            <p>
-              <strong>de {snapshot?.services.length ?? 8}</strong>
-              <span>servicios operativos</span>
-            </p>
-          </div>
-          <dl>
-            <div>
-              <dt>VRAM</dt>
-              <dd>
-                {snapshot?.system.gpuDedicatedUsedGiB === null ||
-                snapshot?.system.gpuDedicatedUsedGiB === undefined
-                  ? "—"
-                  : `${snapshot.system.gpuDedicatedUsedGiB} G`}
-              </dd>
-            </div>
-            <div>
-              <dt>Grafo</dt>
-              <dd>{snapshot?.graph.nodeCount.toLocaleString("es-DO") ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>Actividad</dt>
-              <dd>{activityCount}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <div className="signal-spine" aria-hidden="true">
-          <span className="spine-label">127.0.0.1</span>
-          <i className="signal-pulse pulse-one" />
-          <i className="signal-pulse pulse-two" />
-          <i className="signal-pulse pulse-three" />
-        </div>
-      </section>
-
-      <section className="workflow-field" id="flujo" aria-labelledby="workflow-title">
-        <div className="section-heading workflow-heading">
-          <div>
-            <p className="eyebrow">Flujo de trabajo real</p>
-            <h2 id="workflow-title">De la tarea al proyecto</h2>
-          </div>
-        </div>
-        <TaskJourney
-          task={snapshot?.delegation.latestTask ?? null}
-          onNavigate={setSelectedNodeId}
-        />
-        {snapshot ? (
-          <HermesLab
-            benchmark={snapshot.delegation.benchmark}
-            computePercent={snapshot.system.gpuComputePercent}
-            modelPerformance={snapshot.delegation.modelPerformance}
-            insights={snapshot.delegation.insights}
-          />
-        ) : (
-          <div className="workflow-loading">Preparando Hermes Insights…</div>
-        )}
-        <div className="efficiency-strip" aria-label="Eficiencia de delegación local">
-          <div>
-            <span>Tokens delegados</span>
-            <strong>{snapshot?.delegation.efficiency.localTokens.toLocaleString("es-DO") ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Ahorro delegado</span>
-            <strong>{snapshot ? formatUsd(snapshot.delegation.efficiency.avoidedGpt56SolCostUsd) : "—"}</strong>
-          </div>
-          <div>
-            <span>Aceptación</span>
-            <strong>{snapshot ? `${snapshot.delegation.efficiency.acceptanceRate}%` : "—"}</strong>
-          </div>
-          <div>
-            <span>Uso capturado</span>
-            <strong>{snapshot?.delegation.efficiency.capturedTasks ?? "—"}</strong>
-            <small>{snapshot?.delegation.efficiency.schemaFailures ?? "—"} fallos de esquema</small>
-          </div>
-        </div>
-        <div className="delegation-strip" aria-label="Estado de delegación local">
-          <div>
-            <span>Cola</span>
-            <strong>{snapshot?.delegation.queuedCount ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Hermes activo</span>
-            <strong>{snapshot?.delegation.activeCount ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Revisión del director</span>
-            <strong>{snapshot?.delegation.awaitingReviewCount ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Validadas</span>
-            <strong>{snapshot?.delegation.completedCount ?? "—"}</strong>
-          </div>
-          <div className="delegation-latest">
-            <span>Última tarea</span>
-            <strong>
-              {snapshot?.delegation.latestTask
-                ? `${snapshot.delegation.latestTask.requestedBy} → ${snapshot.delegation.latestTask.projectName} · ${snapshot.delegation.latestTask.state}`
-                : "Sin actividad"}
-            </strong>
-          </div>
-        </div>
-        <p className="provenance-line">
-          Evidencia actualizada{" "}
-          <strong>{snapshot ? formatAge(snapshot.generatedAt) : "sin datos"}</strong>.
-          No se capturan prompts, respuestas ni argumentos de herramientas.
-        </p>
-      </section>
-
-      <section className="graph-field" id="grafo" aria-labelledby="graph-title">
-        <div className="graph-intro">
-          <p className="eyebrow">Graphify · conocimiento local</p>
-          <h2 id="graph-title">El mapa que ya construiste está conectado.</h2>
-          <p>
-            Codex, Claude, Antigravity, OpenCode y Hermes consultan relaciones
-            estructurales antes de recorrer archivos. El dashboard lee únicamente
-            métricas y procedencia del grafo global.
-          </p>
-          <div className="integration-state">
-            <span>
-              <i className={snapshot?.graph.codexIntegrated ? "ok" : ""} />
-              Codex
-            </span>
-            <span>
-              <i className={snapshot?.graph.claudeIntegrated ? "ok" : ""} />
-              Claude
-            </span>
-            <span>
-              <i className={snapshot?.graph.antigravityIntegrated ? "ok" : ""} />
-              Antigravity
-            </span>
-            <span>
-              <i className={snapshot?.graph.openCodeIntegrated ? "ok" : ""} />
-              OpenCode
-            </span>
-            <span>
-              <i className={snapshot?.graph.hermesIntegrated ? "ok" : ""} />
-              Hermes localai
-            </span>
-          </div>
-        </div>
-
-        <div className="graph-metrics">
-          <div>
-            <span>Nodos</span>
-            <strong>{snapshot?.graph.nodeCount.toLocaleString("es-DO") ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Relaciones</span>
-            <strong>{snapshot?.graph.edgeCount.toLocaleString("es-DO") ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Comunidades</span>
-            <strong>{snapshot?.graph.communityCount ?? "—"}</strong>
-          </div>
-          <div>
-            <span>Actualizado</span>
-            <strong className="metric-age">
-              {formatAge(snapshot?.graph.updatedAt ?? null)}
-            </strong>
-          </div>
-        </div>
-
-        <div className="project-ledger">
-          <div className="ledger-heading">
-            <span>Proyectos indexados</span>
-            <span>Git · nodos / relaciones</span>
-          </div>
-          {snapshot?.graph.repositories.map((repository) => (
-            <div className="project-row" key={repository.id}>
-              <div>
-                <i
-                  className={
-                    repository.graphStatus === "failed"
-                      ? "project-index-failed"
-                      : ""
-                  }
-                  aria-hidden="true"
-                />
-                <span className="project-identity">
-                  <strong>{repository.label}</strong>
-                  {repository.rootAlias && <small>{repository.rootAlias}</small>}
-                </span>
-              </div>
-              <div className="project-facts">
-                <span
-                  className={`git-badge git-${repository.gitScope}${
-                    repository.gitDirty ? " git-dirty" : ""
-                  }`}
-                >
-                  {repository.gitScope === "own"
-                    ? `Git · ${repository.gitBranch ?? "detached"}`
-                    : repository.gitScope === "inherited"
-                      ? "Git heredado"
-                      : repository.gitScope === "none"
-                        ? "Sin Git"
-                        : "Git sin catalogar"}
-                </span>
-                <span>
-                  {repository.nodeCount.toLocaleString("es-DO")} /{" "}
-                  {repository.edgeCount.toLocaleString("es-DO")}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section
-        className="service-field"
-        id="servicios"
-        aria-labelledby="services-title"
-      >
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Estado operativo</p>
-            <h2 id="services-title">Herramientas observadas</h2>
-          </div>
-          <p>
-            Actualización en vivo por eventos · sondeo completo cada 15 segundos
-            <br />
-            <span>
-              Última lectura {snapshot ? formatTime(snapshot.generatedAt) : "—"}
-            </span>
-          </p>
-        </div>
-
-        <div className="nodes-grid">
-          {snapshot ? (
-            snapshot.services.map((service, index) => (
-              <ServiceNode key={service.id} service={service} index={index} />
-            ))
-          ) : (
-            <div className="loading-state" role="status">
-              <span className="loading-track">
-                <i />
-              </span>
-              Leyendo las señales locales…
-            </div>
-          )}
-        </div>
+      <section className="control-grid">
+        <article className="control-card">
+          <header><span>01</span><h3>Memoria</h3><i className={stateClass(snapshot?.brain.memory.state ?? "unknown")} /></header>
+          <strong>{snapshot?.brain.memory.graphNodes.toLocaleString("es-DO") ?? "—"} nodos · {snapshot?.brain.memory.graphEdges.toLocaleString("es-DO") ?? "—"} relaciones</strong>
+          <p>Graphify primero; sólo conocimiento validado y saneado.</p>
+        </article>
+        <article className="control-card">
+          <header><span>02</span><h3>Model Router</h3><i className={stateClass(snapshot?.brain.router.state ?? "unknown")} /></header>
+          <strong>{routes.length} rutas de capacidad</strong>
+          <ul>{routes.slice(0, 5).map((route) => <li key={route.capability}><b>{route.capability}</b><span>{route.executor}</span></li>)}</ul>
+        </article>
+        <article className="control-card">
+          <header><span>03</span><h3>Agent Factory</h3><i className={stateClass(snapshot?.brain.agents.state ?? "unknown")} /></header>
+          <strong>{snapshot?.brain.agents.profiles.length ?? 0} perfiles read-only</strong>
+          <div className="chips">{snapshot?.brain.agents.profiles.map((profile) => <span key={profile}>{profile}</span>)}</div>
+        </article>
+        <article className="control-card">
+          <header><span>04</span><h3>Skills</h3><i className={stateClass(snapshot?.brain.skills.state ?? "unknown")} /></header>
+          <strong>{snapshot?.brain.skills.installed.length ?? 0}/{snapshot?.brain.skills.configured.length ?? 0} núcleo sincronizado</strong>
+          <div className="chips">{snapshot?.brain.skills.configured.slice(0, 8).map((skill) => <span key={skill}>{skill}</span>)}</div>
+        </article>
+        <article className="control-card">
+          <header><span>05</span><h3>Curator y Learning</h3><i className={stateClass(snapshot?.brain.learning.state ?? "unknown")} /></header>
+          <strong>Consolidación {snapshot?.brain.curator.consolidation ?? "desconocida"}</strong>
+          <ul>{Object.entries(snapshot?.brain.learning.counts ?? {}).map(([state, count]) => <li key={state}><b>{state}</b><span>{count}</span></li>)}</ul>
+        </article>
+        <article className="control-card">
+          <header><span>06</span><h3>Sandbox y evidencia</h3><i className={stateClass(snapshot?.brain.sandbox.state ?? "unknown")} /></header>
+          <strong>{activeSandboxes.length} tareas en curso</strong>
+          <ul>{Object.entries(snapshot?.brain.sandbox.counts ?? {}).filter(([, count]) => count > 0).map(([state, count]) => <li key={state}><b>{state}</b><span>{count}</span></li>)}</ul>
+        </article>
       </section>
 
       <section className="lower-grid">
-        <article className="traffic-panel">
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">Comunicación</p>
-              <h2>Tráfico de comprobación</h2>
-            </div>
-          </div>
-          <div className="connection-list">
-            {snapshot?.connections.map((connection) => (
-              <div className="connection-row" key={connection.id}>
-                <span className={`connection-light state-bg-${connection.state}`} />
-                <div>
-                  <strong>{connection.target}</strong>
-                  <small>
-                    {connection.protocol} · {connection.latencyMs ?? "—"} ms
-                  </small>
-                </div>
-                <div className="connection-count">
-                  <strong>{connection.successfulChecks}</strong>
-                  <small>correctas</small>
-                </div>
-                <div className="connection-count failed">
-                  <strong>{connection.failedChecks}</strong>
-                  <small>fallidas</small>
-                </div>
-              </div>
-            ))}
+        <article className="ledger">
+          <header><div><p className="kicker">Evidencia reciente</p><h2>Último resultado validado</h2></div></header>
+          {snapshot?.brain.lastValidatedOutcome ? (
+            <dl className="outcome">
+              <div><dt>Proyecto</dt><dd>{snapshot.brain.lastValidatedOutcome.projectName}</dd></div>
+              <div><dt>Director</dt><dd>{snapshot.brain.lastValidatedOutcome.requestedBy}</dd></div>
+              <div><dt>Estado</dt><dd className="state-healthy">{snapshot.brain.lastValidatedOutcome.state}</dd></div>
+              <div><dt>Actualizado</dt><dd>{formatAge(snapshot.brain.lastValidatedOutcome.updatedAt)}</dd></div>
+            </dl>
+          ) : <p className="empty">Aún no hay un resultado validado en el nuevo lifecycle.</p>}
+          <h3>Sandboxes activos</h3>
+          <div className="rows">
+            {activeSandboxes.length ? activeSandboxes.map((task) => (
+              <div className="row" key={task.taskId}><span>{task.projectName}</span><b>{task.state}</b><small>{task.requestedBy}</small></div>
+            )) : <p className="empty">Sin sandboxes activos.</p>}
           </div>
         </article>
-
-        <article className="events-panel">
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">Bitácora</p>
-              <h2>Cambios de estado</h2>
-            </div>
-            <span className="event-count">{snapshot?.events.length ?? 0}</span>
-          </div>
-          <ol className="event-list">
-            {snapshot?.events.slice(0, 10).map((event) => (
-              <li key={event.id} className={`event-${event.severity}`}>
-                <time dateTime={event.timestamp}>{formatTime(event.timestamp)}</time>
-                <div>
-                  <strong>{event.source}</strong>
-                  <p>{event.message}</p>
-                </div>
-              </li>
+        <article className="ledger">
+          <header><div><p className="kicker">Runtime</p><h2>Salud y eventos</h2></div></header>
+          <div className="rows">
+            {snapshot?.services.map((service) => (
+              <div className="row" key={service.id}><span>{service.name}</span><b className={stateClass(service.state)}>{service.state}</b><small>{service.detail}</small></div>
             ))}
-          </ol>
+          </div>
+          <h3>Eventos saneados</h3>
+          <div className="events">
+            {snapshot?.events.slice(0, 6).map((event) => <p key={event.id}><time>{new Date(event.timestamp).toLocaleTimeString("es-DO")}</time>{event.message}</p>)}
+          </div>
         </article>
       </section>
 
       <footer>
-        <p>
-          <span className="privacy-lock" aria-hidden="true" />
-          Escucha exclusiva en <strong>127.0.0.1</strong> · no captura
-          conversaciones ni credenciales
-        </p>
-        <p>
-          TRAMA · equipo activo{" "}
-          {snapshot ? formatUptime(snapshot.system.uptimeSeconds) : "—"}
-        </p>
+        <span>Loopback 127.0.0.1</span>
+        <span>Sin prompts, código ni credenciales</span>
+        <span>API {API_URL}/api/status</span>
       </footer>
     </main>
   );
 }
+
+export default Home;

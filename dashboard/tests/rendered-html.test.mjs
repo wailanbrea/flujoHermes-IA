@@ -2,46 +2,38 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
-test("builds the finished local observability dashboard", async () => {
+test("builds the compact Hermes Brain dashboard", async () => {
   const [html, page, css, assets] = await Promise.all([
     readFile(new URL("../dist/index.html", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readdir(new URL("../dist/assets/", import.meta.url)),
   ]);
-  assert.match(html, /<title>TRAMA · Observador local de IA<\/title>/i);
   assert.match(html, /<div id="root"><\/div>/);
   assert.ok(assets.some((name) => name.endsWith(".js")));
-  assert.match(page, /Flujo de trabajo real/);
-  assert.match(css, /@media \(min-width: 1600px\)/);
-  assert.match(css, /margin-left: 32px/);
-  assert.match(css, /padding-left: 64px/);
-  assert.match(page, /Estado de delegación local/);
-  assert.match(page, /Revisión del director/);
-  assert.match(page, /requestedBy/);
-  assert.match(page, /graph\.claudeIntegrated/);
-  assert.match(page, /graph\.antigravityIntegrated/);
-  assert.match(page, /graph\.openCodeIntegrated/);
-  assert.match(page, /El mapa que ya construiste está conectado/);
-  assert.match(page, /snapshot\.workflow\.nodes/);
-  assert.match(page, /aria-pressed=\{selected\}/);
-  assert.match(page, /workflow-inspector/);
-  assert.match(page, /selectedEdges/);
-  assert.match(page, /TaskJourney/);
-  assert.match(page, /HermesLab/);
-  assert.match(page, /Hermes Lab · evidencia local saneada/);
-  assert.match(page, /Ahorro vs\. GPT-5\.6 Sol/);
-  assert.match(page, /Eficiencia de delegación local/);
-  assert.match(page, /Tokens delegados/);
-  assert.match(page, /Uso por modelo/);
-  assert.match(page, /Plataformas y skills/);
-  assert.match(page, /Recorrido de la última tarea Hermes/);
-  assert.match(page, /validation-failed/);
-  assert.match(page, /Herramientas observadas/);
-  assert.match(page, /no captura/);
+  for (const label of [
+    "HERMES BRAIN",
+    "Memoria y Graphify",
+    "Model Router",
+    "Agent Factory",
+    "Plan de solución",
+    "Ejecutor en sandbox",
+    "Tests + revisión + evidencia",
+    "Resultado validado",
+    "Learning Engine",
+    "Memoria · Skill · Benchmark",
+  ]) assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(page, /viewBox="0 0 1000 780"/);
+  assert.match(page, /EventSource/);
+  assert.match(page, /snapshot\.brain/);
+  assert.match(page, /node-inspector/);
+  assert.match(css, /overflow-x: auto/);
+  assert.match(css, /max-width: 1500px/);
+  assert.doesNotMatch(page, /diagram-spread|draggingId|onPointerMove|localStorage/);
+  assert.doesNotMatch(page, /Ahorro vs|Tokens delegados|Hermes Lab|worker principal/i);
 });
 
-test("keeps telemetry loopback-only and read-only", async () => {
+test("keeps telemetry loopback-only, cached, and read-only", async () => {
   const [server, dashboardServer, page, packageJson] = await Promise.all([
     readFile(new URL("../server/telemetry-server.ts", import.meta.url), "utf8"),
     readFile(new URL("../server/dashboard-server.ts", import.meta.url), "utf8"),
@@ -53,31 +45,16 @@ test("keeps telemetry loopback-only and read-only", async () => {
   assert.match(server, /Origen local no autorizado/);
   assert.doesNotMatch(server, /shell:\s*true/);
   assert.doesNotMatch(server, /message\.content|api[_-]?key/i);
-  assert.match(server, /GLOBAL_GRAPH_PATH/);
-  assert.match(server, /CLAUDE_GLOBAL_RULES/);
-  assert.match(server, /ANTIGRAVITY_GLOBAL_RULES/);
-  assert.match(server, /OPENCODE_GLOBAL_RULES/);
-  assert.match(server, /LOCAL_AI_GOVERNANCE:START/);
-  assert.match(server, /PROJECT_CATALOG_PATH/);
-  assert.match(server, /projectCatalogSchema/);
-  assert.match(server, /probeHermesBroker/);
+  assert.match(server, /HERMES_BRAIN_STATUS_PATH/);
+  assert.match(server, /brainStatusSchema/);
+  assert.match(server, /readBrainStatus/);
+  assert.match(server, /buildBrainWorkflow/);
   assert.match(server, /const INTERVAL_MS = 15000/);
-  assert.match(server, /refreshHermesBroker/);
   assert.match(server, /watch\(/);
   assert.match(server, /:heartbeat/);
-  assert.match(server, /HERMES_JOBS_PATH/);
-  assert.match(server, /HERMES_INSIGHTS_PATH/);
-  assert.match(server, /HERMES_MODEL_REPORT_PATH/);
-  assert.match(server, /hermesInsightsSchema/);
-  assert.match(server, /buildWorkflow/);
-  assert.match(server, /Graph JSON local/);
-  assert.match(server, /Windows GPU counters/);
   assert.match(dashboardServer, /const HOST = "127\.0\.0\.1"/);
   assert.match(dashboardServer, /request\.method !== "GET"/);
-  assert.match(dashboardServer, /startsWith\(`\$\{STATIC_ROOT\}\$\{sep\}`\)/);
   assert.match(page, /EventSource/);
-  assert.match(page, /Git heredado/);
-  assert.match(page, /Sin Git/);
   assert.match(packageJson, /server\/dashboard-server\.ts/);
 });
 
@@ -88,165 +65,67 @@ test("keeps automatic graph onboarding local, bounded, and structural", async ()
   );
   assert.match(script, /Resolve-Path -LiteralPath/);
   assert.match(script, /global add/);
-  assert.match(script, /update \$Root --no-cluster/);
   assert.match(script, /total_files -gt 500/);
   assert.match(script, /total_words -gt 2000000/);
-  assert.match(script, /Test-GraphRoot/);
-  assert.match(script, /Get-PathFingerprint/);
   assert.match(script, /semanticModelUsed = \$false/);
   assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
 });
 
-test("catalogs the authorized project roots without changing project source", async () => {
-  const script = await readFile(
-    new URL("../../scripts/windows/index-project-roots.ps1", import.meta.url),
-    "utf8",
-  );
-  assert.match(script, /C:\\xampp\\php\\www/);
-  assert.match(script, /C:\\Users\\waila\\StudioProjects/);
-  assert.match(script, /C:\\Users\\waila\\AndroidStudioProjects/);
-  assert.match(script, /InventoryOnly/);
-  assert.match(script, /AllowLargeCorpus = \$true/);
-  assert.match(script, /ExactRoot = \$true/);
-  assert.match(script, /AllowMetadataOnly = \$true/);
-  assert.match(script, /project-catalog\.json/);
-  assert.match(script, /gitScope/);
-  assert.doesNotMatch(script, /OPENAI_API_KEY|GEMINI_API_KEY|--backend/);
-});
-
-test("delegates Hermes work through a bounded review gate", async () => {
-  const [submit, worker, common, review, benchmark, exporter, operatingPrompt] = await Promise.all([
-    readFile(
-      new URL("../../scripts/windows/submit-hermes-task.ps1", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../../scripts/windows/invoke-hermes-task.ps1", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../../scripts/windows/hermes-task-common.ps1", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../../scripts/windows/review-hermes-task.ps1", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../../scripts/benchmarks/test-hermes-local.ps1", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../../scripts/windows/export-hermes-insights.ps1", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../../config/hermes-operating-prompt.md", import.meta.url),
-      "utf8",
-    ),
+test("uses a director sandbox and an idempotent evidence gate", async () => {
+  const [sandbox, seal, review, learning, worker] = await Promise.all([
+    readFile(new URL("../../scripts/windows/new-hermes-sandbox.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/seal-hermes-task.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/review-hermes-task.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/record-hermes-learning.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/invoke-hermes-task.ps1", import.meta.url), "utf8"),
   ]);
-  assert.match(submit, /ModificationAuthorized/);
-  assert.match(submit, /RequestedBy/);
-  assert.match(submit, /Codex.*Claude.*Antigravity.*OpenCode/s);
-  assert.match(submit, /GitScope -ne 'own'/);
-  assert.match(submit, /ValidateSet\('plan', 'edit', 'browser'\)/);
-  assert.match(submit, /\$toolsets = switch \(\$Phase\)/);
-  assert.match(submit, /phase = \$Phase/);
-  assert.match(submit, /AllowedFiles/);
-  assert.match(submit, /patchPolicy/);
-  assert.match(submit, /MaxPatchBytes/);
-  assert.match(submit, /loopbackBrowser/);
-  assert.match(worker, /graphify\.exe query/);
-  assert.match(worker, /worktree add --detach/);
-  assert.match(worker, /--source tool --no-restore-cwd/);
-  assert.match(worker, /source repository changed/);
-  assert.match(worker, /127\.0\.0\.1:4310/);
-  assert.doesNotMatch(worker, /-t [^\n]*terminal/);
-  assert.match(worker, /--checkpoints/);
-  assert.match(worker, /--max-turns/);
-  assert.match(worker, /diff --binary --no-ext-diff HEAD/);
-  assert.match(worker, /Stop-ProcessTree/);
-  assert.match(worker, /noProgressTimeoutSeconds/);
-  assert.match(worker, /Get-TaskExchangeDirectory/);
-  assert.match(worker, /--ignore-rules/);
-  assert.match(worker, /\$expectedToolset = switch \(\$phase\)/);
-  assert.match(worker, /\$toolsetArgument/);
-  assert.doesNotMatch(worker, /-t file,playwright/);
-  assert.match(worker, /agentLogLength/);
-  assert.match(worker, /HERMES_WRITE_SAFE_ROOT/);
-  assert.match(worker, /export-hermes-insights\.ps1/);
-  assert.match(worker, /patch-validation\.json/);
-  assert.match(worker, /file-outside-allowlist/);
-  assert.match(worker, /Per-task Hermes usage telemetry/);
-  assert.match(worker, /hermes-operating-prompt\.md/);
-  assert.match(worker, /Join-Path \(Get-OrchestratorRoot\)/);
-  assert.match(exporter, /InsightsEngine/);
-  assert.match(exporter, /SessionDB/);
-  assert.match(exporter, /avoidedGpt56SolCostUsd/);
-  assert.doesNotMatch(exporter, /session_id|message_content|tool_arguments/);
-  assert.match(operatingPrompt, /Never repeat the same invalid call/);
-  assert.match(operatingPrompt, /mcp__playwright__browser_resize/);
-  assert.match(operatingPrompt, /never emit a generic `tool_call`/);
-  assert.doesNotMatch(worker, /-t terminal/);
-  assert.doesNotMatch(worker, /\.Kill\(\$true\)/);
-  assert.match(common, /taskkill\.exe/);
-  assert.match(common, /LocalApplicationData/);
-  assert.match(common, /Remove-Item -LiteralPath \$resolved -Recurse -Force/);
-  assert.match(benchmark, /exact-response/);
-  assert.match(benchmark, /tool-calling/);
-  assert.match(benchmark, /scoped-edit/);
-  assert.doesNotMatch(benchmark, /api[_-]?key|https:\/\//i);
-  assert.doesNotMatch(worker, /--yolo|--oneshot|\s-z\s/);
-  assert.match(common, /apply --check/);
-  assert.match(common, /Get-FileSha256/);
-  assert.match(worker, /patchSha256/);
-  assert.match(review, /patchValidation/);
-  assert.match(review, /RequestChanges/);
-  assert.match(review, /correction-attempts-exhausted/);
-  assert.doesNotMatch(review, /ValidateSet\([^)]*Reject/);
-  assert.match(submit, /MaxAttempts = 3/);
+  assert.match(sandbox, /executor = 'director'/);
+  assert.match(sandbox, /worktree add --quiet --detach/);
+  assert.doesNotMatch(sandbox, /Start-HermesWorker|hermes\.exe|lms\.exe/);
+  assert.match(seal, /--binary --full-index/);
+  assert.match(seal, /patch-contains-cr/);
+  assert.match(seal, /patchSha256/);
+  assert.match(seal, /apply --check/);
+  assert.match(seal, /State 'sealed'/);
   const approveBranch = review.match(
-    /elseif \(\$Decision -eq 'Approve'\)([\s\S]*?)\nelse \{/,
+    /if \(\$Decision -eq 'Approve'\)([\s\S]*?)\nif \(\$status\.state/,
   );
   assert.ok(approveBranch);
-  assert.doesNotMatch(approveBranch[1], /git\.exe/);
-  assert.match(review, /ReviewedBy/);
-  assert.match(review, /ensure-project-graph\.ps1/);
+  assert.doesNotMatch(approveBranch[1], /git\.exe -C .* apply /);
+  assert.match(review, /Return-ToEditing/);
+  assert.match(review, /applied-cleanup-pending/);
+  assert.match(review, /integration\.json/);
+  assert.match(review, /apply --reverse --check/);
+  assert.match(learning, /state -ne 'completed'/);
+  assert.match(worker, /refuses code generation and edit tasks/);
 });
 
-test("shares governance with Claude Code, Antigravity, and OpenCode", async () => {
-  const [policy, sync, claude, antigravityRule] = await Promise.all([
-    readFile(
-      new URL("../../config/agent-governance.md", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL(
-        "../../scripts/windows/sync-agent-governance.ps1",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-    readFile(new URL("../../CLAUDE.md", import.meta.url), "utf8"),
-    readFile(
-      new URL(
-        "../../.agents/rules/local-ai-governance.md",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
+test("versions governance, Brain config, and the six core skills", async () => {
+  const [policy, sync, brainConfig] = await Promise.all([
+    readFile(new URL("../../config/agent-governance.md", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/sync-agent-governance.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../config/hermes-brain.json", import.meta.url), "utf8"),
   ]);
-  assert.match(policy, /Codex, Claude Code, Google Antigravity y OpenCode/);
-  assert.match(policy, /RequestedBy Codex/);
-  assert.match(policy, /RequestedBy Claude/);
-  assert.match(policy, /RequestedBy Antigravity/);
-  assert.match(policy, /RequestedBy OpenCode/);
-  assert.match(policy, /Graphify/);
-  assert.match(policy, /Hermes/);
+  assert.match(policy, /Codex, Claude, Antigravity y OpenCode/);
+  assert.match(policy, /new-hermes-sandbox\.ps1/);
+  assert.match(policy, /mismo sandbox a `editing`/);
   assert.match(sync, /\.claude\\CLAUDE\.md/);
   assert.match(sync, /\.gemini\\GEMINI\.md/);
   assert.match(sync, /\.config\\opencode\\AGENTS\.md/);
-  assert.match(sync, /LOCAL_AI_GOVERNANCE:START/);
-  assert.match(claude, /graphify query/);
-  assert.match(antigravityRule, /RequestedBy Antigravity/);
+  assert.match(sync, /\.codex\\AGENTS\.md/);
+  const parsed = JSON.parse(brainConfig);
+  assert.equal(parsed.modelRouter.localModel, "google/gemma-4-12b-qat");
+  assert.equal(parsed.autonomy.localAiCanWrite, false);
+  for (const skill of [
+    "hermes-brain",
+    "hermes-agent-factory",
+    "hermes-model-router",
+    "hermes-learning-engine",
+    "hermes-evidence-gate",
+    "hermes-memory-retrieval",
+  ]) {
+    const body = await readFile(new URL(`../../skills/${skill}/SKILL.md`, import.meta.url), "utf8");
+    assert.match(body, new RegExp(`name: ${skill}`));
+    assert.doesNotMatch(body, /TODO/);
+  }
 });

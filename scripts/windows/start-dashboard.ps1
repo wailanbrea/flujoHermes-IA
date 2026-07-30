@@ -7,6 +7,8 @@ $dashboard = Join-Path $workspace 'dashboard'
 $runtime = Join-Path $workspace 'telemetry\runtime'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 
+& (Join-Path $PSScriptRoot 'update-hermes-brain-status.ps1') | Out-Null
+
 function Test-LocalPort([int]$Port) {
     $client = [Net.Sockets.TcpClient]::new()
     try {
@@ -42,5 +44,5 @@ while ([DateTime]::UtcNow -lt $deadline) {
     Start-Sleep -Milliseconds 400
 }
 
-Write-Error 'El dashboard no inició dentro del tiempo esperado.'
+Write-Error 'El dashboard no inicio dentro del tiempo esperado.'
 exit 1

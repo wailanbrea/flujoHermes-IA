@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type {
+  BrainSummary,
   ConnectionHealth,
   GraphRepositorySummary,
   HealthState,
@@ -61,6 +62,12 @@ const HERMES_MODEL_REPORT_PATH = resolve(
   "models",
   "hermes-model-comparison.json",
 );
+const HERMES_BRAIN_STATUS_PATH = resolve(
+  WORKSPACE_ROOT,
+  "telemetry",
+  "runtime",
+  "hermes-brain-status.json",
+);
 const HERMES_SUBMIT_SCRIPT = resolve(
   WORKSPACE_ROOT,
   "scripts",
@@ -88,6 +95,71 @@ const HERMES_GRAPHIFY_SKILL = resolve(
   "SKILL.md",
 );
 const allowedOrigin = /^http:\/\/(?:localhost|127\.0\.0\.1):(?:3000|4310)$/;
+const healthStateSchema = z.enum(["healthy", "degraded", "offline", "unknown"]);
+const brainTaskSchema = z.object({
+  taskId: z.string(),
+  projectName: z.string(),
+  requestedBy: z.enum(["Codex", "Claude", "Antigravity", "OpenCode"]).default("Codex"),
+  state: z.string(),
+  updatedAt: z.string(),
+  filesChanged: z.number().int().nonnegative().optional(),
+  patchBytes: z.number().int().nonnegative().optional(),
+});
+const brainStatusSchema = z.object({
+  brain: z.object({
+    state: healthStateSchema,
+    version: z.number().int().positive(),
+    memory: z.object({
+      state: healthStateSchema,
+      graphNodes: z.number().int().nonnegative(),
+      graphEdges: z.number().int().nonnegative(),
+      policy: z.string(),
+    }),
+    router: z.object({
+      state: healthStateSchema,
+      routes: z.array(z.object({
+        capability: z.string(),
+        executor: z.string(),
+        fallback: z.string(),
+      })),
+      localOptional: z.boolean(),
+    }),
+    agents: z.object({
+      state: healthStateSchema,
+      profiles: z.array(z.string()),
+      advisoryOnly: z.boolean(),
+    }),
+    skills: z.object({
+      state: healthStateSchema,
+      configured: z.array(z.string()),
+      installed: z.array(z.string()),
+    }),
+    learning: z.object({
+      state: healthStateSchema,
+      counts: z.record(z.string(), z.number().int().nonnegative()),
+      last: z.record(z.string(), z.unknown()).nullable(),
+    }),
+    sandbox: z.object({
+      state: healthStateSchema,
+      counts: z.record(z.string(), z.number().int().nonnegative()),
+      active: z.array(brainTaskSchema),
+    }),
+    lastValidatedOutcome: brainTaskSchema.nullable(),
+    curator: z.object({
+      state: healthStateSchema,
+      consolidation: z.string().optional(),
+    }),
+    kanban: z.object({
+      state: healthStateSchema,
+      manualDecomposition: z.boolean().optional(),
+    }),
+    moa: z.object({
+      state: healthStateSchema,
+      active: z.boolean().optional(),
+      optional: z.boolean().optional(),
+    }),
+  }),
+});
 const lmSchema = z.object({
   models: z.array(
     z.object({
@@ -153,11 +225,15 @@ const hermesTaskSchema = z.object({
   state: z.preprocess(
     (value) => (value === "rejected" ? "blocked" : value),
     z.enum([
+      "isolated",
+      "editing",
+      "sealed",
       "queued",
       "preparing",
       "executing",
       "awaiting-review",
       "validating",
+      "applied-cleanup-pending",
       "completed",
       "failed",
       "blocked",
@@ -380,6 +456,7 @@ function materialSnapshot(snapshot: TelemetrySnapshot): string {
     ),
     events: snapshot.events,
     graph,
+    brain: snapshot.brain,
     delegation,
     workflow: {
       nodes: snapshot.workflow.nodes,
@@ -434,6 +511,35 @@ async function readProjectCatalog() {
     return projectCatalogSchema.parse(JSON.parse(body.replace(/^\uFEFF/, "")));
   } catch {
     return { projects: [] };
+  }
+}
+
+const emptyBrain = (): BrainSummary => ({
+  state: "unknown",
+  version: 1,
+  memory: {
+    state: "unknown",
+    graphNodes: 0,
+    graphEdges: 0,
+    policy: "validated-and-sanitized-only",
+  },
+  router: { state: "unknown", routes: [], localOptional: true },
+  agents: { state: "unknown", profiles: [], advisoryOnly: true },
+  skills: { state: "unknown", configured: [], installed: [] },
+  learning: { state: "unknown", counts: {}, last: null },
+  sandbox: { state: "unknown", counts: {}, active: [] },
+  lastValidatedOutcome: null,
+  curator: { state: "unknown" },
+  kanban: { state: "unknown", manualDecomposition: true },
+  moa: { state: "unknown", optional: true },
+});
+
+async function readBrainStatus(): Promise<BrainSummary> {
+  try {
+    const body = await readFile(HERMES_BRAIN_STATUS_PATH, "utf8");
+    return brainStatusSchema.parse(JSON.parse(body.replace(/^\uFEFF/, ""))).brain;
+  } catch {
+    return emptyBrain();
   }
 }
 
@@ -661,18 +767,18 @@ async function probeHermes(): Promise<Probe> {
     ]);
     const valid =
       provider === "lmstudio" &&
-      model === "google/gemma-4-12b" &&
+      model === "google/gemma-4-12b-qat" &&
       fallbackProvider === "lmstudio" &&
-      fallbackModel === "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive";
+      fallbackModel === "google/gemma-4-12b-qat";
     return {
       protocol: "CLI / OpenAI API",
       service: {
         id: "hermes",
         name: "Hermes Agent",
-        role: "Orquestación",
+        role: "Asesoría local opcional",
         state: valid ? "healthy" : "degraded",
         detail: valid
-          ? "Perfil localai aislado · aprobaciones manuales"
+          ? "Perfil localai advisory · Gemma 4 12B QAT"
           : "El perfil no coincide con la configuración validada",
         latencyMs: latency(start),
         checkedAt: checkedAt(),
@@ -1084,7 +1190,15 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     const invalidTaskCount = settled.filter(
       (result) => result.status === "rejected",
     ).length;
-    const activeStates = new Set(["preparing", "executing"]);
+    const activeStates = new Set([
+      "isolated",
+      "editing",
+      "sealed",
+      "validating",
+      "applied-cleanup-pending",
+      "preparing",
+      "executing",
+    ]);
     const failedStates = new Set(["failed", "blocked", "validation-failed"]);
     const latestTask = tasks[0] ?? null;
     const state: HealthState =
@@ -1123,7 +1237,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
       queuedCount: tasks.filter((task) => task.state === "queued").length,
       activeCount: tasks.filter((task) => activeStates.has(task.state)).length,
       awaitingReviewCount: tasks.filter(
-        (task) => task.state === "awaiting-review",
+        (task) => ["sealed", "awaiting-review"].includes(task.state),
       ).length,
       completedCount: tasks.filter((task) => task.state === "completed").length,
       failedCount:
@@ -1447,6 +1561,61 @@ function buildWorkflow(
   return { nodes, edges };
 }
 
+function buildBrainWorkflow(
+  services: ServiceHealth[],
+  graph: KnowledgeGraphSummary,
+  brain: BrainSummary,
+  observedAt: string,
+): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const latest = brain.lastValidatedOutcome;
+  const status = brain.state;
+  const nodes: WorkflowNode[] = [
+    { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo y límites", state: "healthy", kind: "observer", x: 50, y: 4 },
+    { id: "brain", label: "HERMES BRAIN", role: "Plano de control", detail: "Decide, recuerda y controla evidencia", state: status, kind: "agent", x: 50, y: 14 },
+    { id: "memory", label: "Memoria y Graphify", role: "Recuperación", detail: `${brain.memory.graphNodes} nodos`, state: brain.memory.state, kind: "graph", x: 18, y: 27 },
+    { id: "router", label: "Model Router", role: "Capacidad", detail: "Local opcional / cloud", state: brain.router.state, kind: "queue", x: 50, y: 27 },
+    { id: "agents", label: "Agent Factory", role: "Especialistas", detail: `${brain.agents.profiles.length} perfiles advisory`, state: brain.agents.state, kind: "agent", x: 82, y: 27 },
+    { id: "cases", label: "Casos anteriores", role: "Memoria validada", detail: brain.memory.policy, state: brain.memory.state, kind: "graph", x: 18, y: 38 },
+    { id: "engines", label: "Local / Cloud", role: "Motores reemplazables", detail: "El director nunca queda bloqueado", state: brain.router.state, kind: "model", x: 50, y: 38 },
+    { id: "experts", label: "Agentes expertos", role: "Briefs read-only", detail: "Hallazgos, riesgos y pruebas", state: brain.agents.state, kind: "agent", x: 82, y: 38 },
+    { id: "plan", label: "Plan de solución", role: "Director cloud", detail: "Codex · Claude · Antigravity · OpenCode", state: status, kind: "review", x: 50, y: 50 },
+    { id: "sandbox", label: "Ejecutor en sandbox", role: "Worktree aislado", detail: `${brain.sandbox.active.length} tareas activas`, state: brain.sandbox.state, kind: "workspace", x: 50, y: 60 },
+    { id: "evidence", label: "Tests + revisión + evidencia", role: "Puerta determinista", detail: "LF · SHA-256 · allowlist · apply-check", state: status, kind: "review", x: 50, y: 70 },
+    { id: "validated", label: "Resultado validado", role: "Integración única", detail: latest ? `${latest.projectName} · ${latest.state}` : "Sin resultado reciente", state: latest ? "healthy" : "unknown", kind: "project", x: 50, y: 80 },
+    { id: "learning", label: "Learning Engine", role: "Después de validar", detail: `${brain.learning.counts.candidate ?? 0} candidatas`, state: brain.learning.state, kind: "graph", x: 50, y: 89 },
+    { id: "promotion", label: "Memoria · Skill · Benchmark", role: "Promoción controlada", detail: "Benchmark + aprobación", state: brain.skills.state, kind: "review", x: 50, y: 97 },
+  ];
+  const link = (source: string, target: string, label: string): WorkflowEdge => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    label,
+    state: status,
+    evidence: "configured",
+    lastObservedAt: observedAt,
+  });
+  return {
+    nodes,
+    edges: [
+      link("user", "brain", "Instrucción"),
+      link("brain", "memory", "Recupera"),
+      link("brain", "router", "Enruta"),
+      link("brain", "agents", "Selecciona"),
+      link("memory", "cases", "Contexto"),
+      link("router", "engines", "Capacidad"),
+      link("agents", "experts", "Asesoría"),
+      link("cases", "plan", "Síntesis"),
+      link("engines", "plan", "Síntesis"),
+      link("experts", "plan", "Síntesis"),
+      link("plan", "sandbox", "Implementa"),
+      link("sandbox", "evidence", "Sella"),
+      link("evidence", "validated", "Valida"),
+      link("validated", "learning", "Aprende"),
+      link("learning", "promotion", "Promueve"),
+    ],
+  };
+}
+
 async function collect(): Promise<TelemetrySnapshot> {
   const [
     lmStudioProbe,
@@ -1458,6 +1627,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     graphProbe,
     gpuProbe,
     hermesBrokerProbe,
+    brain,
   ] = await Promise.all([
     probeLmStudio(),
     probeHermes(),
@@ -1468,6 +1638,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeGraphify(),
     probeGpu(),
     probeHermesBroker(),
+    readBrainStatus(),
   ]);
   const probes: Probe[] = [
     lmStudioProbe,
@@ -1496,11 +1667,12 @@ async function collect(): Promise<TelemetrySnapshot> {
     connections: probes.map(connectionFrom),
     events: [...events],
     graph: graphProbe.graph,
+    brain,
     delegation: hermesBrokerProbe.delegation,
-    workflow: buildWorkflow(
+    workflow: buildBrainWorkflow(
       services,
       graphProbe.graph,
-      hermesBrokerProbe.delegation,
+      brain,
       generatedAt,
     ),
     system: {
@@ -1589,10 +1761,10 @@ async function refreshHermesBroker(): Promise<void> {
       services: updatedServices,
       connections: updatedConnections,
       delegation: probe.delegation,
-      workflow: buildWorkflow(
+      workflow: buildBrainWorkflow(
         updatedServices,
         current.graph,
-        probe.delegation,
+        current.brain,
         generatedAt,
       ),
       events: [...events],
