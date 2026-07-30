@@ -18,6 +18,7 @@ import type {
   HermesModelPerformance,
   HermesTaskSummary,
   KnowledgeGraphSummary,
+  PromptBudgetSummary,
   ServiceHealth,
   TelemetryEvent,
   TelemetrySnapshot,
@@ -67,6 +68,12 @@ const HERMES_BRAIN_STATUS_PATH = resolve(
   "telemetry",
   "runtime",
   "hermes-brain-status.json",
+);
+const HERMES_PROMPT_BUDGET_PATH = resolve(
+  WORKSPACE_ROOT,
+  "telemetry",
+  "runtime",
+  "hermes-prompt-budget.json",
 );
 const HERMES_SUBMIT_SCRIPT = resolve(
   WORKSPACE_ROOT,
@@ -161,6 +168,30 @@ const brainStatusSchema = z.object({
       optional: z.boolean().optional(),
     }),
   }),
+});
+const promptBudgetSchema = z.object({
+  schemaVersion: z.literal(1),
+  generatedAt: z.string(),
+  state: healthStateSchema,
+  estimation: z.literal("bytes-divided-by-four"),
+  summary: z.object({
+    configuredProfiles: z.number().int().nonnegative(),
+    availableProfiles: z.number().int().nonnegative(),
+    minimumEstimatedTokens: z.number().int().nonnegative(),
+    maximumEstimatedTokens: z.number().int().nonnegative(),
+  }),
+  profiles: z.array(z.object({
+    profile: z.string(),
+    mode: z.string(),
+    state: z.enum(["healthy", "unavailable"]),
+    model: z.string().nullable(),
+    tools: z.number().int().nonnegative(),
+    systemPromptBytes: z.number().int().nonnegative(),
+    skillsIndexBytes: z.number().int().nonnegative(),
+    toolSchemaBytes: z.number().int().nonnegative(),
+    totalFixedBytes: z.number().int().nonnegative(),
+    estimatedFixedTokens: z.number().int().nonnegative(),
+  })),
 });
 const lmSchema = z.object({
   models: z.array(
@@ -459,6 +490,7 @@ function materialSnapshot(snapshot: TelemetrySnapshot): string {
     events: snapshot.events,
     graph,
     brain: snapshot.brain,
+    promptBudget: snapshot.promptBudget,
     delegation,
     workflow: {
       nodes: snapshot.workflow.nodes,
@@ -548,6 +580,30 @@ async function readBrainStatus(): Promise<BrainSummary> {
     return brainStatusSchema.parse(JSON.parse(body.replace(/^\uFEFF/, ""))).brain;
   } catch {
     return emptyBrain();
+  }
+}
+
+const emptyPromptBudget = (): PromptBudgetSummary => ({
+  state: "unknown",
+  generatedAt: null,
+  estimation: "bytes-divided-by-four",
+  summary: {
+    configuredProfiles: 0,
+    availableProfiles: 0,
+    minimumEstimatedTokens: 0,
+    maximumEstimatedTokens: 0,
+  },
+  profiles: [],
+});
+
+async function readPromptBudget(): Promise<PromptBudgetSummary> {
+  try {
+    const body = await readFile(HERMES_PROMPT_BUDGET_PATH, "utf8");
+    const { schemaVersion: _schemaVersion, ...budget } =
+      promptBudgetSchema.parse(JSON.parse(body.replace(/^\uFEFF/, "")));
+    return budget;
+  } catch {
+    return emptyPromptBudget();
   }
 }
 
@@ -1636,6 +1692,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     gpuProbe,
     hermesBrokerProbe,
     brain,
+    promptBudget,
   ] = await Promise.all([
     probeLmStudio(),
     probeHermes(),
@@ -1647,6 +1704,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeGpu(),
     probeHermesBroker(),
     readBrainStatus(),
+    readPromptBudget(),
   ]);
   const probes: Probe[] = [
     lmStudioProbe,
@@ -1676,6 +1734,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     events: [...events],
     graph: graphProbe.graph,
     brain,
+    promptBudget,
     delegation: hermesBrokerProbe.delegation,
     workflow: buildBrainWorkflow(
       services,

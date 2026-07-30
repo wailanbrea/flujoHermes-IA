@@ -15,6 +15,12 @@ $config = Read-JsonFile -Path (Join-Path $root 'config\hermes-brain.json')
 $profilesRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hermes\profiles'
 $hermesRoot = Split-Path -Parent $profilesRoot
 $defaultSkillsRoot = Join-Path $hermesRoot 'skills'
+$hermesAgentRoot = Join-Path $hermesRoot 'hermes-agent'
+$installedSkillRoots = @(
+    $defaultSkillsRoot,
+    (Join-Path $hermesAgentRoot 'skills'),
+    (Join-Path $hermesAgentRoot 'optional-skills')
+)
 $existing = (Invoke-NativeCommand -Executable 'hermes.exe' -Arguments @('profile', 'list')).Output
 $utf8 = [Text.UTF8Encoding]::new($false)
 
@@ -141,18 +147,20 @@ function Set-ProfileConfig(
 
 function Get-InstalledSkillSources {
     $sources = @{}
-    if (-not (Test-Path -LiteralPath $defaultSkillsRoot -PathType Container)) {
-        return $sources
-    }
-    foreach ($skillFile in Get-ChildItem `
-        -LiteralPath $defaultSkillsRoot `
-        -Filter 'SKILL.md' `
-        -File `
-        -Recurse
-    ) {
-        $name = $skillFile.Directory.Name
-        if (-not $sources.ContainsKey($name)) {
-            $sources[$name] = $skillFile.Directory.FullName
+    foreach ($skillsRoot in $installedSkillRoots) {
+        if (-not (Test-Path -LiteralPath $skillsRoot -PathType Container)) {
+            continue
+        }
+        foreach ($skillFile in Get-ChildItem `
+            -LiteralPath $skillsRoot `
+            -Filter 'SKILL.md' `
+            -File `
+            -Recurse
+        ) {
+            $name = $skillFile.Directory.Name
+            if (-not $sources.ContainsKey($name)) {
+                $sources[$name] = $skillFile.Directory.FullName
+            }
         }
     }
     return $sources
@@ -301,6 +309,7 @@ function Set-LocalProfileEnvironment(
     [string]$ProfileName,
     [string]$Mode
 ) {
+    $modeConfig = Get-ModeConfig -Mode $Mode
     $mainEnvironment = Join-Path $hermesRoot '.env'
     $profileEnvironment = Join-Path $profilesRoot "$ProfileName\.env"
     $allowedKeys = @('LM_API_KEY', 'LM_BASE_URL')
@@ -315,9 +324,16 @@ function Set-LocalProfileEnvironment(
             }
         }
     }
+    $terminalCompression = $config.terminalCompression
+    if ($null -ne $terminalCompression) {
+        $enabledProfiles = @($terminalCompression.enabledProfiles)
+        if ($enabledProfiles -notcontains $ProfileName) {
+            $safeLines.Add('RTK_DISABLED=1') | Out-Null
+        }
+    }
     $scratchRoot = Join-Path $hermesRoot "profile-sandboxes\$ProfileName"
     New-Item -ItemType Directory -Path $scratchRoot -Force | Out-Null
-    $writeRoots = if ($Mode -eq 'controlled-operator') {
+    $writeRoots = if ($modeConfig.writeScope -eq 'managed-worktrees') {
         @(
             (Get-HermesWorktreeRoot),
             (Join-Path $profilesRoot "$ProfileName\skills")
@@ -333,6 +349,47 @@ function Set-LocalProfileEnvironment(
         'HERMES_WRITE_SAFE_ROOT=' + ($writeRoots -join [IO.Path]::PathSeparator)
     ) | Out-Null
     [IO.File]::WriteAllLines($profileEnvironment, $safeLines, $utf8)
+}
+
+function Set-TerminalCompressionPlugin([string]$ProfileName) {
+    if ($config.terminalCompression.provider -ne 'rtk') {
+        return
+    }
+    $source = Join-Path $hermesRoot 'plugins\rtk-rewrite'
+    if (-not (Test-Path -LiteralPath $source -PathType Container)) {
+        return
+    }
+    $profilePluginsRoot = Join-Path $profilesRoot "$ProfileName\plugins"
+    $destination = Join-Path $profilePluginsRoot 'rtk-rewrite'
+    New-Item -ItemType Directory -Path $profilePluginsRoot -Force | Out-Null
+    if (Test-Path -LiteralPath $destination -PathType Container) {
+        Remove-ManagedDirectory `
+            -Path $destination `
+            -AllowedRoot $profilePluginsRoot
+    }
+    New-Item -ItemType Directory -Path $destination | Out-Null
+    foreach ($item in Get-ChildItem -LiteralPath $source -Force) {
+        if ($item.Name -eq '__pycache__') {
+            continue
+        }
+        Copy-Item `
+            -LiteralPath $item.FullName `
+            -Destination $destination `
+            -Recurse
+    }
+    $pluginAction = if (
+        @($config.terminalCompression.enabledProfiles) -contains $ProfileName
+    ) {
+        'enable'
+    }
+    else {
+        'disable'
+    }
+    & hermes.exe --profile $ProfileName plugins `
+        $pluginAction 'rtk-rewrite' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not $pluginAction RTK for $ProfileName."
+    }
 }
 
 function Set-DefaultBrainSafety {
@@ -643,6 +700,8 @@ foreach ($runtimeProfile in $runtimeProfiles) {
     Set-LocalProfileEnvironment `
         -ProfileName $profileName `
         -Mode $profileMode
+    Set-TerminalCompressionPlugin -ProfileName $profileName
 }
 
 & (Join-Path $PSScriptRoot 'update-hermes-brain-status.ps1')
+& (Join-Path $PSScriptRoot 'measure-hermes-prompt-budget.ps1') | Out-Null

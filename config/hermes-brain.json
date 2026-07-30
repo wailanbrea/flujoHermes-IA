@@ -25,9 +25,29 @@
     "localModel": "google/gemma-4-12b-qat",
     "manualOnlyModels": ["qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"]
   },
+  "terminalCompression": {
+    "provider": "rtk",
+    "integration": "official-hermes-plugin",
+    "rollout": "controlled-auto",
+    "enabledProfiles": ["hermesbrain", "android", "laravel", "frontend", "mcp"],
+    "disabledByDefault": true,
+    "failOpen": true
+  },
   "profileModes": {
     "controlled-operator": {
       "toolsets": ["browser", "clarify", "code_execution", "context_engine", "delegation", "file", "image_gen", "kanban", "memory", "session_search", "skills", "terminal", "todo", "vision", "web"],
+      "maxTurns": 120,
+      "maxTokens": 4096,
+      "writeScope": "managed-worktrees"
+    },
+    "android-operator": {
+      "toolsets": ["clarify", "code_execution", "context_engine", "file", "kanban", "memory", "skills", "terminal", "todo", "vision"],
+      "maxTurns": 120,
+      "maxTokens": 4096,
+      "writeScope": "managed-worktrees"
+    },
+    "backend-operator": {
+      "toolsets": ["clarify", "code_execution", "context_engine", "file", "kanban", "memory", "skills", "terminal", "todo"],
       "maxTurns": 120,
       "maxTokens": 4096,
       "writeScope": "managed-worktrees"
@@ -72,10 +92,10 @@
   "profiles": [
     { "id": "hermes-brain", "runtimeId": "hermesbrain", "role": "local coordinator that selects minimum profiles and skills with evidence and no external inference", "mode": "controlled-operator", "skillSet": "brain" },
     { "id": "tech-lead", "runtimeId": "techlead", "role": "pre-build specification and Kanban orchestrator that never implements", "mode": "orchestrator", "skillSet": "orchestrator" },
-    { "id": "android-implementer", "runtimeId": "android", "role": "Kotlin Android and Jetpack Compose implementation specialist", "mode": "controlled-operator", "skillSet": "android" },
-    { "id": "laravel-implementer", "runtimeId": "laravel", "role": "PHP Laravel API and MySQL implementation specialist", "mode": "controlled-operator", "skillSet": "laravel" },
+    { "id": "android-implementer", "runtimeId": "android", "role": "Kotlin Android and Jetpack Compose implementation specialist", "mode": "android-operator", "skillSet": "android" },
+    { "id": "laravel-implementer", "runtimeId": "laravel", "role": "PHP Laravel API and MySQL implementation specialist", "mode": "backend-operator", "skillSet": "laravel" },
     { "id": "frontend-implementer", "runtimeId": "frontend", "role": "TypeScript React web implementation specialist", "mode": "controlled-operator", "skillSet": "frontend" },
-    { "id": "mcp-implementer", "runtimeId": "mcp", "role": "progressive-disclosure MCP integration specialist with narrow schemas and contract tests", "mode": "controlled-operator", "skillSet": "mcp" },
+    { "id": "mcp-implementer", "runtimeId": "mcp", "role": "progressive-disclosure MCP integration specialist with narrow schemas and contract tests", "mode": "backend-operator", "skillSet": "mcp" },
     { "id": "browser-validator", "runtimeId": "browseroperator", "role": "Authorized local browser and end-to-end validation specialist", "mode": "validator", "skillSet": "browser-validation" },
     { "id": "research-expert", "runtimeId": "researchexpert", "role": "Read-only technical researcher for current primary-source evidence", "mode": "researcher", "skillSet": "research" },
     { "id": "architecture-expert", "runtimeId": "architectureexpert", "role": "Read-only architecture, boundary and diagram reviewer", "mode": "read-only", "skillSet": "architecture-review" },
@@ -107,6 +127,7 @@
     ],
     "project": [
       "bsolutions-api-review",
+      "bsolutions-adversarial-ux-review",
       "bsolutions-debugging",
       "bsolutions-kotlin-android",
       "bsolutions-laravel",
@@ -120,12 +141,12 @@
     ],
     "roleSets": {
       "brain": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-learning-engine", "hermes-evidence-gate", "hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-laravel", "bsolutions-mcp-integration", "bsolutions-mysql", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "hermes-agent-skill-authoring", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "orchestrator": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-memory-retrieval", "graphify", "bsolutions-project-handoff", "plan", "portfolio-agent-orchestration", "project-context-onboarding"],
+      "orchestrator": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-memory-retrieval", "graphify", "bsolutions-project-handoff", "one-three-one-rule", "plan", "portfolio-agent-orchestration", "project-context-onboarding"],
       "android": ["hermes-memory-retrieval", "graphify", "adb-emulator-debugging", "android-backend-feature-integration", "android-room-management", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
       "laravel": ["hermes-memory-retrieval", "graphify", "backend-dev-laravel", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
       "frontend": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "mcp": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-mcp-integration", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "browser-validation": ["graphify", "authenticated-browser-operations", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-quality-gate", "dogfood"],
+      "mcp": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-mcp-integration", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "fastmcp", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "browser-validation": ["graphify", "authenticated-browser-operations", "bsolutions-adversarial-ux-review", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-quality-gate", "dogfood"],
       "research": ["hermes-memory-retrieval", "graphify", "tech-research-agent"],
       "architecture-review": ["hermes-memory-retrieval", "graphify", "architecture-diagram", "bsolutions-api-review", "bsolutions-quality-gate", "plan"],
       "security-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "bsolutions-security-review"],

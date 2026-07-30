@@ -115,7 +115,14 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
 
     const statusResponse = await fetch(`http://127.0.0.1:${port}/api/status`);
     assert.equal(statusResponse.status, 200);
-    assert.doesNotMatch(await statusResponse.text(), /must never reach TRAMA|feedback/i);
+    const statusText = await statusResponse.text();
+    const status = JSON.parse(statusText);
+    assert.equal(status.promptBudget.estimation, "bytes-divided-by-four");
+    assert.ok(Array.isArray(status.promptBudget.profiles));
+    assert.doesNotMatch(
+      statusText,
+      /must never reach TRAMA|feedback|skills_breakdown|toolsets_breakdown/i,
+    );
   } finally {
     await rm(taskDirectory, { recursive: true, force: true });
     server.kill("SIGTERM");

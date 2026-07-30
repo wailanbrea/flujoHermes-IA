@@ -322,6 +322,32 @@ export interface BrainSummary {
   moa: { state: HealthState; active?: boolean; optional?: boolean };
 }
 
+export interface PromptBudgetProfile {
+  profile: string;
+  mode: string;
+  state: "healthy" | "unavailable";
+  model: string | null;
+  tools: number;
+  systemPromptBytes: number;
+  skillsIndexBytes: number;
+  toolSchemaBytes: number;
+  totalFixedBytes: number;
+  estimatedFixedTokens: number;
+}
+
+export interface PromptBudgetSummary {
+  state: HealthState;
+  generatedAt: string | null;
+  estimation: "bytes-divided-by-four";
+  summary: {
+    configuredProfiles: number;
+    availableProfiles: number;
+    minimumEstimatedTokens: number;
+    maximumEstimatedTokens: number;
+  };
+  profiles: PromptBudgetProfile[];
+}
+
 export interface TelemetrySnapshot {
   generatedAt: string;
   sequence: number;
@@ -331,6 +357,7 @@ export interface TelemetrySnapshot {
   events: TelemetryEvent[];
   graph: KnowledgeGraphSummary;
   brain: BrainSummary;
+  promptBudget: PromptBudgetSummary;
   delegation: HermesDelegationSummary;
   workflow: {
     nodes: WorkflowNode[];

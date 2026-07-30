@@ -17,6 +17,14 @@ description: Diseñar, implementar y revisar servidores, clientes y herramientas
 No exponer catálogos completos al modelo. Medir el costo de contexto de los
 esquemas y mantener superficies pequeñas por rol.
 
+## FastMCP condicional
+
+Usar la skill `fastmcp` sólo cuando el catálogo y Graphify confirmen que la raíz
+activa contiene un servidor MCP Python basado en FastMCP, o cuando el usuario
+autorice explícitamente crear uno. Verificar primero si el comando y la
+dependencia ya existen. No instalar paquetes, registrar clientes ni desplegar
+endpoints como efecto implícito de cargar esta skill.
+
 ## Implementación segura
 
 1. Definir nombres estables, campos requeridos, límites explícitos y rechazo de

@@ -18,7 +18,7 @@ class BrainConfigTests(unittest.TestCase):
     def test_repository_profile_fleet_is_valid(self) -> None:
         result = validate_config(Path(__file__).resolve().parents[1])
         self.assertEqual(result["profiles"], 18)
-        self.assertEqual(result["modes"], 7)
+        self.assertEqual(result["modes"], 9)
         self.assertEqual(result["skillSets"], 18)
 
     def test_orchestrator_rejects_implementation_tools(self) -> None:

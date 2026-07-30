@@ -22,6 +22,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
     "Resultado validado",
     "Learning Engine",
     "Memoria · Skill · Benchmark",
+    "Presupuesto de contexto",
   ]) assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(page, /viewBox="0 0 1000 780"/);
   assert.match(page, /EventSource/);
@@ -49,6 +50,8 @@ test("keeps telemetry loopback-only, cached, and read-only", async () => {
   assert.match(server, /brainStatusSchema/);
   assert.match(server, /readBrainStatus/);
   assert.match(server, /buildBrainWorkflow/);
+  assert.match(server, /promptBudgetSchema/);
+  assert.match(server, /readPromptBudget/);
   assert.match(server, /const INTERVAL_MS = 15000/);
   assert.match(server, /watch\(/);
   assert.match(server, /:heartbeat/);
@@ -100,11 +103,12 @@ test("uses a director sandbox and an idempotent evidence gate", async () => {
   assert.match(worker, /refuses code generation and edit tasks/);
 });
 
-test("versions governance, Brain config, and the six core skills", async () => {
-  const [policy, sync, brainSync, brainConfig] = await Promise.all([
+test("versions governance, Brain config, and the managed skills", async () => {
+  const [policy, sync, brainSync, promptBudget, brainConfig] = await Promise.all([
     readFile(new URL("../../config/agent-governance.md", import.meta.url), "utf8"),
     readFile(new URL("../../scripts/windows/sync-agent-governance.ps1", import.meta.url), "utf8"),
     readFile(new URL("../../scripts/windows/sync-hermes-brain.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/measure-hermes-prompt-budget.ps1", import.meta.url), "utf8"),
     readFile(new URL("../../config/hermes-brain.json", import.meta.url), "utf8"),
   ]);
   assert.match(policy, /Codex, Claude, Antigravity y OpenCode/);
@@ -121,6 +125,7 @@ test("versions governance, Brain config, and the six core skills", async () => {
   assert.equal(parsed.autonomy.localAiCanWrite, true);
   assert.equal(parsed.autonomy.localAiProjectWrites, "isolated-worktree-only");
   assert.equal(parsed.profiles.length, 18);
+  assert.equal(Object.keys(parsed.profileModes).length, 9);
   assert.equal(new Set(parsed.profiles.map((profile) => profile.runtimeId)).size, 18);
   assert.deepEqual(
     parsed.profileModes.orchestrator.toolsets.filter((toolset) =>
@@ -130,8 +135,24 @@ test("versions governance, Brain config, and the six core skills", async () => {
   );
   assert.equal(
     parsed.profiles.find((profile) => profile.runtimeId === "android")?.mode,
-    "controlled-operator",
+    "android-operator",
   );
+  assert.equal(
+    parsed.profiles.find((profile) => profile.runtimeId === "laravel")?.mode,
+    "backend-operator",
+  );
+  assert.equal(
+    parsed.profiles.find((profile) => profile.runtimeId === "mcp")?.mode,
+    "backend-operator",
+  );
+  assert.deepEqual(parsed.terminalCompression, {
+    provider: "rtk",
+    integration: "official-hermes-plugin",
+    rollout: "controlled-auto",
+    enabledProfiles: ["hermesbrain", "android", "laravel", "frontend", "mcp"],
+    disabledByDefault: true,
+    failOpen: true,
+  });
   assert.equal(
     parsed.profiles.find((profile) => profile.runtimeId === "researchexpert")?.mode,
     "researcher",
@@ -139,6 +160,19 @@ test("versions governance, Brain config, and the six core skills", async () => {
   assert.ok(parsed.skills.roleSets.android.includes("adb-emulator-debugging"));
   assert.ok(parsed.skills.roleSets.laravel.includes("backend-dev-laravel"));
   assert.equal(parsed.skills.roleSets.mcp.includes("mcp-appcontrol"), false);
+  assert.ok(parsed.skills.roleSets.mcp.includes("fastmcp"));
+  assert.ok(parsed.skills.roleSets.orchestrator.includes("one-three-one-rule"));
+  assert.ok(
+    parsed.skills.roleSets["browser-validation"].includes(
+      "bsolutions-adversarial-ux-review",
+    ),
+  );
+  for (const mode of ["android-operator", "backend-operator"]) {
+    for (const toolset of ["browser", "delegation", "image_gen", "session_search", "web"]) {
+      assert.equal(parsed.profileModes[mode].toolsets.includes(toolset), false);
+    }
+  }
+  assert.equal(parsed.profileModes["backend-operator"].toolsets.includes("vision"), false);
   assert.equal(parsed.skills.selectionPolicy.metadataFirst, true);
   assert.equal(parsed.skills.selectionPolicy.maxBodiesPerTask, 5);
   assert.equal(parsed.skills.selectionPolicy.projectSpecificRequiresCatalogMatch, true);
@@ -157,6 +191,20 @@ test("versions governance, Brain config, and the six core skills", async () => {
     parsed.modelRouter.routes.find((route) => route.capability === "programming")?.executor,
     "local-controlled",
   );
+  assert.match(promptBudget, /prompt-size --json/);
+  assert.match(promptBudget, /bytes-divided-by-four/);
+  assert.doesNotMatch(promptBudget, /skills_breakdown|toolsets_breakdown/);
+  assert.doesNotMatch(promptBudget, /File\]::Move\([^,\r\n]+,[^,\r\n]+,\s*\$true\)/);
+  assert.match(promptBudget, /CreateNoWindow = \$true/);
+  assert.match(promptBudget, /RedirectStandardOutput = \$true/);
+  assert.match(promptBudget, /WaitForExit\(20000\)/);
+  assert.match(brainSync, /measure-hermes-prompt-budget\.ps1/);
+  assert.match(brainSync, /RTK_DISABLED=1/);
+  assert.match(brainSync, /Set-TerminalCompressionPlugin/);
+  assert.match(brainSync, /plugins\s+`\s*\r?\n\s*\$pluginAction 'rtk-rewrite'/);
+  assert.match(brainSync, /__pycache__/);
+  assert.match(brainSync, /optional-skills/);
+  assert.match(brainSync, /modeConfig\.writeScope -eq 'managed-worktrees'/);
   const managedSkills = [
     ...parsed.skills.core.filter((skill) => skill !== "graphify"),
     ...parsed.skills.project,
@@ -167,16 +215,20 @@ test("versions governance, Brain config, and the six core skills", async () => {
     assert.doesNotMatch(body, /TODO/);
   }
 
-  const [brain, factory, mcp, quality, security] = await Promise.all([
+  const [brain, factory, mcp, quality, security, adversarialUx] = await Promise.all([
     readFile(new URL("../../skills/hermes-brain/SKILL.md", import.meta.url), "utf8"),
     readFile(new URL("../../skills/hermes-agent-factory/SKILL.md", import.meta.url), "utf8"),
     readFile(new URL("../../skills/bsolutions-mcp-integration/SKILL.md", import.meta.url), "utf8"),
     readFile(new URL("../../skills/bsolutions-quality-gate/SKILL.md", import.meta.url), "utf8"),
     readFile(new URL("../../skills/bsolutions-security-review/SKILL.md", import.meta.url), "utf8"),
+    readFile(new URL("../../skills/bsolutions-adversarial-ux-review/SKILL.md", import.meta.url), "utf8"),
   ]);
   assert.match(brain, /como máximo cinco skills/);
   assert.match(factory, /catálogo confirme esa\s+raíz activa/);
   assert.match(mcp, /Descubrimiento de tres niveles/);
+  assert.match(mcp, /FastMCP condicional/);
   assert.match(quality, /SAFE[\s\S]*CAREFUL[\s\S]*RISKY/);
   assert.match(security, /blast radius/i);
+  assert.match(adversarialUx, /read-only/);
+  assert.match(adversarialUx, /No crear tickets/);
 });

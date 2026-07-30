@@ -225,6 +225,13 @@ function Home() {
     () => Object.values(snapshot?.brain.learning.counts ?? {}).reduce((sum, value) => sum + value, 0),
     [snapshot],
   );
+  const largestPromptBudgets = useMemo(
+    () => [...(snapshot?.promptBudget.profiles ?? [])]
+      .filter((profile) => profile.state === "healthy")
+      .sort((left, right) => right.estimatedFixedTokens - left.estimatedFixedTokens)
+      .slice(0, 5),
+    [snapshot],
+  );
 
   return (
     <main>
@@ -293,6 +300,12 @@ function Home() {
           <header><span>06</span><h3>Sandbox y evidencia</h3><i className={stateClass(snapshot?.brain.sandbox.state ?? "unknown")} /></header>
           <strong>{activeSandboxes.length} tareas en curso</strong>
           <ul>{Object.entries(snapshot?.brain.sandbox.counts ?? {}).filter(([, count]) => count > 0).map(([state, count]) => <li key={state}><b>{state}</b><span>{count}</span></li>)}</ul>
+        </article>
+        <article className="control-card">
+          <header><span>07</span><h3>Presupuesto de contexto</h3><i className={stateClass(snapshot?.promptBudget.state ?? "unknown")} /></header>
+          <strong>{snapshot?.promptBudget.summary.maximumEstimatedTokens.toLocaleString("es-DO") ?? "—"} tokens fijos máximos</strong>
+          <p>Estimación offline por perfil: bytes ÷ 4. No captura prompts, código ni comandos.</p>
+          <ul>{largestPromptBudgets.map((profile) => <li key={profile.profile}><b>{profile.profile}</b><span>{profile.estimatedFixedTokens.toLocaleString("es-DO")} · {profile.tools} tools</span></li>)}</ul>
         </article>
       </section>
 
