@@ -37,6 +37,25 @@ No usar `--yolo` ni `--oneshot`. Para investigación, exigir fuentes actuales.
 Para crear una skill, validar su estructura antes de adoptarla y requerir
 aprobación separada antes de publicarla o instalarla externamente.
 
+## Perfiles especializados
+
+Usar el perfil más estrecho que cubra la tarea:
+
+```powershell
+techlead chat          # descomponer y enrutar en Kanban
+android chat           # Kotlin, Compose y Gradle
+laravel chat           # PHP, Laravel, APIs y MySQL
+frontend chat          # TypeScript, React y pruebas web
+mcpagent chat          # servidores, clientes y herramientas MCP
+researchexpert chat    # investigación técnica read-only
+browseroperator chat   # validación local/test mediante navegador
+quality chat           # revisión independiente
+```
+
+Los aliases existentes se conservan. `techlead` nunca implementa; los perfiles
+de implementación trabajan sólo en worktrees gestionados; los revisores no
+reciben terminal y su escritura de archivos está confinada a scratch.
+
 ## Flujo de una modificación
 
 ```powershell

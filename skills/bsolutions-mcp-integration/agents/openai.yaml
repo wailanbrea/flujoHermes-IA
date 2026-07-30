@@ -1,0 +1,4 @@
+interface:
+  display_name: "MCP Integration Engineering"
+  short_description: "Build and verify secure MCP integrations"
+  default_prompt: "Use $bsolutions-mcp-integration to design or implement this MCP integration with secure boundaries and tests."

@@ -1,9 +1,11 @@
 <#
 .SYNOPSIS
-Creates advisory Hermes profiles and synchronizes versioned Brain skills.
+Creates role-scoped Hermes profiles and synchronizes their required skills.
 #>
 [CmdletBinding()]
-param()
+param(
+    [switch]$ValidateOnly
+)
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'hermes-task-common.ps1')
@@ -11,24 +13,65 @@ $ErrorActionPreference = 'Stop'
 $root = Get-OrchestratorRoot
 $config = Read-JsonFile -Path (Join-Path $root 'config\hermes-brain.json')
 $profilesRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hermes\profiles'
+$hermesRoot = Split-Path -Parent $profilesRoot
+$defaultSkillsRoot = Join-Path $hermesRoot 'skills'
 $existing = (Invoke-NativeCommand -Executable 'hermes.exe' -Arguments @('profile', 'list')).Output
 $utf8 = [Text.UTF8Encoding]::new($false)
 
+function Get-ModeConfig([string]$Mode) {
+    $property = $config.profileModes.PSObject.Properties[$Mode]
+    if (-not $property) {
+        throw "Unknown Hermes profile mode: $Mode"
+    }
+    return $property.Value
+}
+
+function Get-RoleSkills([string]$SkillSet) {
+    $property = $config.skills.roleSets.PSObject.Properties[$SkillSet]
+    if (-not $property) {
+        throw "Unknown Hermes skill set: $SkillSet"
+    }
+    return @($property.Value | ForEach-Object { [string]$_ })
+}
+
+function Remove-ManagedDirectory(
+    [string]$Path,
+    [string]$AllowedRoot
+) {
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $fullRoot = [IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\', '/')
+    if (-not $fullPath.StartsWith(
+        $fullRoot + [IO.Path]::DirectorySeparatorChar,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to remove a directory outside its managed root: $fullPath"
+    }
+    if (Test-Path -LiteralPath $fullPath -PathType Container) {
+        Remove-Item -LiteralPath $fullPath -Recurse -Force
+    }
+}
+
 function Set-ProfileConfig(
     [string]$ProfileName,
-    [bool]$Interactive
+    [string]$Mode
 ) {
     $path = Join-Path $profilesRoot "$ProfileName\config.yaml"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Profile config is missing for $ProfileName."
     }
     $text = [IO.File]::ReadAllText($path)
-    $text = [regex]::Replace(
-        $text,
-        '(?m)^(\s*default:\s*).+$',
-        '${1}google/gemma-4-12b-qat',
-        1
-    )
+    $text = [regex]::new(
+        '^(\s{2}default:\s*).+$',
+        [Text.RegularExpressions.RegexOptions]::Multiline
+    ).Replace($text, '${1}google/gemma-4-12b-qat', 1)
+    $text = [regex]::new(
+        '^(\s{2}provider:\s*).+$',
+        [Text.RegularExpressions.RegexOptions]::Multiline
+    ).Replace($text, '${1}lmstudio', 1)
+    $text = [regex]::new(
+        '^(\s{2}base_url:\s*).+$',
+        [Text.RegularExpressions.RegexOptions]::Multiline
+    ).Replace($text, '${1}http://127.0.0.1:1234/v1', 1)
     $text = [regex]::Replace(
         $text,
         '(?m)^fallback_model:\r?\n(?:^[ \t][^\r\n]*(?:\r?\n|$))*',
@@ -38,28 +81,8 @@ function Set-ProfileConfig(
         $text = $text.TrimEnd() +
             "`nfallback_model:`n  provider: lmstudio`n  model: google/gemma-4-12b-qat`n  base_url: http://127.0.0.1:1234/v1`n"
     }
-    $toolsets = if ($Interactive) {
-        @(
-            'browser',
-            'clarify',
-            'code_execution',
-            'context_engine',
-            'delegation',
-            'file',
-            'image_gen',
-            'kanban',
-            'memory',
-            'session_search',
-            'skills',
-            'terminal',
-            'todo',
-            'vision',
-            'web'
-        )
-    }
-    else {
-        @('clarify', 'kanban', 'memory', 'skills', 'todo')
-    }
+    $modeConfig = Get-ModeConfig -Mode $Mode
+    $toolsets = @($modeConfig.toolsets | ForEach-Object { [string]$_ })
     $toolsetYaml = "platform_toolsets:`n  cli:`n" +
         (($toolsets | ForEach-Object { "    - $_" }) -join "`n") +
         "`n"
@@ -89,7 +112,7 @@ function Set-ProfileConfig(
         $text = $text.TrimEnd() + "`nkanban:`n  auto_decompose: false`n"
     }
     foreach ($setting in @(
-        @{ name = 'max_turns'; value = '120' },
+        @{ name = 'max_turns'; value = [string]$modeConfig.maxTurns },
         @{ name = 'verify_on_stop'; value = 'true' },
         @{ name = 'max_verify_nudges'; value = '2' }
     )) {
@@ -104,38 +127,150 @@ function Set-ProfileConfig(
     [IO.File]::WriteAllText($path, $text.Replace("`r`n", "`n"), $utf8)
 }
 
-function Sync-ProfileSkills([string]$ProfileName) {
+function Get-InstalledSkillSources {
+    $sources = @{}
+    if (-not (Test-Path -LiteralPath $defaultSkillsRoot -PathType Container)) {
+        return $sources
+    }
+    foreach ($skillFile in Get-ChildItem `
+        -LiteralPath $defaultSkillsRoot `
+        -Filter 'SKILL.md' `
+        -File `
+        -Recurse
+    ) {
+        $name = $skillFile.Directory.Name
+        if (-not $sources.ContainsKey($name)) {
+            $sources[$name] = $skillFile.Directory.FullName
+        }
+    }
+    return $sources
+}
+
+$installedSkillSources = Get-InstalledSkillSources
+
+function Resolve-SkillSource([string]$SkillName) {
+    $versionedSource = Join-Path $root "skills\$SkillName"
+    if (Test-Path -LiteralPath $versionedSource -PathType Container) {
+        return $versionedSource
+    }
+    if ($SkillName -eq 'graphify') {
+        $graphifySource = Join-Path $env:USERPROFILE '.codex\skills\graphify'
+        if (Test-Path -LiteralPath $graphifySource -PathType Container) {
+            return $graphifySource
+        }
+    }
+    if ($installedSkillSources.ContainsKey($SkillName)) {
+        return [string]$installedSkillSources[$SkillName]
+    }
+    throw "Required Hermes skill is unavailable: $SkillName"
+}
+
+function Test-SkillExistsInRoot(
+    [string]$SkillsRoot,
+    [string]$SkillName
+) {
+    if (-not (Test-Path -LiteralPath $SkillsRoot -PathType Container)) {
+        return $false
+    }
+    foreach ($skillFile in Get-ChildItem `
+        -LiteralPath $SkillsRoot `
+        -Filter 'SKILL.md' `
+        -File `
+        -Recurse
+    ) {
+        if ($skillFile.Directory.Name -eq $SkillName) {
+            return $true
+        }
+    }
+    return $false
+}
+
+if ($ValidateOnly) {
+    $resolvedSkills = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($profile in @($config.profiles)) {
+        Get-ModeConfig -Mode ([string]$profile.mode) | Out-Null
+        foreach ($skillName in Get-RoleSkills -SkillSet ([string]$profile.skillSet)) {
+            Resolve-SkillSource -SkillName $skillName | Out-Null
+            $resolvedSkills.Add($skillName) | Out-Null
+        }
+    }
+    [ordered]@{
+        valid = $true
+        profiles = @($config.profiles).Count
+        modes = @($config.profileModes.PSObject.Properties).Count
+        skillSets = @($config.skills.roleSets.PSObject.Properties).Count
+        resolvedSkills = $resolvedSkills.Count
+    } | ConvertTo-Json -Compress
+    return
+}
+
+function Sync-ProfileSkills(
+    [string]$ProfileName,
+    [string]$SkillSet,
+    [bool]$PruneBundled
+) {
     $destinationRoot = if ($ProfileName -eq 'default') {
-        Join-Path (Split-Path -Parent $profilesRoot) 'skills'
+        $defaultSkillsRoot
     }
     else {
         Join-Path $profilesRoot "$ProfileName\skills"
     }
     New-Item -ItemType Directory -Path $destinationRoot -Force | Out-Null
-    foreach ($skillName in @($config.skills.core + $config.skills.project)) {
-        $source = Join-Path $root "skills\$skillName"
-        if (-not (Test-Path -LiteralPath $source -PathType Container)) {
-            if ($skillName -eq 'graphify') { continue }
-            throw "Versioned skill is missing: $skillName"
+
+    if ($PruneBundled) {
+        & hermes.exe --profile $ProfileName skills opt-out --remove --yes |
+            Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not prune unmodified bundled skills for $ProfileName."
+        }
+    }
+
+    $selectedSkills = Get-RoleSkills -SkillSet $SkillSet
+    $managedSkills = @(
+        $config.skills.core
+        $config.skills.project
+        $config.skills.roleSets.PSObject.Properties |
+            ForEach-Object { @($_.Value) }
+    ) | ForEach-Object { [string]$_ } | Sort-Object -Unique
+    foreach ($skillName in $managedSkills) {
+        if ($selectedSkills -contains $skillName) { continue }
+        Remove-ManagedDirectory `
+            -Path (Join-Path $destinationRoot $skillName) `
+            -AllowedRoot $destinationRoot
+    }
+
+    foreach ($skillName in $selectedSkills) {
+        $source = Resolve-SkillSource -SkillName $skillName
+        $isVersioned = $source.StartsWith(
+            [IO.Path]::GetFullPath((Join-Path $root 'skills')) +
+                [IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase
+        ) -or $skillName -eq 'graphify'
+        if (
+            -not $isVersioned -and
+            (Test-SkillExistsInRoot `
+                -SkillsRoot $destinationRoot `
+                -SkillName $skillName)
+        ) {
+            continue
         }
         $destination = Join-Path $destinationRoot $skillName
         if (Test-Path -LiteralPath $destination) {
-            Remove-Item -LiteralPath $destination -Recurse -Force
+            Remove-ManagedDirectory `
+                -Path $destination `
+                -AllowedRoot $destinationRoot
         }
         Copy-Item -LiteralPath $source -Destination $destination -Recurse
     }
-    $graphifySource = Join-Path $env:USERPROFILE '.codex\skills\graphify'
-    if (Test-Path -LiteralPath $graphifySource -PathType Container) {
-        $graphifyDestination = Join-Path $destinationRoot 'graphify'
-        if (Test-Path -LiteralPath $graphifyDestination) {
-            Remove-Item -LiteralPath $graphifyDestination -Recurse -Force
-        }
-        Copy-Item -LiteralPath $graphifySource -Destination $graphifyDestination -Recurse
-    }
 }
 
-function Set-LocalProfileEnvironment([string]$ProfileName) {
-    $mainEnvironment = Join-Path (Split-Path -Parent $profilesRoot) '.env'
+function Set-LocalProfileEnvironment(
+    [string]$ProfileName,
+    [string]$Mode
+) {
+    $mainEnvironment = Join-Path $hermesRoot '.env'
     $profileEnvironment = Join-Path $profilesRoot "$ProfileName\.env"
     $allowedKeys = @('LM_API_KEY', 'LM_BASE_URL')
     $safeLines = [Collections.Generic.List[string]]::new()
@@ -149,6 +284,23 @@ function Set-LocalProfileEnvironment([string]$ProfileName) {
             }
         }
     }
+    $scratchRoot = Join-Path $hermesRoot "profile-sandboxes\$ProfileName"
+    New-Item -ItemType Directory -Path $scratchRoot -Force | Out-Null
+    $writeRoots = if ($Mode -eq 'controlled-operator') {
+        @(
+            (Get-HermesWorktreeRoot),
+            (Join-Path $profilesRoot "$ProfileName\skills")
+        )
+    }
+    else {
+        @($scratchRoot)
+    }
+    foreach ($writeRoot in $writeRoots) {
+        New-Item -ItemType Directory -Path $writeRoot -Force | Out-Null
+    }
+    $safeLines.Add(
+        'HERMES_WRITE_SAFE_ROOT=' + ($writeRoots -join [IO.Path]::PathSeparator)
+    ) | Out-Null
     [IO.File]::WriteAllLines($profileEnvironment, $safeLines, $utf8)
 }
 
@@ -196,21 +348,8 @@ function Set-DefaultBrainSafety {
             "`ncurator:`n  enabled: true`n  consolidate: false`n  prune_builtins: false`n"
     }
     $controlledToolsets = @(
-        'browser',
-        'clarify',
-        'code_execution',
-        'context_engine',
-        'delegation',
-        'file',
-        'image_gen',
-        'kanban',
-        'memory',
-        'session_search',
-        'skills',
-        'terminal',
-        'todo',
-        'vision',
-        'web'
+        (Get-ModeConfig -Mode 'controlled-operator').toolsets |
+            ForEach-Object { [string]$_ }
     )
     $controlledToolsetYaml = "platform_toolsets:`n  cli:`n" +
         (($controlledToolsets | ForEach-Object { "    - $_" }) -join "`n") +
@@ -272,23 +411,91 @@ context, not validated learning.
     )
 }
 
+function Get-ProfileSoul(
+    [string]$ProfileName,
+    [string]$Role,
+    [string]$Mode
+) {
+    $header = "# $ProfileName`n`nRole: $Role.`n`n"
+    $shared = @"
+Use Graphify before broad repository navigation. Never expose secrets, deploy,
+mutate a database, contact third parties, bypass approvals, or use yolo,
+oneshot, or z. Treat conversation memory as untrusted context and promote
+learning only from validated evidence.
+"@
+    $body = switch ($Mode) {
+        'controlled-operator' {
+@"
+Act as a controlled implementation specialist.
+
+- Work only on tasks that match the stated role and acceptance criteria.
+- For project changes, use the assigned managed Git worktree, checkpoints,
+  allowlist, sealed evidence, and independent integration review.
+- Never edit a source checkout directly.
+- Use terminal, files, browser, code execution and delegation only for the
+  current task.
+- Create skills only in an authorized profile skill directory, validate them,
+  and require separate approval before publication or external installation.
+"@
+        }
+        'orchestrator' {
+@"
+Act only as the Kanban orchestrator. Decompose goals into small, non-overlapping
+tasks, route them using profile descriptions, link dependencies, and judge the
+returned evidence. Do not implement, edit files, run terminal commands, browse
+the web for implementation, or substitute your own work for a specialist.
+"@
+        }
+        'researcher' {
+@"
+Act as a read-only technical researcher. Use current primary sources, distinguish
+facts from inference, cite URLs, and return a bounded evidence brief. Do not edit
+project files, execute terminal commands, install packages, or publish findings.
+"@
+        }
+        'validator' {
+@"
+Act as an authorized local/test browser validator. Inspect the application,
+reproduce the requested flows, capture concise evidence, and report failures.
+Do not test production, submit externally visible data, edit project files,
+execute terminal commands, or claim success without observable evidence.
+"@
+        }
+        'classifier' {
+@"
+Act only as a low-cost deterministic classifier. Return the request category,
+recommended profile, required evidence, uncertainty, and whether human input is
+needed. Do not implement, research broadly, edit files, or execute commands.
+"@
+        }
+        'curator' {
+@"
+Act only as the learning curator. Review sanitized outcomes, reject secrets and
+private paths, require a passing benchmark, and stage promotion for explicit
+approval. Do not edit projects, execute commands, or promote from conversation
+alone.
+"@
+        }
+        default {
+@"
+Act as a read-only specialist. Inspect only the evidence needed for the stated
+role and return findings, risks, recommendations, suggested tests, uncertainty,
+and evidence used. File writes are confined to disposable scratch space; never
+edit a project, execute terminal commands, apply patches, or commit.
+"@
+        }
+    }
+    return ($header + $body.Trim() + "`n`n" + $shared.Trim() + "`n")
+}
+
 foreach ($profile in @($config.profiles)) {
     $name = [string]$profile.runtimeId
-    $interactive = [string]$profile.mode -eq 'controlled-operator'
-    $description = if ($interactive) {
-        (
-            "$($profile.role). Answers, researches, authors validated skills, " +
-            'and performs project work only in evidence-gated sandboxes.'
-        )
-    }
-    else {
-        (
-            "$($profile.role). Advisory only: returns findings, risks, " +
-            'recommendations, suggested tests, uncertainty, and evidence; never edits.'
-        )
-    }
+    $mode = [string]$profile.mode
+    $skillSet = [string]$profile.skillSet
+    $description = "$($profile.role). Runtime mode: $mode; skill set: $skillSet."
     if ($existing -notmatch ('(?i)(^|\s)' + [regex]::Escape($name) + '(\s|$)')) {
         & hermes.exe profile create $name `
+            --clone `
             --clone-from localai `
             --description $description | Out-Null
         if ($LASTEXITCODE -ne 0) {
@@ -301,56 +508,26 @@ foreach ($profile in @($config.profiles)) {
             throw "Could not describe Hermes profile $name."
         }
     }
-    Set-ProfileConfig -ProfileName $name -Interactive $interactive
-    Sync-ProfileSkills -ProfileName $name
-    $copiedEnvironment = Join-Path $profilesRoot "$name\.env"
-    if (Test-Path -LiteralPath $copiedEnvironment -PathType Leaf) {
-        Remove-Item -LiteralPath $copiedEnvironment -Force
-    }
+    Set-ProfileConfig -ProfileName $name -Mode $mode
+    Sync-ProfileSkills `
+        -ProfileName $name `
+        -SkillSet $skillSet `
+        -PruneBundled ($name -ne 'hermesbrain')
     $soulPath = Join-Path $profilesRoot "$name\SOUL.md"
-    $soul = if ($interactive) {
-        @"
-# $name
-
-Act as the controlled local operator for the user.
-
-- Answer ordinary questions directly and state uncertainty.
-- For current facts, research with web or browser tools and cite the evidence.
-- For repository questions, resolve the project and query Graphify before broad
-  file searches.
-- For project changes, create or use an isolated Git worktree, enable
-  checkpoints, respect the allowlist, seal evidence, and require approval before
-  integration. Never edit the source checkout directly.
-- Create or update skills only in an authorized skills directory. Use lowercase
-  hyphenated names, concise SKILL.md instructions, valid metadata, and run the
-  skill validator. Never publish or install a skill externally without explicit
-  approval.
-- Use terminal, files, code execution, browser, and delegation only for the
-  user's stated task. Never bypass dangerous-command approvals or use yolo.
-- Never expose secrets, deploy, mutate a database, or contact third parties
-  without separate explicit authorization.
-- Treat conversation memory as context, not validated learning. Promote learning
-  only from completed tasks with reproducible evidence and an approved benchmark.
-"@
-    }
-    else {
-        @"
-# $name
-
-Act only as a read-only specialist. Never edit files, execute terminal commands,
-apply patches, commit, deploy, mutate databases, or request secrets.
-
-Return one bounded brief with: findings, risks, recommendations, suggested tests,
-uncertainty, and evidence used. If evidence is insufficient, say so.
-"@
-    }
+    $soul = Get-ProfileSoul `
+        -ProfileName $name `
+        -Role ([string]$profile.role) `
+        -Mode $mode
     [IO.File]::WriteAllText($soulPath, $soul.Replace("`r`n", "`n"), $utf8)
 }
 
 # The local operator must use the installed QAT model and must never fall back
 # automatically to the manually selected Qwen model.
-Set-ProfileConfig -ProfileName 'localai' -Interactive $true
-Sync-ProfileSkills -ProfileName 'localai'
+Set-ProfileConfig -ProfileName 'localai' -Mode 'controlled-operator'
+Sync-ProfileSkills `
+    -ProfileName 'localai' `
+    -SkillSet 'brain' `
+    -PruneBundled $false
 $brainSoulPath = Join-Path $profilesRoot 'hermesbrain\SOUL.md'
 $localSoulPath = Join-Path $profilesRoot 'localai\SOUL.md'
 if (Test-Path -LiteralPath $brainSoulPath -PathType Leaf) {
@@ -360,7 +537,10 @@ if (Test-Path -LiteralPath $brainSoulPath -PathType Leaf) {
     )
     [IO.File]::WriteAllText($localSoulPath, $localSoul, $utf8)
 }
-Sync-ProfileSkills -ProfileName 'default'
+Sync-ProfileSkills `
+    -ProfileName 'default' `
+    -SkillSet 'brain' `
+    -PruneBundled $false
 Set-DefaultBrainSafety
 
 & hermes.exe memory off | Out-Null
@@ -384,10 +564,18 @@ foreach ($setting in @(
     }
 }
 
-$runtimeProfiles = @('localai') + @(
-    $config.profiles | ForEach-Object { [string]$_.runtimeId }
+$runtimeProfiles = @(
+    [pscustomobject]@{
+        runtimeId = 'localai'
+        mode = 'controlled-operator'
+    }
+) + @(
+    $config.profiles
 )
-foreach ($profileName in $runtimeProfiles) {
+foreach ($runtimeProfile in $runtimeProfiles) {
+    $profileName = [string]$runtimeProfile.runtimeId
+    $profileMode = [string]$runtimeProfile.mode
+    $modeConfig = Get-ModeConfig -Mode $profileMode
     & hermes.exe --profile $profileName memory off | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "Could not select built-in memory for $profileName."
@@ -397,25 +585,14 @@ foreach ($profileName in $runtimeProfiles) {
     if ($LASTEXITCODE -ne 0) {
         throw "Could not require memory approval for $profileName."
     }
-    $profileMaxTurns = if ($profileName -in @('localai', 'hermesbrain')) {
-        '120'
-    }
-    else {
-        '40'
-    }
     foreach ($setting in @(
-        @{ key = 'agent.max_turns'; value = $profileMaxTurns },
+        @{ key = 'agent.max_turns'; value = [string]$modeConfig.maxTurns },
         @{ key = 'agent.verify_on_stop'; value = 'true' },
         @{ key = 'agent.max_verify_nudges'; value = '2' },
         @{ key = 'agent.reasoning_effort'; value = 'none' },
         @{
             key = 'model.max_tokens'
-            value = if ($profileName -in @('localai', 'hermesbrain')) {
-                '4096'
-            }
-            else {
-                '2048'
-            }
+            value = [string]$modeConfig.maxTokens
         }
     )) {
         & hermes.exe --profile $profileName config set `
@@ -424,7 +601,9 @@ foreach ($profileName in $runtimeProfiles) {
             throw "Could not configure $profileName $($setting.key)."
         }
     }
-    Set-LocalProfileEnvironment -ProfileName $profileName
+    Set-LocalProfileEnvironment `
+        -ProfileName $profileName `
+        -Mode $profileMode
 }
 
 & (Join-Path $PSScriptRoot 'update-hermes-brain-status.ps1')

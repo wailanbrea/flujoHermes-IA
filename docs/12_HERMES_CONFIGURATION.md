@@ -19,6 +19,22 @@ El perfil `default` y `hermesbrain` comparten la política de operador controlad
 El worker delegado sigue reduciendo sus herramientas por fase y trabaja en un
 `HERMES_HOME` efímero.
 
+## Flota por roles
+
+- Orquestador: `techlead`; usa Kanban y delegación, pero no archivos, terminal,
+  navegador ni ejecución de código.
+- Implementadores: `android`, `laravel`, `frontend` y `mcp`; escriben sólo en
+  worktrees gestionados.
+- Investigación: `researchexpert`; usa web y navegador en modo read-only.
+- Validación UI: `browseroperator`; limitado a sistemas locales o de prueba.
+- Revisión: perfiles `*expert`, `quality` y `securitydevops`; sin terminal y con
+  cualquier escritura de archivos confinada a scratch.
+- Clasificación: `clasificador`; no implementa.
+
+Todos usan `google/gemma-4-12b-qat`. Las skills se seleccionan por rol; los
+perfiles especializados excluyen el catálogo bundled no utilizado para reducir
+contexto y mejorar el routing.
+
 ## Aprobaciones
 
 - Modo: `manual`

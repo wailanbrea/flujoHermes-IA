@@ -5,12 +5,59 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from hermes_brain.cli import validate_config
 from hermes_brain.core import (
     create_learning_record,
     persist_learning,
     promote_learning,
     sanitize_text,
 )
+
+
+class BrainConfigTests(unittest.TestCase):
+    def test_repository_profile_fleet_is_valid(self) -> None:
+        result = validate_config(Path(__file__).resolve().parents[1])
+        self.assertEqual(result["profiles"], 18)
+        self.assertEqual(result["modes"], 7)
+        self.assertEqual(result["skillSets"], 18)
+
+    def test_orchestrator_rejects_implementation_tools(self) -> None:
+        config = {
+            "schemaVersion": 1,
+            "principles": [],
+            "modelRouter": {},
+            "profileModes": {
+                "orchestrator": {
+                    "toolsets": ["kanban", "terminal"],
+                    "maxTurns": 10,
+                    "maxTokens": 100,
+                }
+            },
+            "profiles": [
+                {
+                    "id": "lead",
+                    "runtimeId": "lead",
+                    "role": "route work",
+                    "mode": "orchestrator",
+                    "skillSet": "lead",
+                }
+            ],
+            "skills": {"core": [], "project": [], "roleSets": {"lead": ["plan"]}},
+            "memory": {},
+            "learning": {},
+            "validators": [],
+            "autonomy": {},
+            "observability": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "config").mkdir()
+            (repo / "config" / "hermes-brain.json").write_text(
+                json.dumps(config),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "implementation tools"):
+                validate_config(repo)
 
 
 class LearningEngineTests(unittest.TestCase):

@@ -15,24 +15,78 @@
       { "capability": "sanitized-summary", "executor": "local-optional", "fallback": "director" },
       { "capability": "research", "executor": "local-controlled", "fallback": "director" },
       { "capability": "skill-authoring", "executor": "local-controlled", "fallback": "director" },
-      { "capability": "architecture", "executor": "cloud-expert", "fallback": "director" },
+      { "capability": "architecture", "executor": "local-advisory", "fallback": "cloud-director" },
       { "capability": "programming", "executor": "local-controlled", "fallback": "cloud-director" },
-      { "capability": "critical-security", "executor": "cloud-security-expert", "fallback": "static-rules" },
-      { "capability": "testing", "executor": "deterministic-scripts", "fallback": "director" },
+      { "capability": "critical-security", "executor": "local-advisory", "fallback": "cloud-security-expert" },
+      { "capability": "testing", "executor": "deterministic-scripts", "fallback": "local-advisory" },
       { "capability": "integration", "executor": "evidence-gate", "fallback": "blocked" }
     ],
     "localModel": "google/gemma-4-12b-qat",
     "manualOnlyModels": ["qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"]
   },
+  "profileModes": {
+    "controlled-operator": {
+      "toolsets": ["browser", "clarify", "code_execution", "context_engine", "delegation", "file", "image_gen", "kanban", "memory", "session_search", "skills", "terminal", "todo", "vision", "web"],
+      "maxTurns": 120,
+      "maxTokens": 4096,
+      "writeScope": "managed-worktrees"
+    },
+    "orchestrator": {
+      "toolsets": ["clarify", "context_engine", "delegation", "kanban", "memory", "session_search", "skills", "todo"],
+      "maxTurns": 60,
+      "maxTokens": 3072,
+      "writeScope": "scratch-only"
+    },
+    "researcher": {
+      "toolsets": ["browser", "clarify", "context_engine", "memory", "session_search", "skills", "todo", "vision", "web"],
+      "maxTurns": 60,
+      "maxTokens": 3072,
+      "writeScope": "scratch-only"
+    },
+    "validator": {
+      "toolsets": ["browser", "clarify", "context_engine", "file", "memory", "session_search", "skills", "todo", "vision", "web"],
+      "maxTurns": 60,
+      "maxTokens": 3072,
+      "writeScope": "scratch-only"
+    },
+    "read-only": {
+      "toolsets": ["clarify", "context_engine", "file", "memory", "session_search", "skills", "todo", "web"],
+      "maxTurns": 40,
+      "maxTokens": 2048,
+      "writeScope": "scratch-only"
+    },
+    "classifier": {
+      "toolsets": ["clarify", "context_engine", "memory", "session_search", "skills", "todo"],
+      "maxTurns": 30,
+      "maxTokens": 2048,
+      "writeScope": "scratch-only"
+    },
+    "curator": {
+      "toolsets": ["clarify", "context_engine", "memory", "session_search", "skills", "todo"],
+      "maxTurns": 40,
+      "maxTokens": 2048,
+      "writeScope": "scratch-only"
+    }
+  },
   "profiles": [
-    { "id": "hermes-brain", "runtimeId": "hermesbrain", "role": "controlled interactive operator and coordinator", "mode": "controlled-operator" },
-    { "id": "architecture-expert", "runtimeId": "architectureexpert", "role": "architecture reviewer", "mode": "read-only" },
-    { "id": "security-expert", "runtimeId": "securityexpert", "role": "security reviewer", "mode": "read-only" },
-    { "id": "testing-expert", "runtimeId": "testingexpert", "role": "test strategist", "mode": "read-only" },
-    { "id": "frontend-expert", "runtimeId": "frontendexpert", "role": "frontend and Playwright advisor", "mode": "read-only" },
-    { "id": "backend-expert", "runtimeId": "backendexpert", "role": "backend reviewer", "mode": "read-only" },
-    { "id": "data-expert", "runtimeId": "dataexpert", "role": "data and database advisor", "mode": "read-only" },
-    { "id": "learning-curator", "runtimeId": "learningcurator", "role": "learning and skill reviewer", "mode": "read-only" }
+    { "id": "hermes-brain", "runtimeId": "hermesbrain", "role": "interactive local operator for general work and controlled implementation", "mode": "controlled-operator", "skillSet": "brain" },
+    { "id": "tech-lead", "runtimeId": "techlead", "role": "Kanban orchestrator that decomposes, routes and reviews evidence without implementing", "mode": "orchestrator", "skillSet": "orchestrator" },
+    { "id": "android-implementer", "runtimeId": "android", "role": "Kotlin Android and Jetpack Compose implementation specialist", "mode": "controlled-operator", "skillSet": "android" },
+    { "id": "laravel-implementer", "runtimeId": "laravel", "role": "PHP Laravel API and MySQL implementation specialist", "mode": "controlled-operator", "skillSet": "laravel" },
+    { "id": "frontend-implementer", "runtimeId": "frontend", "role": "TypeScript React web implementation specialist", "mode": "controlled-operator", "skillSet": "frontend" },
+    { "id": "mcp-implementer", "runtimeId": "mcp", "role": "MCP server client and tool integration implementation specialist", "mode": "controlled-operator", "skillSet": "mcp" },
+    { "id": "browser-validator", "runtimeId": "browseroperator", "role": "Authorized local browser and end-to-end validation specialist", "mode": "validator", "skillSet": "browser-validation" },
+    { "id": "research-expert", "runtimeId": "researchexpert", "role": "Read-only technical researcher for current primary-source evidence", "mode": "researcher", "skillSet": "research" },
+    { "id": "architecture-expert", "runtimeId": "architectureexpert", "role": "Read-only architecture and boundary reviewer", "mode": "read-only", "skillSet": "architecture-review" },
+    { "id": "security-expert", "runtimeId": "securityexpert", "role": "Read-only application security reviewer", "mode": "read-only", "skillSet": "security-review" },
+    { "id": "testing-expert", "runtimeId": "testingexpert", "role": "Read-only test strategy and regression reviewer", "mode": "read-only", "skillSet": "testing-review" },
+    { "id": "frontend-expert", "runtimeId": "frontendexpert", "role": "Read-only TypeScript frontend and accessibility reviewer", "mode": "read-only", "skillSet": "frontend-review" },
+    { "id": "backend-expert", "runtimeId": "backendexpert", "role": "Read-only Laravel backend and API reviewer", "mode": "read-only", "skillSet": "backend-review" },
+    { "id": "data-expert", "runtimeId": "dataexpert", "role": "Read-only MySQL schema query and concurrency reviewer", "mode": "read-only", "skillSet": "data-review" },
+    { "id": "learning-curator", "runtimeId": "learningcurator", "role": "Validated learning and skill promotion reviewer", "mode": "curator", "skillSet": "learning-review" },
+    { "id": "quality-expert", "runtimeId": "quality", "role": "Independent read-only code quality and evidence gate reviewer", "mode": "read-only", "skillSet": "quality-review" },
+    { "id": "security-devops-expert", "runtimeId": "securitydevops", "role": "Read-only CI dependency configuration and infrastructure security reviewer", "mode": "read-only", "skillSet": "security-devops-review" },
+    { "id": "classifier", "runtimeId": "clasificador", "role": "Low-cost request classifier and deterministic profile router", "mode": "classifier", "skillSet": "classification" }
   ],
   "skills": {
     "core": [
@@ -49,12 +103,34 @@
       "bsolutions-debugging",
       "bsolutions-kotlin-android",
       "bsolutions-laravel",
+      "bsolutions-mcp-integration",
       "bsolutions-mysql",
       "bsolutions-playwright",
       "bsolutions-project-handoff",
       "bsolutions-quality-gate",
-      "bsolutions-security-review"
-    ]
+      "bsolutions-security-review",
+      "bsolutions-typescript-web"
+    ],
+    "roleSets": {
+      "brain": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-learning-engine", "hermes-evidence-gate", "hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-laravel", "bsolutions-mcp-integration", "bsolutions-mysql", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "hermes-agent-skill-authoring", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "orchestrator": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-memory-retrieval", "graphify", "bsolutions-project-handoff", "plan"],
+      "android": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "laravel": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "frontend": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "mcp": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-mcp-integration", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "browser-validation": ["graphify", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-quality-gate", "dogfood"],
+      "research": ["hermes-memory-retrieval", "graphify", "tech-research-agent"],
+      "architecture-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "plan"],
+      "security-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "bsolutions-security-review"],
+      "testing-review": ["hermes-memory-retrieval", "graphify", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-quality-gate", "requesting-code-review", "test-driven-development"],
+      "frontend-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-playwright", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "requesting-code-review"],
+      "backend-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-quality-gate", "bsolutions-security-review", "requesting-code-review"],
+      "data-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-mysql", "bsolutions-quality-gate", "bsolutions-security-review"],
+      "learning-review": ["hermes-learning-engine", "hermes-evidence-gate", "bsolutions-quality-gate", "hermes-agent-skill-authoring"],
+      "quality-review": ["hermes-memory-retrieval", "graphify", "hermes-evidence-gate", "bsolutions-quality-gate", "bsolutions-security-review", "requesting-code-review"],
+      "security-devops-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "bsolutions-security-review"],
+      "classification": ["hermes-model-router", "hermes-memory-retrieval", "graphify"]
+    }
   },
   "memory": {
     "policy": "validated-and-sanitized-only",

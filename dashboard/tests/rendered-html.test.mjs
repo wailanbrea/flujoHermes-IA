@@ -117,6 +117,22 @@ test("versions governance, Brain config, and the six core skills", async () => {
   assert.equal(parsed.modelRouter.localModel, "google/gemma-4-12b-qat");
   assert.equal(parsed.autonomy.localAiCanWrite, true);
   assert.equal(parsed.autonomy.localAiProjectWrites, "isolated-worktree-only");
+  assert.equal(parsed.profiles.length, 18);
+  assert.equal(new Set(parsed.profiles.map((profile) => profile.runtimeId)).size, 18);
+  assert.deepEqual(
+    parsed.profileModes.orchestrator.toolsets.filter((toolset) =>
+      ["browser", "code_execution", "file", "terminal", "vision", "web"].includes(toolset)
+    ),
+    [],
+  );
+  assert.equal(
+    parsed.profiles.find((profile) => profile.runtimeId === "android")?.mode,
+    "controlled-operator",
+  );
+  assert.equal(
+    parsed.profiles.find((profile) => profile.runtimeId === "researchexpert")?.mode,
+    "researcher",
+  );
   assert.equal(
     parsed.modelRouter.routes.find((route) => route.capability === "programming")?.executor,
     "local-controlled",
@@ -128,6 +144,8 @@ test("versions governance, Brain config, and the six core skills", async () => {
     "hermes-learning-engine",
     "hermes-evidence-gate",
     "hermes-memory-retrieval",
+    "bsolutions-mcp-integration",
+    "bsolutions-typescript-web",
   ]) {
     const body = await readFile(new URL(`../../skills/${skill}/SKILL.md`, import.meta.url), "utf8");
     assert.match(body, new RegExp(`name: ${skill}`));

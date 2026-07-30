@@ -1,0 +1,4 @@
+interface:
+  display_name: "TypeScript Web Engineering"
+  short_description: "Build and review production TypeScript web apps"
+  default_prompt: "Use $bsolutions-typescript-web to implement this TypeScript web change with tests and reproducible verification."
