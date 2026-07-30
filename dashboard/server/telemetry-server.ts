@@ -212,6 +212,7 @@ const promptBudgetSchema = z.object({
 const lmSchema = z.object({
   models: z.array(
     z.object({
+      key: z.string(),
       display_name: z.string(),
       loaded_instances: z
         .array(
@@ -820,10 +821,11 @@ async function probeLmStudio(): Promise<Probe> {
       model.loaded_instances.map((instance) => ({ model, instance })),
     );
     const active = loaded[0];
-    const activeName = active?.model.display_name.toLowerCase() ?? "";
-    const approvedModel =
-      activeName.includes("gemma-4-12b") ||
-      activeName.includes("qwen3.6-35b");
+    const activeKey = active?.model.key.toLowerCase() ?? "";
+    const approvedModel = new Set([
+      "google/gemma-4-12b-qat",
+      "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
+    ]).has(activeKey);
     const approvedPreset =
       loaded.length === 1 &&
       approvedModel &&
@@ -847,7 +849,7 @@ async function probeLmStudio(): Promise<Probe> {
           parallelSlots: active?.instance.config.parallel ?? 0,
           approvedModel,
           approvedPreset,
-          residencyPolicy: activeName.includes("qwen3.6-35b")
+          residencyPolicy: activeKey === "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
             ? "manual-ttl-900"
             : "primary-resident",
         },

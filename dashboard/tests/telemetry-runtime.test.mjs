@@ -124,6 +124,10 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
       status.services.some((service) => service.id === "rtk"),
       "RTK service telemetry is missing.",
     );
+    const lmStudio = status.services.find((service) => service.id === "lm-studio");
+    assert.equal(lmStudio?.metrics?.approvedModel, true);
+    assert.equal(lmStudio?.metrics?.approvedPreset, true);
+    assert.equal(lmStudio?.state, "healthy");
     assert.doesNotMatch(
       statusText,
       /must never reach TRAMA|feedback|skills_breakdown|toolsets_breakdown/i,
