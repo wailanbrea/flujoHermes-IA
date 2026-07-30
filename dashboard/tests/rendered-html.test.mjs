@@ -101,9 +101,10 @@ test("uses a director sandbox and an idempotent evidence gate", async () => {
 });
 
 test("versions governance, Brain config, and the six core skills", async () => {
-  const [policy, sync, brainConfig] = await Promise.all([
+  const [policy, sync, brainSync, brainConfig] = await Promise.all([
     readFile(new URL("../../config/agent-governance.md", import.meta.url), "utf8"),
     readFile(new URL("../../scripts/windows/sync-agent-governance.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../../scripts/windows/sync-hermes-brain.ps1", import.meta.url), "utf8"),
     readFile(new URL("../../config/hermes-brain.json", import.meta.url), "utf8"),
   ]);
   assert.match(policy, /Codex, Claude, Antigravity y OpenCode/);
@@ -115,6 +116,8 @@ test("versions governance, Brain config, and the six core skills", async () => {
   assert.match(sync, /\.codex\\AGENTS\.md/);
   const parsed = JSON.parse(brainConfig);
   assert.equal(parsed.modelRouter.localModel, "google/gemma-4-12b-qat");
+  assert.equal(parsed.modelRouter.hermesExternalInference, "disabled");
+  assert.match(brainSync, /moa:`n  enabled: false/);
   assert.equal(parsed.autonomy.localAiCanWrite, true);
   assert.equal(parsed.autonomy.localAiProjectWrites, "isolated-worktree-only");
   assert.equal(parsed.profiles.length, 18);
@@ -133,6 +136,18 @@ test("versions governance, Brain config, and the six core skills", async () => {
     parsed.profiles.find((profile) => profile.runtimeId === "researchexpert")?.mode,
     "researcher",
   );
+  assert.ok(parsed.skills.roleSets.android.includes("adb-emulator-debugging"));
+  assert.ok(parsed.skills.roleSets.laravel.includes("backend-dev-laravel"));
+  assert.ok(parsed.skills.roleSets.mcp.includes("mcp-appcontrol"));
+  assert.ok(
+    parsed.skills.roleSets["browser-validation"].includes(
+      "authenticated-browser-operations",
+    ),
+  );
+  for (const roleSkills of Object.values(parsed.skills.roleSets)) {
+    assert.equal(roleSkills.includes("audiocraft"), false);
+    assert.equal(roleSkills.includes("heartmula"), false);
+  }
   assert.equal(
     parsed.modelRouter.routes.find((route) => route.capability === "programming")?.executor,
     "local-controlled",

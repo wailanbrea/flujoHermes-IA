@@ -47,6 +47,10 @@ function Remove-ManagedDirectory(
         throw "Refusing to remove a directory outside its managed root: $fullPath"
     }
     if (Test-Path -LiteralPath $fullPath -PathType Container) {
+        $item = Get-Item -LiteralPath $fullPath -Force
+        if ($item.LinkType) {
+            throw "Refusing to remove a linked managed directory: $fullPath"
+        }
         Remove-Item -LiteralPath $fullPath -Recurse -Force
     }
 }
@@ -80,6 +84,14 @@ function Set-ProfileConfig(
     if ($text -notmatch '(?m)^fallback_model:\s*$') {
         $text = $text.TrimEnd() +
             "`nfallback_model:`n  provider: lmstudio`n  model: google/gemma-4-12b-qat`n  base_url: http://127.0.0.1:1234/v1`n"
+    }
+    $text = [regex]::Replace(
+        $text,
+        '(?m)^moa:\r?\n(?:^[ \t][^\r\n]*(?:\r?\n|$))*',
+        "moa:`n  enabled: false`n"
+    )
+    if ($text -notmatch '(?m)^moa:\s*$') {
+        $text = $text.TrimEnd() + "`nmoa:`n  enabled: false`n"
     }
     $modeConfig = Get-ModeConfig -Mode $Mode
     $toolsets = @($modeConfig.toolsets | ForEach-Object { [string]$_ })
@@ -228,6 +240,25 @@ function Sync-ProfileSkills(
     }
 
     $selectedSkills = Get-RoleSkills -SkillSet $SkillSet
+    if ($PruneBundled) {
+        $unselectedDirectories = @(
+            Get-ChildItem `
+                -LiteralPath $destinationRoot `
+                -Filter 'SKILL.md' `
+                -File `
+                -Recurse |
+                Where-Object {
+                    $selectedSkills -notcontains $_.Directory.Name
+                } |
+                ForEach-Object { $_.Directory.FullName } |
+                Sort-Object -Unique
+        )
+        foreach ($directory in $unselectedDirectories) {
+            Remove-ManagedDirectory `
+                -Path $directory `
+                -AllowedRoot $destinationRoot
+        }
+    }
     $managedSkills = @(
         $config.skills.core
         $config.skills.project
@@ -307,6 +338,14 @@ function Set-LocalProfileEnvironment(
 function Set-DefaultBrainSafety {
     $path = Join-Path (Split-Path -Parent $profilesRoot) 'config.yaml'
     $text = [IO.File]::ReadAllText($path)
+    $text = [regex]::Replace(
+        $text,
+        '(?m)^moa:\r?\n(?:^[ \t][^\r\n]*(?:\r?\n|$))*',
+        "moa:`n  enabled: false`n"
+    )
+    if ($text -notmatch '(?m)^moa:\s*$') {
+        $text = $text.TrimEnd() + "`nmoa:`n  enabled: false`n"
+    }
     if ($text -match '(?m)^kanban:\s*$') {
         if ($text -match '(?m)^\s+auto_decompose:') {
             $text = [regex]::Replace(

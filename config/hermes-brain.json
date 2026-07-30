@@ -9,6 +9,7 @@
   ],
   "modelRouter": {
     "policy": "capability-first",
+    "hermesExternalInference": "disabled",
     "localTimeoutSeconds": 45,
     "routes": [
       { "capability": "classification", "executor": "local-optional", "fallback": "director" },
@@ -113,12 +114,12 @@
     ],
     "roleSets": {
       "brain": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-learning-engine", "hermes-evidence-gate", "hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-laravel", "bsolutions-mcp-integration", "bsolutions-mysql", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "hermes-agent-skill-authoring", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "orchestrator": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-memory-retrieval", "graphify", "bsolutions-project-handoff", "plan"],
-      "android": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "laravel": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "orchestrator": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-memory-retrieval", "graphify", "bsolutions-project-handoff", "plan", "portfolio-agent-orchestration", "project-context-onboarding"],
+      "android": ["hermes-memory-retrieval", "graphify", "adb-emulator-debugging", "android-backend-feature-integration", "android-room-management", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "laravel": ["hermes-memory-retrieval", "graphify", "backend-dev-laravel", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
       "frontend": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "mcp": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-mcp-integration", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
-      "browser-validation": ["graphify", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-quality-gate", "dogfood"],
+      "mcp": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-mcp-integration", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "mcp-appcontrol", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
+      "browser-validation": ["graphify", "authenticated-browser-operations", "bsolutions-debugging", "bsolutions-playwright", "bsolutions-quality-gate", "dogfood"],
       "research": ["hermes-memory-retrieval", "graphify", "tech-research-agent"],
       "architecture-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "plan"],
       "security-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "bsolutions-security-review"],
@@ -127,7 +128,7 @@
       "backend-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-quality-gate", "bsolutions-security-review", "requesting-code-review"],
       "data-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-mysql", "bsolutions-quality-gate", "bsolutions-security-review"],
       "learning-review": ["hermes-learning-engine", "hermes-evidence-gate", "bsolutions-quality-gate", "hermes-agent-skill-authoring"],
-      "quality-review": ["hermes-memory-retrieval", "graphify", "hermes-evidence-gate", "bsolutions-quality-gate", "bsolutions-security-review", "requesting-code-review"],
+      "quality-review": ["hermes-memory-retrieval", "graphify", "hermes-evidence-gate", "bsolutions-quality-gate", "bsolutions-security-review", "fail-closed-release-audits", "requesting-code-review"],
       "security-devops-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "bsolutions-security-review"],
       "classification": ["hermes-model-router", "hermes-memory-retrieval", "graphify"]
     }
