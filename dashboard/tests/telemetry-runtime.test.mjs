@@ -111,6 +111,12 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
       "Watcher latency exceeded one second.",
     );
     console.log(`watcher-latency-ms=${watcherLatencyMs.toFixed(1)}`);
+    assert.equal(observed.delegation.focusTask?.taskId, taskId);
+    assert.equal(observed.execution.mode, "live");
+    assert.equal(observed.execution.stageId, "sandbox");
+    assert.equal(observed.execution.stageIndex, 5);
+    assert.equal(observed.execution.taskId, taskId);
+    assert.equal(observed.execution.taskState, "executing");
     assert.doesNotMatch(JSON.stringify(observed), /must never reach TRAMA|feedback/i);
 
     const statusResponse = await fetch(`http://127.0.0.1:${port}/api/status`);
@@ -120,6 +126,7 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
     assert.equal(status.promptBudget.estimation, "bytes-divided-by-four");
     assert.ok(Array.isArray(status.promptBudget.profiles));
     assert.ok(status.delegation.failedCount <= status.delegation.totalTasks);
+    assert.equal(status.execution.taskId, taskId);
     assert.ok(
       status.services.some((service) => service.id === "rtk"),
       "RTK service telemetry is missing.",

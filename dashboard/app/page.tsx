@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { WORKFLOW_STAGES } from "../lib/telemetry";
 import type {
   BrainSummary,
   HealthState,
   TelemetrySnapshot,
+  WorkflowExecutionSummary,
+  WorkflowStageId,
 } from "../lib/telemetry";
 import "./globals.css";
 
@@ -36,6 +39,7 @@ interface DiagramNode {
 }
 
 interface ExecutionStage {
+  id: WorkflowStageId;
   label: string;
   nodes: NodeId[];
   edgeIndexes: number[];
@@ -44,25 +48,39 @@ interface ExecutionStage {
 const EXECUTION_STEP_MS = 1_100;
 
 const executionStages: ExecutionStage[] = [
-  { label: "Entrada autorizada", nodes: ["user"], edgeIndexes: [] },
-  { label: "Hermes Brain coordina", nodes: ["brain"], edgeIndexes: [0] },
+  { ...WORKFLOW_STAGES[0], nodes: ["user"], edgeIndexes: [] },
+  { ...WORKFLOW_STAGES[1], nodes: ["brain"], edgeIndexes: [0] },
   {
-    label: "Consulta, routing y selección",
+    ...WORKFLOW_STAGES[2],
     nodes: ["memory", "router", "agents"],
     edgeIndexes: [1, 2, 3],
   },
   {
-    label: "Contexto, motor y especialistas",
+    ...WORKFLOW_STAGES[3],
     nodes: ["cases", "engines", "experts"],
     edgeIndexes: [4, 5, 6],
   },
-  { label: "Plan verificable", nodes: ["plan"], edgeIndexes: [7, 8, 9] },
-  { label: "Ejecución aislada", nodes: ["sandbox"], edgeIndexes: [10] },
-  { label: "Tests, revisión y evidencia", nodes: ["evidence"], edgeIndexes: [11] },
-  { label: "Integración validada", nodes: ["validated"], edgeIndexes: [12] },
-  { label: "Aprendizaje saneado", nodes: ["learning"], edgeIndexes: [13] },
-  { label: "Benchmark y promoción", nodes: ["promotion"], edgeIndexes: [14] },
+  { ...WORKFLOW_STAGES[4], nodes: ["plan"], edgeIndexes: [7, 8, 9] },
+  { ...WORKFLOW_STAGES[5], nodes: ["sandbox"], edgeIndexes: [10] },
+  { ...WORKFLOW_STAGES[6], nodes: ["evidence"], edgeIndexes: [11] },
+  { ...WORKFLOW_STAGES[7], nodes: ["validated"], edgeIndexes: [12] },
+  { ...WORKFLOW_STAGES[8], nodes: ["learning"], edgeIndexes: [13] },
+  { ...WORKFLOW_STAGES[9], nodes: ["promotion"], edgeIndexes: [14] },
 ];
+
+const idleExecution: WorkflowExecutionSummary = {
+  mode: "idle",
+  stageId: "input",
+  stageIndex: 0,
+  label: WORKFLOW_STAGES[0].label,
+  observedAt: "",
+  taskId: null,
+  projectName: null,
+  requestedBy: null,
+  taskState: null,
+  progressKind: null,
+  terminal: false,
+};
 
 const nodes: DiagramNode[] = [
   { id: "user", x: 410, y: 14, width: 180, height: 42, title: "Usuario", subtitle: "Objetivo y límites" },
@@ -141,21 +159,38 @@ function nodeState(id: NodeId, brain: BrainSummary): HealthState {
 
 function BrainDiagram({
   brain,
+  execution,
   selected,
   onSelect,
 }: {
   brain: BrainSummary;
+  execution: WorkflowExecutionSummary;
   selected: NodeId;
   onSelect: (id: NodeId) => void;
 }) {
   const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[1];
   const diagramScroller = useRef<HTMLDivElement>(null);
-  const [activeStageIndex, setActiveStageIndex] = useState(0);
-  const [isSequencePlaying, setIsSequencePlaying] = useState(true);
+  const [guideStageIndex, setGuideStageIndex] = useState(0);
+  const [guideMode, setGuideMode] = useState(false);
+  const [isMotionPlaying, setIsMotionPlaying] = useState(true);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [motionOverride, setMotionOverride] = useState(false);
   const motionAllowed = !prefersReducedMotion || motionOverride;
+  const activeStageIndex = guideMode ? guideStageIndex : execution.stageIndex;
   const activeStage = executionStages[activeStageIndex];
+  const executionMode = guideMode ? "guide" : execution.mode;
+  const executionModeLabel = {
+    guide: "Modo guía",
+    idle: "Sin tarea",
+    live: "En vivo",
+    waiting: "En espera",
+    last: "Último resultado",
+  }[executionMode];
+  const executionDetail = guideMode
+    ? "Demostración local; no representa una tarea activa"
+    : execution.taskId
+      ? `${execution.projectName} · ${execution.requestedBy} · ${execution.taskState}`
+      : "Esperando una tarea autorizada";
 
   useEffect(() => {
     const centerOnEntry = () => {
@@ -178,24 +213,38 @@ function BrainDiagram({
   }, []);
 
   useEffect(() => {
-    if (!isSequencePlaying || !motionAllowed) return;
+    if (!guideMode || !isMotionPlaying || !motionAllowed) return;
     const interval = window.setInterval(() => {
-      setActiveStageIndex((current) => (current + 1) % executionStages.length);
+      setGuideStageIndex((current) => (current + 1) % executionStages.length);
     }, EXECUTION_STEP_MS);
     return () => window.clearInterval(interval);
-  }, [isSequencePlaying, motionAllowed]);
+  }, [guideMode, isMotionPlaying, motionAllowed]);
+
+  useEffect(() => {
+    if (execution.mode === "live" || execution.mode === "waiting") {
+      setGuideMode(false);
+      setIsMotionPlaying(true);
+    }
+  }, [execution.mode, execution.taskId, execution.taskState]);
 
   return (
-    <div className={`diagram-layout${motionAllowed ? "" : " reduced-motion"}`}>
+    <div
+      className={`diagram-layout${motionAllowed ? "" : " reduced-motion"}${isMotionPlaying ? "" : " motion-paused"}`}
+      data-execution-mode={executionMode}
+    >
       <div className="execution-sequence" aria-live="polite">
         <div className="execution-readout">
-          <span>Secuencia operativa</span>
+          <span>
+            Secuencia operativa
+            <em className={`execution-mode mode-${executionMode}`}>{executionModeLabel}</em>
+          </span>
           <strong>
             {String(activeStageIndex + 1).padStart(2, "0")}
             <i>/</i>
             {String(executionStages.length).padStart(2, "0")}
             <b>{activeStage.label}</b>
           </strong>
+          <small>{executionDetail}</small>
         </div>
         <div
           className="execution-progress"
@@ -212,25 +261,48 @@ function BrainDiagram({
             />
           ))}
         </div>
-        <button
-          className="sequence-toggle"
-          type="button"
-          onClick={() => {
-            if (!motionAllowed) {
-              setMotionOverride(true);
-              setIsSequencePlaying(true);
-              return;
+        <div className="sequence-controls">
+          <button
+            className="sequence-toggle"
+            type="button"
+            onClick={() => {
+              if (!motionAllowed) {
+                setMotionOverride(true);
+                setIsMotionPlaying(true);
+                return;
+              }
+              if (guideMode || execution.mode === "live" || execution.mode === "waiting") {
+                setIsMotionPlaying((current) => !current);
+                return;
+              }
+              setGuideStageIndex(0);
+              setGuideMode(true);
+              setIsMotionPlaying(true);
+            }}
+            aria-pressed={
+              guideMode || execution.mode === "live" || execution.mode === "waiting"
+                ? !isMotionPlaying
+                : undefined
             }
-            setIsSequencePlaying((current) => !current);
-          }}
-          aria-pressed={!isSequencePlaying}
-        >
-          {!motionAllowed
-            ? "Activar animación"
-            : isSequencePlaying
-              ? "Pausar secuencia"
-              : "Reanudar secuencia"}
-        </button>
+          >
+            {!motionAllowed
+              ? "Activar animación"
+              : guideMode
+                ? isMotionPlaying
+                  ? "Pausar guía"
+                  : "Reanudar guía"
+                : execution.mode === "live" || execution.mode === "waiting"
+                  ? isMotionPlaying
+                    ? "Pausar movimiento"
+                    : "Reanudar movimiento"
+                  : "Recorrer flujo"}
+          </button>
+          {guideMode && (
+            <button className="sequence-toggle secondary" type="button" onClick={() => setGuideMode(false)}>
+              Volver a telemetría
+            </button>
+          )}
+        </div>
       </div>
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
         <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
@@ -375,7 +447,12 @@ function Home() {
           <p>La IA local opera con límites. Los expertos asesoran. La evidencia decide.</p>
         </header>
         {snapshot ? (
-          <BrainDiagram brain={snapshot.brain} selected={selected} onSelect={setSelected} />
+          <BrainDiagram
+            brain={snapshot.brain}
+            execution={snapshot.execution ?? idleExecution}
+            selected={selected}
+            onSelect={setSelected}
+          />
         ) : (
           <div className="loading">Esperando snapshot saneado…</div>
         )}

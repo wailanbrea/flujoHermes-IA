@@ -7,6 +7,7 @@ import { freemem, homedir, hostname, totalmem, uptime } from "node:os";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { WORKFLOW_STAGES } from "../lib/telemetry";
 import type {
   BrainSummary,
   ConnectionHealth,
@@ -23,6 +24,7 @@ import type {
   TelemetryEvent,
   TelemetrySnapshot,
   WorkflowEdge,
+  WorkflowExecutionSummary,
   WorkflowNode,
 } from "../lib/telemetry";
 
@@ -497,6 +499,7 @@ const LINE_FEED = String.fromCharCode(10);
 function materialSnapshot(snapshot: TelemetrySnapshot): string {
   const { checkedAt: _graphCheckedAt, ...graph } = snapshot.graph;
   const { checkedAt: _delegationCheckedAt, ...delegation } = snapshot.delegation;
+  const { observedAt: _executionObservedAt, ...execution } = snapshot.execution;
   return JSON.stringify({
     overallState: snapshot.overallState,
     services: snapshot.services.map(({ checkedAt: _checkedAt, latencyMs: _latency, ...service }) => service),
@@ -509,6 +512,7 @@ function materialSnapshot(snapshot: TelemetrySnapshot): string {
     brain: snapshot.brain,
     promptBudget: snapshot.promptBudget,
     delegation,
+    execution,
     workflow: {
       nodes: snapshot.workflow.nodes,
       edges: snapshot.workflow.edges.map(({ lastObservedAt: _observedAt, ...edge }) => edge),
@@ -1302,6 +1306,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
     completedCount: 0,
     failedCount: 0,
     latestTask: null,
+    focusTask: null,
     benchmark: emptyHermesBenchmark(),
     modelPerformance: [],
     insights: emptyHermesInsights(),
@@ -1365,15 +1370,22 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
       "preparing",
       "executing",
     ]);
+    const waitingStates = new Set(["queued", "awaiting-review"]);
     const failedStates = new Set(["failed", "blocked", "validation-failed"]);
     const latestTask = tasks[0] ?? null;
+    const staleCutoff = Date.now() - 2 * 60 * 60 * 1000;
+    const focusTask =
+      tasks.find(
+        (task) =>
+          (activeStates.has(task.state) || waitingStates.has(task.state)) &&
+          Date.parse(task.updatedAt) >= staleCutoff,
+      ) ?? latestTask;
     const state: HealthState = "healthy";
     const historyState: HealthState =
       invalidTaskCount > 0 ||
       (latestTask && failedStates.has(latestTask.state))
         ? "degraded"
         : "healthy";
-    const staleCutoff = Date.now() - 2 * 60 * 60 * 1000;
     const staleActiveCount = tasks.filter(
       (task) =>
         activeStates.has(task.state) &&
@@ -1422,6 +1434,7 @@ async function probeHermesBroker(): Promise<HermesBrokerProbe> {
       completedCount: tasks.filter((task) => task.state === "completed").length,
       failedCount: tasks.filter((task) => failedStates.has(task.state)).length,
       latestTask,
+      focusTask,
       benchmark,
       modelPerformance,
       insights,
@@ -1796,6 +1809,86 @@ function buildBrainWorkflow(
   };
 }
 
+function buildWorkflowExecution(
+  delegation: HermesDelegationSummary,
+  brain: BrainSummary,
+  observedAt: string,
+): WorkflowExecutionSummary {
+  const task = delegation.focusTask;
+  if (!task) {
+    return {
+      mode: "idle",
+      stageId: "input",
+      stageIndex: 0,
+      label: WORKFLOW_STAGES[0].label,
+      observedAt,
+      taskId: null,
+      projectName: null,
+      requestedBy: null,
+      taskState: null,
+      progressKind: null,
+      terminal: false,
+    };
+  }
+
+  const terminalStates = new Set(["completed", "failed", "blocked", "validation-failed"]);
+  const waitingStates = new Set(["queued", "sealed", "awaiting-review"]);
+  const learning = brain.learning.last;
+  const learningMatches =
+    typeof learning?.task_id === "string" && learning.task_id === task.taskId;
+  const benchmark = learningMatches ? learning?.benchmark_result : null;
+  const benchmarkApproved =
+    typeof benchmark === "object" &&
+    benchmark !== null &&
+    "approved" in benchmark &&
+    benchmark.approved === true;
+  const learningState = learningMatches && typeof learning?.state === "string"
+    ? learning.state
+    : null;
+
+  let stageId: WorkflowExecutionSummary["stageId"];
+  if (task.state === "completed" && (learningState === "promoted" || benchmarkApproved)) {
+    stageId = "promotion";
+  } else if (task.state === "completed" && learningMatches) {
+    stageId = "learning";
+  } else {
+    stageId = {
+      queued: "input",
+      preparing: "routing",
+      isolated: "sandbox",
+      editing: "sandbox",
+      executing: "sandbox",
+      sealed: "evidence",
+      "awaiting-review": "evidence",
+      validating: "evidence",
+      "validation-failed": "evidence",
+      failed: "evidence",
+      blocked: "evidence",
+      "applied-cleanup-pending": "validated",
+      completed: "validated",
+    }[task.state] as WorkflowExecutionSummary["stageId"] | undefined ?? "brain";
+  }
+  const stageIndex = WORKFLOW_STAGES.findIndex((stage) => stage.id === stageId);
+
+  return {
+    mode: terminalStates.has(task.state)
+      ? "last"
+      : waitingStates.has(task.state)
+        ? "waiting"
+        : "live",
+    stageId,
+    stageIndex,
+    label: WORKFLOW_STAGES[stageIndex].label,
+    observedAt,
+    taskId: task.taskId,
+    projectName: task.projectName,
+    requestedBy: task.requestedBy,
+    taskState: task.state,
+    progressKind: task.progressKind,
+    terminal: terminalStates.has(task.state),
+  };
+}
+
 async function collect(): Promise<TelemetrySnapshot> {
   const [
     lmStudioProbe,
@@ -1855,6 +1948,11 @@ async function collect(): Promise<TelemetrySnapshot> {
     brain,
     promptBudget,
     delegation: hermesBrokerProbe.delegation,
+    execution: buildWorkflowExecution(
+      hermesBrokerProbe.delegation,
+      brain,
+      generatedAt,
+    ),
     workflow: buildBrainWorkflow(
       services,
       graphProbe.graph,
@@ -1924,6 +2022,7 @@ async function refreshHermesBroker(): Promise<void> {
         failedCount: current.delegation.failedCount,
         efficiency: current.delegation.efficiency,
         latestTask: current.delegation.latestTask,
+        focusTask: current.delegation.focusTask,
       },
     });
     const stableNew = JSON.stringify({
@@ -1938,6 +2037,7 @@ async function refreshHermesBroker(): Promise<void> {
         failedCount: probe.delegation.failedCount,
         efficiency: probe.delegation.efficiency,
         latestTask: probe.delegation.latestTask,
+        focusTask: probe.delegation.focusTask,
       },
     });
 
@@ -1953,6 +2053,11 @@ async function refreshHermesBroker(): Promise<void> {
       services: updatedServices,
       connections: updatedConnections,
       delegation: probe.delegation,
+      execution: buildWorkflowExecution(
+        probe.delegation,
+        current.brain,
+        generatedAt,
+      ),
       workflow: buildBrainWorkflow(
         updatedServices,
         current.graph,

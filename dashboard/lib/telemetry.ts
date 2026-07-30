@@ -116,6 +116,22 @@ export type HermesTaskState =
   | "blocked"
   | "validation-failed";
 
+export const WORKFLOW_STAGES = [
+  { id: "input", label: "Entrada autorizada" },
+  { id: "brain", label: "Hermes Brain coordina" },
+  { id: "routing", label: "Consulta, routing y selección" },
+  { id: "context", label: "Contexto, motor y especialistas" },
+  { id: "plan", label: "Plan verificable" },
+  { id: "sandbox", label: "Ejecución aislada" },
+  { id: "evidence", label: "Tests, revisión y evidencia" },
+  { id: "validated", label: "Integración validada" },
+  { id: "learning", label: "Aprendizaje saneado" },
+  { id: "promotion", label: "Benchmark y promoción" },
+] as const;
+
+export type WorkflowStageId = (typeof WORKFLOW_STAGES)[number]["id"];
+export type WorkflowExecutionMode = "idle" | "live" | "waiting" | "last";
+
 export interface HermesTaskSummary {
   taskId: string;
   projectName: string;
@@ -253,6 +269,7 @@ export interface HermesDelegationSummary {
   completedCount: number;
   failedCount: number;
   latestTask: HermesTaskSummary | null;
+  focusTask: HermesTaskSummary | null;
   benchmark: HermesBenchmarkSummary;
   modelPerformance: HermesModelPerformance[];
   insights: HermesInsightsSummary;
@@ -265,6 +282,20 @@ export interface HermesDelegationSummary {
     acceptanceRate: number;
     schemaFailures: number;
   };
+}
+
+export interface WorkflowExecutionSummary {
+  mode: WorkflowExecutionMode;
+  stageId: WorkflowStageId;
+  stageIndex: number;
+  label: string;
+  observedAt: string;
+  taskId: string | null;
+  projectName: string | null;
+  requestedBy: HermesTaskSummary["requestedBy"] | null;
+  taskState: HermesTaskState | null;
+  progressKind: string | null;
+  terminal: boolean;
 }
 
 export interface BrainRoute {
@@ -378,6 +409,7 @@ export interface TelemetrySnapshot {
   brain: BrainSummary;
   promptBudget: PromptBudgetSummary;
   delegation: HermesDelegationSummary;
+  execution: WorkflowExecutionSummary;
   workflow: {
     nodes: WorkflowNode[];
     edges: WorkflowEdge[];
