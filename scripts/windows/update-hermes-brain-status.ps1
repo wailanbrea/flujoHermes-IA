@@ -21,6 +21,22 @@ function Invoke-HermesSafe([string[]]$Arguments) {
     }
 }
 
+function Get-InstalledProfileSkillNames([string]$ProfileRoot) {
+    $skillsRoot = Join-Path $ProfileRoot 'skills'
+    if (-not (Test-Path -LiteralPath $skillsRoot -PathType Container)) {
+        return @()
+    }
+    return @(
+        Get-ChildItem `
+            -LiteralPath $skillsRoot `
+            -Filter 'SKILL.md' `
+            -File `
+            -Recurse |
+            ForEach-Object { $_.Directory.Name } |
+            Sort-Object -Unique
+    )
+}
+
 $profileList = Invoke-HermesSafe -Arguments @('profile', 'list')
 $curator = Invoke-HermesSafe -Arguments @('curator', 'status')
 $kanban = Invoke-HermesSafe -Arguments @('kanban', 'stats')
@@ -49,10 +65,9 @@ $profileSkillInventory = @($configuredProfiles | ForEach-Object {
     $required = @($brainConfig.skills.roleSets.PSObject.Properties[
         [string]$profile.skillSet
     ].Value)
+    $installed = @(Get-InstalledProfileSkillNames -ProfileRoot $profileRoot)
     $present = @($required | Where-Object {
-        Test-Path -LiteralPath (
-            Join-Path $profileRoot "skills\$_\SKILL.md"
-        ) -PathType Leaf
+        $installed -contains [string]$_
     })
     $approval = Invoke-HermesSafe -Arguments @(
         '--profile',
