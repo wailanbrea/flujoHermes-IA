@@ -218,6 +218,27 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
         state: sum(1 for lesson in lessons if lesson.get("state") == state)
         for state in sorted(LEARNING_STATES)
     }
+    operator_count = int(
+        inventory.get(
+            "operatorCount",
+            sum(
+                1
+                for profile in config["profiles"]
+                if profile.get("mode") == "controlled-operator"
+            ),
+        )
+    )
+    advisory_count = int(
+        inventory.get(
+            "advisoryCount",
+            sum(
+                1
+                for profile in config["profiles"]
+                if profile.get("mode") == "read-only"
+            ),
+        )
+    )
+
     def public_task(status: dict[str, Any]) -> dict[str, Any]:
         return {
             "taskId": str(status.get("taskId", "")),
@@ -251,7 +272,9 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
                     "profiles",
                     [profile["id"] for profile in config["profiles"]],
                 ),
-                "advisoryOnly": True,
+                "operatorCount": operator_count,
+                "advisoryCount": advisory_count,
+                "advisoryOnly": operator_count == 0,
             },
             "skills": {
                 "state": inventory.get("skillsState", "unknown"),

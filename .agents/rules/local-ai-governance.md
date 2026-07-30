@@ -8,4 +8,5 @@ Lee `config/agent-governance.md` y aplícalo.
 - Edita sólo el worktree aislado devuelto.
 - Sella evidencia; no apliques directamente al source.
 - Valida de forma independiente y completa mediante la puerta de integración.
-- Hermes y los perfiles locales son asesores read-only, nunca autores.
+- Hermes Brain puede investigar, crear skills validadas y editar únicamente el
+  sandbox autorizado. Los perfiles expertos permanecen read-only.

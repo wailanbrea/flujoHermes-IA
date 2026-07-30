@@ -11,8 +11,9 @@ No amplíes esta autorización a secretos, despliegues o bases de datos.
    pregunta breve antes de buscar archivos o elegir herramientas.
 4. Si habrá escritura, exige Git propio y repositorio fuente limpio.
 5. Crea el worktree con `scripts/windows/new-hermes-sandbox.ps1`.
-6. Codex, Claude, Antigravity u OpenCode editan exclusivamente el
-   `sandboxPath` devuelto. Hermes y la IA local no escriben código.
+6. El ejecutor autorizado —Hermes Brain, Codex, Claude, Antigravity u
+   OpenCode— edita exclusivamente el `sandboxPath` devuelto. Nunca escribe
+   directamente en el checkout fuente.
 7. Sella el resultado con `scripts/windows/seal-hermes-task.ps1`.
 8. Revisa con `scripts/windows/review-hermes-task.ps1 -Decision Approve`.
    Aprobar evidencia no aplica el parche.
@@ -24,11 +25,15 @@ No amplíes esta autorización a secretos, despliegues o bases de datos.
 
 ## Plano de control
 
-- Hermes Brain recuerda, recupera contexto, enruta capacidades, selecciona
-  asesores, crea sandboxes y conserva evidencia.
+- Hermes Brain responde consultas, investiga, recuerda contexto, crea skills
+  validadas, enruta capacidades, selecciona asesores, crea sandboxes y conserva
+  evidencia.
 - Graphify es la primera fuente de navegación estructural.
-- Los modelos locales son asesores opcionales de clasificación o resumen:
-  timeout máximo 60 segundos, contexto acotado y sin herramientas de escritura.
+- El perfil `hermesbrain` es un operador local controlado. Puede usar web,
+  navegador, archivos, terminal y ejecución de código para el objetivo indicado;
+  cualquier escritura de proyecto queda limitada al sandbox y conserva
+  aprobaciones peligrosas.
+- Los perfiles expertos siguen siendo asesores read-only con contexto acotado.
 - `submit-hermes-task.ps1` e `invoke-hermes-task.ps1` son legacy explícito y
   sólo admiten análisis read-only con `-LegacyReadOnly`.
 - TRAMA observa estado saneado. Nunca autoriza, ejecuta ni integra.
@@ -47,6 +52,8 @@ No amplíes esta autorización a secretos, despliegues o bases de datos.
 - No guardes prompts, respuestas, código completo, argumentos de herramientas,
   credenciales, rutas privadas absolutas ni IDs de sesión.
 - Una skill sigue `candidate → benchmark → validated → aprobación → promoted`.
+- Crear o actualizar una skill dentro de un directorio autorizado está
+  permitido; publicarla, instalarla externamente o promoverla exige aprobación.
 
 ## Catálogo y Graphify
 

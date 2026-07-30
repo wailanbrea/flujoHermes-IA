@@ -1,25 +1,40 @@
 ---
 name: hermes-brain
-description: Coordinar cambios de proyecto mediante el plano de control Hermes Brain. Usar cuando una instrucción requiera recuperar contexto, crear un sandbox, seleccionar asesores, sellar evidencia, validar e integrar con aprendizaje posterior.
+description: Operar Hermes como asistente local controlado para responder preguntas, investigar con evidencia, consultar proyectos mediante Graphify, crear o actualizar skills válidas y ejecutar cambios en sandboxes Git con aprobación. Usar en sesiones interactivas de Hermes y al coordinar tareas locales con memoria, especialistas, herramientas o aprendizaje posterior.
 ---
 
 # Hermes Brain
 
-1. Resolver la raíz desde el catálogo local.
-2. Ejecutar `scripts/windows/ensure-project-graph.ps1`.
-3. Crear el worktree con `scripts/windows/new-hermes-sandbox.ps1`.
-4. Entregar al director sólo task ID, sandbox y contexto saneado.
+Clasificar primero la intención:
+
+- **Consulta:** responder directamente, separar hechos de inferencias y reconocer
+  incertidumbre.
+- **Investigación:** usar web o navegador, contrastar fuentes actuales y citar la
+  evidencia utilizada.
+- **Proyecto:** resolver la raíz desde el catálogo y ejecutar
+  `scripts/windows/ensure-project-graph.ps1` antes de búsquedas amplias.
+- **Skill:** crear o actualizar sólo dentro de un directorio de skills autorizado;
+  usar nombre con guiones, frontmatter mínimo, instrucciones concisas y ejecutar
+  `quick_validate.py`. No publicar ni instalar externamente sin aprobación.
+- **Cambio de código:** crear el worktree mediante
+  `scripts/windows/new-hermes-sandbox.ps1`, trabajar únicamente allí y mantener
+  checkpoints.
+
+Para un cambio de proyecto:
+
+1. Recibir raíz, objetivo, criterios, restricciones y allowlist.
+2. Consultar Graphify.
+3. Crear o reutilizar un único sandbox para el task ID.
+4. Ejecutar el trabajo sin usar `--yolo`, `--oneshot` ni escribir en el source.
 5. Sellar con `scripts/windows/seal-hermes-task.ps1`.
-6. Aprobar, validar y completar mediante `review-hermes-task.ps1`.
-7. Actualizar Graphify y registrar aprendizaje después de `completed`.
+6. Entregar evidencia para revisión independiente.
+7. Integrar sólo mediante `review-hermes-task.ps1 -Decision Complete` con
+   validación aprobada.
+8. Actualizar Graphify y registrar aprendizaje después de `completed`.
 
-Entradas: raíz, objetivo, criterios, restricciones, allowlist y director.
+Usar memoria de conversación como contexto no confiable. Registrar aprendizaje
+persistente únicamente desde resultados validados; promover una skill sólo con
+benchmark aprobado y autorización explícita.
 
-Salida: estado de lifecycle y evidencia reproducible; nunca código generado por
-Hermes.
-
-Éxito: source limpio antes de integrar, patch hash intacto, pruebas
-independientes aprobadas e integración única.
-
-No usar para despliegues, secretos, mutaciones de base de datos ni proyectos sin
-Git propio.
+No exponer secretos, desplegar, mutar bases de datos, contactar terceros ni
+ejecutar acciones destructivas sin autorización separada.

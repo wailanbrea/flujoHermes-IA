@@ -72,12 +72,12 @@ const paths = [
 
 const nodeCopy: Record<NodeId, string> = {
   user: "Entrega el objetivo, el alcance y la autorización. No decide detalles internos del runtime.",
-  brain: "Coordina memoria, routing, expertos, sandboxes, evidencia y aprendizaje. No escribe código.",
+  brain: "Coordina memoria, routing, expertos, sandboxes, evidencia y aprendizaje. Sólo escribe dentro de ámbitos autorizados.",
   memory: "Graphify localiza símbolos y relaciones antes de cualquier recorrido amplio.",
-  router: "Selecciona la capacidad requerida. La IA local es opcional y nunca bloquea.",
+  router: "Selecciona la capacidad requerida. El operador local actúa con permisos acotados y tiene fallback cloud.",
   agents: "Convoca perfiles especializados que sólo entregan briefs estructurados.",
   cases: "Recupera soluciones reproducibles y lecciones saneadas, nunca conversaciones completas.",
-  engines: "Codex, Claude, Antigravity y OpenCode programan; Gemma sólo asesora.",
+  engines: "Gemma puede operar herramientas en sandbox; los directores cloud siguen disponibles como fallback.",
   experts: "Arquitectura, seguridad, testing, frontend, backend, datos y aprendizaje.",
   plan: "El director integra hallazgos y define la implementación con criterios verificables.",
   sandbox: "Todo cambio ocurre dentro del worktree creado para un único task ID.",
@@ -254,7 +254,7 @@ function Home() {
             <p className="kicker">Flujo real</p>
             <h2>Decisión, evidencia y memoria en un solo circuito</h2>
           </div>
-          <p>La IA local asesora. El director cloud programa. La evidencia decide.</p>
+          <p>La IA local opera con límites. Los expertos asesoran. La evidencia decide.</p>
         </header>
         {snapshot ? (
           <BrainDiagram brain={snapshot.brain} selected={selected} onSelect={setSelected} />
@@ -276,7 +276,7 @@ function Home() {
         </article>
         <article className="control-card">
           <header><span>03</span><h3>Agent Factory</h3><i className={stateClass(snapshot?.brain.agents.state ?? "unknown")} /></header>
-          <strong>{snapshot?.brain.agents.profiles.length ?? 0} perfiles read-only</strong>
+          <strong>{snapshot?.brain.agents.operatorCount ?? 0} operador · {snapshot?.brain.agents.advisoryCount ?? 0} asesores</strong>
           <div className="chips">{snapshot?.brain.agents.profiles.map((profile) => <span key={profile}>{profile}</span>)}</div>
         </article>
         <article className="control-card">

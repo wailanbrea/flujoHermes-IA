@@ -34,6 +34,11 @@ $presentProfiles = @($configuredProfiles | Where-Object {
         '(?i)(^|\s)' + [regex]::Escape([string]$_.runtimeId) + '(\s|$)'
     )
 } | ForEach-Object { [string]$_.id })
+$presentOperatorCount = @($configuredProfiles | Where-Object {
+    $presentProfiles -contains [string]$_.id -and
+    [string]$_.mode -eq 'controlled-operator'
+}).Count
+$presentAdvisoryCount = @($presentProfiles).Count - $presentOperatorCount
 $configuredSkills = @($brainConfig.skills.core + $brainConfig.skills.project)
 $defaultSkillsRoot = Join-Path (
     Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hermes'
@@ -47,6 +52,8 @@ $inventory = [ordered]@{
     generatedAt = [DateTime]::UtcNow.ToString('o')
     profilesState = if ($presentProfiles.Count -eq $configuredProfiles.Count) { 'healthy' } else { 'degraded' }
     profiles = @($presentProfiles)
+    operatorCount = $presentOperatorCount
+    advisoryCount = $presentAdvisoryCount
     skillsState = if ($presentSkills.Count -eq $configuredSkills.Count) { 'healthy' } else { 'degraded' }
     skills = @($presentSkills)
     curator = [ordered]@{

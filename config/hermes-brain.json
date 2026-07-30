@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "principles": [
-    "Hermes Brain is the persistent control plane, not the code author.",
+    "Hermes Brain is the persistent controlled operator for local conversations, research, skills, and task routing.",
     "Graphify is queried before broad project navigation.",
-    "Cloud directors edit only inside isolated Git worktrees.",
+    "Any project edit occurs only inside an isolated Git worktree with checkpoints and explicit approval.",
     "Only reproducible evidence permits integration.",
     "Learning is derived only from validated outcomes."
   ],
@@ -13,8 +13,10 @@
     "routes": [
       { "capability": "classification", "executor": "local-optional", "fallback": "director" },
       { "capability": "sanitized-summary", "executor": "local-optional", "fallback": "director" },
+      { "capability": "research", "executor": "local-controlled", "fallback": "director" },
+      { "capability": "skill-authoring", "executor": "local-controlled", "fallback": "director" },
       { "capability": "architecture", "executor": "cloud-expert", "fallback": "director" },
-      { "capability": "programming", "executor": "cloud-director", "fallback": "none" },
+      { "capability": "programming", "executor": "local-controlled", "fallback": "cloud-director" },
       { "capability": "critical-security", "executor": "cloud-security-expert", "fallback": "static-rules" },
       { "capability": "testing", "executor": "deterministic-scripts", "fallback": "director" },
       { "capability": "integration", "executor": "evidence-gate", "fallback": "blocked" }
@@ -23,7 +25,7 @@
     "manualOnlyModels": ["qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"]
   },
   "profiles": [
-    { "id": "hermes-brain", "runtimeId": "hermesbrain", "role": "control-plane coordinator", "mode": "read-only" },
+    { "id": "hermes-brain", "runtimeId": "hermesbrain", "role": "controlled interactive operator and coordinator", "mode": "controlled-operator" },
     { "id": "architecture-expert", "runtimeId": "architectureexpert", "role": "architecture reviewer", "mode": "read-only" },
     { "id": "security-expert", "runtimeId": "securityexpert", "role": "security reviewer", "mode": "read-only" },
     { "id": "testing-expert", "runtimeId": "testingexpert", "role": "test strategist", "mode": "read-only" },
@@ -75,7 +77,12 @@
     "independent-tests"
   ],
   "autonomy": {
-    "localAiCanWrite": false,
+    "localAiCanWrite": true,
+    "localAiCanResearch": true,
+    "localAiCanAuthorSkills": "allowed-with-validation",
+    "localAiProjectWrites": "isolated-worktree-only",
+    "dangerousCommandApproval": "required",
+    "skillPublishing": "explicit-approval",
     "expertProfilesCanWrite": false,
     "dashboardCanAuthorize": false,
     "deployments": "denied",

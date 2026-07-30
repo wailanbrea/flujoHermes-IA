@@ -297,6 +297,8 @@ export interface BrainSummary {
   agents: {
     state: HealthState;
     profiles: string[];
+    operatorCount: number;
+    advisoryCount: number;
     advisoryOnly: boolean;
   };
   skills: {

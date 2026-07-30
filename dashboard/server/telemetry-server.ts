@@ -127,6 +127,8 @@ const brainStatusSchema = z.object({
     agents: z.object({
       state: healthStateSchema,
       profiles: z.array(z.string()),
+      operatorCount: z.number().int().nonnegative(),
+      advisoryCount: z.number().int().nonnegative(),
       advisoryOnly: z.boolean(),
     }),
     skills: z.object({
@@ -524,7 +526,13 @@ const emptyBrain = (): BrainSummary => ({
     policy: "validated-and-sanitized-only",
   },
   router: { state: "unknown", routes: [], localOptional: true },
-  agents: { state: "unknown", profiles: [], advisoryOnly: true },
+  agents: {
+    state: "unknown",
+    profiles: [],
+    operatorCount: 0,
+    advisoryCount: 0,
+    advisoryOnly: true,
+  },
   skills: { state: "unknown", configured: [], installed: [] },
   learning: { state: "unknown", counts: {}, last: null },
   sandbox: { state: "unknown", counts: {}, active: [] },
@@ -1574,7 +1582,7 @@ function buildBrainWorkflow(
     { id: "brain", label: "HERMES BRAIN", role: "Plano de control", detail: "Decide, recuerda y controla evidencia", state: status, kind: "agent", x: 50, y: 14 },
     { id: "memory", label: "Memoria y Graphify", role: "Recuperación", detail: `${brain.memory.graphNodes} nodos`, state: brain.memory.state, kind: "graph", x: 18, y: 27 },
     { id: "router", label: "Model Router", role: "Capacidad", detail: "Local opcional / cloud", state: brain.router.state, kind: "queue", x: 50, y: 27 },
-    { id: "agents", label: "Agent Factory", role: "Especialistas", detail: `${brain.agents.profiles.length} perfiles advisory`, state: brain.agents.state, kind: "agent", x: 82, y: 27 },
+    { id: "agents", label: "Agent Factory", role: "Perfiles", detail: `${brain.agents.operatorCount} operador · ${brain.agents.advisoryCount} asesores`, state: brain.agents.state, kind: "agent", x: 82, y: 27 },
     { id: "cases", label: "Casos anteriores", role: "Memoria validada", detail: brain.memory.policy, state: brain.memory.state, kind: "graph", x: 18, y: 38 },
     { id: "engines", label: "Local / Cloud", role: "Motores reemplazables", detail: "El director nunca queda bloqueado", state: brain.router.state, kind: "model", x: 50, y: 38 },
     { id: "experts", label: "Agentes expertos", role: "Briefs read-only", detail: "Hallazgos, riesgos y pruebas", state: brain.agents.state, kind: "agent", x: 82, y: 38 },

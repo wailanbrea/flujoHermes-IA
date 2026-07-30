@@ -115,7 +115,12 @@ test("versions governance, Brain config, and the six core skills", async () => {
   assert.match(sync, /\.codex\\AGENTS\.md/);
   const parsed = JSON.parse(brainConfig);
   assert.equal(parsed.modelRouter.localModel, "google/gemma-4-12b-qat");
-  assert.equal(parsed.autonomy.localAiCanWrite, false);
+  assert.equal(parsed.autonomy.localAiCanWrite, true);
+  assert.equal(parsed.autonomy.localAiProjectWrites, "isolated-worktree-only");
+  assert.equal(
+    parsed.modelRouter.routes.find((route) => route.capability === "programming")?.executor,
+    "local-controlled",
+  );
   for (const skill of [
     "hermes-brain",
     "hermes-agent-factory",

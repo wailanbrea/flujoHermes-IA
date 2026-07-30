@@ -4,7 +4,7 @@
 
 - Perfil: `localai`
 - Proveedor principal: `lmstudio`
-- Modelo principal: `google/gemma-4-12b`
+- Modelo principal: `google/gemma-4-12b-qat`
 - Fallback: `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive` mediante `lmstudio`
 - Base URL: `http://127.0.0.1:1234/v1`
 - Contexto declarado: `65536`
@@ -12,9 +12,12 @@
 - Esfuerzo de razonamiento: `none`
 - Backend de terminal: `local`
 - Worktrees y contratos de ejecución: `%LOCALAPPDATA%\local-ai-orchestrator`
-- Toolsets del worker: `file,playwright`; browser se limita a TRAMA en `127.0.0.1:4310/4311` y el director repite las validaciones
+- Toolsets interactivos: web, navegador, archivos, terminal, ejecución de código,
+  visión, memoria, contexto, skills, planificación y delegación.
 
-El perfil predeterminado preexistente no fue modificado.
+El perfil `default` y `hermesbrain` comparten la política de operador controlado.
+El worker delegado sigue reduciendo sus herramientas por fase y trabaja en un
+`HERMES_HOME` efímero.
 
 ## Aprobaciones
 

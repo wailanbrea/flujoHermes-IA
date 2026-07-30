@@ -2,12 +2,40 @@
 
 ## Arquitectura
 
-Hermes Brain es el plano de control persistente. Graphify recupera contexto,
-los perfiles Hermes asesoran, un director cloud edita en un worktree aislado,
-la puerta de evidencia integra una vez y Learning Engine registra únicamente
-resultados validados.
+Hermes Brain es el operador local controlado y el plano de control persistente.
+Puede responder, investigar, gestionar memoria, crear skills validadas y
+coordinar tareas. Graphify recupera contexto, los perfiles expertos asesoran,
+todo cambio de proyecto se realiza en un worktree aislado y la puerta de
+evidencia integra una sola vez.
 
-La IA local no es autora y no está en el camino crítico.
+La IA local puede operar herramientas, pero nunca escribe directamente en el
+checkout fuente ni convierte una conversación en aprendizaje confiable.
+
+## Uso interactivo
+
+El perfil normal `default` y el perfil aislado `hermesbrain` operan bajo los
+mismos límites. El comando simple usa `default`; el perfil aislado se selecciona
+de forma explícita:
+
+```powershell
+hermes
+hermes chat
+hermes --profile hermesbrain chat
+```
+
+Capacidades habilitadas: web, navegador, archivos, terminal, ejecución de código,
+visión, generación de imágenes, memoria, búsqueda de sesiones, contexto, skills,
+planificación y delegación. Las aprobaciones peligrosas permanecen activas.
+
+Para modificar un repositorio desde una sesión iniciada manualmente:
+
+```powershell
+hermes --profile hermesbrain chat --worktree --checkpoints
+```
+
+No usar `--yolo` ni `--oneshot`. Para investigación, exigir fuentes actuales.
+Para crear una skill, validar su estructura antes de adoptarla y requerir
+aprobación separada antes de publicarla o instalarla externamente.
 
 ## Flujo de una modificación
 
