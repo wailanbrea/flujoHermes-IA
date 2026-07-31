@@ -122,6 +122,7 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
       [
         "user",
         "openclaw",
+        "telegram",
         "brain",
         "memory",
         "router",

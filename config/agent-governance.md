@@ -33,3 +33,8 @@ perfiles expertos locales son asesores reemplazables.
 - Publicar o instalar externamente una skill requiere aprobación explícita.
 
 La configuración versionada está en `config/hermes-brain.json`.
+
+
+## Canales de chat
+
+Telegram está configurado con `openclaw channels add --channel telegram --use-env`. Las credenciales se leen de variables de entorno (`TELEGRAM_BOT_TOKEN`) y nunca se almacenan en texto plano en el repositorio.

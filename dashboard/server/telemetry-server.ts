@@ -104,6 +104,17 @@ const HERMES_GRAPHIFY_SKILL = resolve(
   "graphify",
   "SKILL.md",
 );
+// El gateway de Hermes publica aquí el estado ya saneado de cada canal. TRAMA lo
+// lee en vez de exigir TELEGRAM_BOT_TOKEN: la política dice que el observador
+// recibe estados, nunca secretos, y este archivo además refleja la conexión real
+// en vez de limitarse a comprobar que una variable exista.
+const HERMES_GATEWAY_STATE = resolve(
+  homedir(),
+  "AppData",
+  "Local",
+  "hermes",
+  "gateway_state.json",
+);
 const allowedOrigin = /^http:\/\/(?:localhost|127\.0\.0\.1):(?:3000|4310)$/;
 const healthStateSchema = z.enum(["healthy", "degraded", "offline", "unknown"]);
 const brainTaskSchema = z.object({
@@ -1255,6 +1266,61 @@ async function probeRtk(): Promise<Probe> {
   }
 }
 
+
+async function probeTelegram(): Promise<Probe> {
+  const start = performance.now();
+  const checked = checkedAt();
+
+  let state: HealthState = "unknown";
+  let detail = "Gateway de Hermes sin estado publicado";
+  let reported = "unknown";
+
+  try {
+    const raw = await readFile(HERMES_GATEWAY_STATE, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    const platforms =
+      parsed && typeof parsed === "object"
+        ? (parsed as { platforms?: Record<string, { state?: unknown }> }).platforms
+        : undefined;
+    const telegram = platforms?.telegram;
+    if (telegram && typeof telegram.state === "string") {
+      reported = telegram.state;
+      // El gateway distingue connecting/disconnected de un fallo real, así que
+      // 'degraded' se reserva para cuando está configurado pero no operativo.
+      state =
+        reported === "connected"
+          ? "healthy"
+          : reported === "connecting"
+            ? "degraded"
+            : "offline";
+      detail =
+        reported === "connected"
+          ? "Canal conectado vía OpenClaw"
+          : `Canal no operativo (${reported})`;
+    }
+  } catch {
+    // Sin gateway instalado o sin permisos: se reporta como desconocido en vez
+    // de afirmar que el canal está caído.
+    state = "unknown";
+    detail = "Estado del gateway no disponible";
+  }
+
+  return {
+    protocol: "Telegram Bot API",
+    service: {
+      id: "telegram",
+      name: "Telegram",
+      role: "Canal de chat",
+      state,
+      detail,
+      latencyMs: latency(start),
+      checkedAt: checked,
+      metrics: { reported },
+    },
+  };
+}
+
+
 function probeTcp(
   id: string,
   name: string,
@@ -1535,6 +1601,7 @@ function buildBrainWorkflow(
   brain: BrainSummary,
   execution: WorkflowExecutionSummary,
   openClawState: HealthState,
+  telegramState: HealthState,
   observedAt: string,
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const latest = brain.lastValidatedOutcome;
@@ -1549,6 +1616,9 @@ function buildBrainWorkflow(
   const nodes: WorkflowNode[] = [
     { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo, alcance y límites", state: "healthy", kind: "user", stageId: "input", x: 410, y: 10, width: 180, height: 38 },
     { id: "openclaw", label: "OpenClaw", role: "Interfaz de entrada", detail: "Canaliza solicitudes; no autoriza integración", state: openClawState, kind: "interface", stageId: "input", x: 390, y: 64, width: 220, height: 42 },
+    // Telegram entra por OpenClaw (`openclaw channels add --channel telegram`),
+    // así que es un canal de entrada más, sin autoridad propia de integración.
+    { id: "telegram", label: "Telegram", role: "Canal de chat", detail: "Entra por OpenClaw; sin autoridad de integración", state: telegramState, kind: "interface", stageId: "input", x: 60, y: 64, width: 220, height: 42 },
     { id: "brain", label: "HERMES BRAIN", role: "Plano de control persistente", detail: "Coordina memoria, políticas, ejecución y aprendizaje", state: status, kind: "control", stageId: "brain", x: 350, y: 122, width: 300, height: 52 },
     { id: "memory", label: "Memoria y Graphify", role: "Recuperación estructural", detail: `${brain.memory.graphNodes} nodos · conocimiento saneado`, state: brain.memory.state, kind: "memory", stageId: "routing", x: 60, y: 216, width: 230, height: 48 },
     { id: "router", label: "Model Router", role: "Selección por capacidad", detail: `${brain.router.routes.length} rutas · fallback cloud`, state: brain.router.state, kind: "router", stageId: "routing", x: 385, y: 216, width: 230, height: 48 },
@@ -1590,6 +1660,7 @@ function buildBrainWorkflow(
     nodes,
     edges: [
       link("user", "openclaw", "Solicita", "input"),
+      link("telegram", "openclaw", "Mensaje", "input", telegramState),
       link("openclaw", "brain", "Entrega contrato", "brain"),
       link("brain", "memory", "Recupera", "routing", brain.memory.state),
       link("brain", "router", "Enruta", "routing", brain.router.state),
@@ -1704,6 +1775,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     gpuProbe,
     rtkProbe,
     hermesBrokerProbe,
+    telegramProbe,
     brain,
     promptBudget,
   ] = await Promise.all([
@@ -1718,6 +1790,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeGpu(),
     probeRtk(),
     probeHermesBroker(),
+    probeTelegram(),
     readBrainStatus(),
     readPromptBudget(),
   ]);
@@ -1733,6 +1806,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     gpuProbe,
     rtkProbe,
     hermesBrokerProbe,
+    telegramProbe,
   ];
   const services = probes.map(({ service }) => service);
   updateEvents(services);
@@ -1759,7 +1833,13 @@ async function collect(): Promise<TelemetrySnapshot> {
     promptBudget,
     delegation: hermesBrokerProbe.delegation,
     execution,
-    workflow: buildBrainWorkflow(brain, execution, openClawProbe.service.state, generatedAt),
+    workflow: buildBrainWorkflow(
+      brain,
+      execution,
+      openClawProbe.service.state,
+      telegramProbe.service.state,
+      generatedAt,
+    ),
     system: {
       memoryUsedGiB: Number(((total - free) / 1024 ** 3).toFixed(2)),
       memoryTotalGiB: Number((total / 1024 ** 3).toFixed(2)),
@@ -1854,6 +1934,11 @@ async function refreshHermesBroker(): Promise<void> {
     const openClawState =
       current.services.find((service) => service.id === "openclaw")?.state ??
       "unknown";
+    // Esta ruta sólo refresca hermes-broker, así que para los demás servicios
+    // current.services y updatedServices llevan el mismo valor.
+    const telegramState =
+      current.services.find((service) => service.id === "telegram")?.state ??
+      "unknown";
     updateEvents(updatedServices);
     current = {
       ...current,
@@ -1867,6 +1952,7 @@ async function refreshHermesBroker(): Promise<void> {
         current.brain,
         execution,
         openClawState,
+        telegramState,
         generatedAt,
       ),
       events: [...events],
