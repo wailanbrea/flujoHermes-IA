@@ -48,6 +48,7 @@ laravel chat           # PHP, Laravel, APIs y MySQL
 frontend chat          # TypeScript, React y pruebas web
 mcpagent chat          # servidores, clientes y herramientas MCP
 researchexpert chat    # investigación técnica read-only
+personalfinanceexpert chat # presupuesto, deuda, ahorro e inversión educativa
 browseroperator chat   # validación local/test mediante navegador
 quality chat           # revisión independiente
 ```
@@ -55,6 +56,11 @@ quality chat           # revisión independiente
 Los aliases existentes se conservan. `techlead` nunca implementa; los perfiles
 de implementación trabajan sólo en worktrees gestionados; los revisores no
 reciben terminal y su escritura de archivos está confinada a scratch.
+
+`personalfinanceexpert` es educativo y de solo lectura. Confirma jurisdicción y
+moneda, usa fuentes oficiales actuales, muestra cálculos y supuestos, y nunca
+opera cuentas, recibe credenciales, garantiza rendimientos ni sustituye asesoría
+financiera, fiscal o legal licenciada.
 
 ## Flujo de una modificación
 

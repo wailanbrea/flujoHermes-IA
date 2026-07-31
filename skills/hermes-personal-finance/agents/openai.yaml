@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hermes Personal Finance"
+  short_description: "Planificaci�n financiera personal con guardrails"
+  default_prompt: "Usa $hermes-personal-finance para analizar mis finanzas y proponer un plan prudente."

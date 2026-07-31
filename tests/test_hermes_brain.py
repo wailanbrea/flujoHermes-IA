@@ -20,9 +20,56 @@ from hermes_brain.router import route_task
 class BrainConfigTests(unittest.TestCase):
     def test_repository_profile_fleet_is_valid(self) -> None:
         result = validate_config(Path(__file__).resolve().parents[1])
-        self.assertEqual(result["profiles"], 18)
+        self.assertEqual(result["profiles"], 19)
         self.assertEqual(result["modes"], 9)
-        self.assertEqual(result["skillSets"], 18)
+        self.assertEqual(result["skillSets"], 19)
+
+    def test_personal_finance_profile_passes_policy_benchmark(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        config = json.loads(
+            (repo / "config" / "hermes-brain.json").read_text(encoding="utf-8")
+        )
+        profile = next(
+            item
+            for item in config["profiles"]
+            if item["runtimeId"] == "personalfinanceexpert"
+        )
+        self.assertEqual(profile["mode"], "read-only")
+        self.assertEqual(profile["skillSet"], "personal-finance")
+
+        route = next(
+            item
+            for item in config["modelRouter"]["routes"]
+            if item["capability"] == "personal-finance"
+        )
+        self.assertEqual(route["profile"], "personalfinanceexpert")
+        self.assertEqual(route["executor"], "local-advisory")
+        decision = route_task(
+            config,
+            capability="personal-finance",
+            project_signals=[],
+        )
+        self.assertEqual(decision.profile, "personalfinanceexpert")
+        self.assertEqual(decision.executor, "local-advisory")
+
+        benchmark = json.loads(
+            (
+                repo
+                / "tests"
+                / "fixtures"
+                / "hermes-personal-finance-benchmark.json"
+            ).read_text(encoding="utf-8")
+        )
+        mode = config["profileModes"][profile["mode"]]
+        for toolset in benchmark["forbiddenToolsets"]:
+            self.assertNotIn(toolset, mode["toolsets"])
+
+        skill = (
+            repo / "skills" / benchmark["skill"] / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        for term in benchmark["requiredSkillTerms"]:
+            self.assertIn(term.casefold(), skill.casefold())
+        self.assertGreaterEqual(len(benchmark["scenarios"]), 5)
 
     def test_orchestrator_rejects_implementation_tools(self) -> None:
         config = {

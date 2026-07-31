@@ -150,9 +150,9 @@ test("versions governance, Brain config, and the managed skills", async () => {
   assert.match(brainSync, /moa:`n  enabled: false/);
   assert.equal(parsed.autonomy.localAiCanWrite, true);
   assert.equal(parsed.autonomy.localAiProjectWrites, "isolated-worktree-only");
-  assert.equal(parsed.profiles.length, 18);
+  assert.equal(parsed.profiles.length, 19);
   assert.equal(Object.keys(parsed.profileModes).length, 9);
-  assert.equal(new Set(parsed.profiles.map((profile) => profile.runtimeId)).size, 18);
+  assert.equal(new Set(parsed.profiles.map((profile) => profile.runtimeId)).size, 19);
   assert.deepEqual(
     parsed.profileModes.orchestrator.toolsets.filter((toolset) =>
       ["browser", "code_execution", "file", "terminal", "vision", "web"].includes(toolset)
