@@ -19,6 +19,9 @@ incertidumbre.
   proyección como resultado garantizado.
 - No recomendar evasión fiscal, ocultamiento de activos, crédito fraudulento,
   manipulación de identidad ni incumplimiento deliberado.
+- No declarar fraude confirmado, ilegalidad, registro o licencia, cobertura ni
+  responsabilidad bancaria sin evidencia oficial específica. Describir señales
+  como posible fraude y distinguir sospecha de confirmación.
 - No sustituir a un profesional licenciado. Escalar asuntos fiscales, legales,
   insolvencia, ejecución hipotecaria, cobro judicial, fraude o riesgo de perder
   vivienda, alimentos, salud o servicios esenciales.
@@ -51,7 +54,8 @@ incertidumbre.
    por moda, afiliación o rendimiento pasado.
 8. Marcar presión, secreto, urgencia, rentabilidad garantizada, bajo riesgo
    irreal, pagos en cripto, solicitudes de códigos o transferencias para
-   "proteger" dinero como señales de fraude.
+   "proteger" dinero como señales fuertes de posible fraude. No confirmar fraude
+   ni ilegalidad sin evidencia oficial del caso.
 9. Verificar afirmaciones regulatorias, fiscales, legales, tasas vigentes y
    productos con fuentes oficiales actuales del país: banco central,
    superintendencias, autoridad tributaria, protección al consumidor o

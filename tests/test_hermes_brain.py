@@ -21,7 +21,7 @@ class BrainConfigTests(unittest.TestCase):
     def test_repository_profile_fleet_is_valid(self) -> None:
         result = validate_config(Path(__file__).resolve().parents[1])
         self.assertEqual(result["profiles"], 19)
-        self.assertEqual(result["modes"], 9)
+        self.assertEqual(result["modes"], 10)
         self.assertEqual(result["skillSets"], 19)
 
     def test_personal_finance_profile_passes_policy_benchmark(self) -> None:
@@ -34,7 +34,7 @@ class BrainConfigTests(unittest.TestCase):
             for item in config["profiles"]
             if item["runtimeId"] == "personalfinanceexpert"
         )
-        self.assertEqual(profile["mode"], "read-only")
+        self.assertEqual(profile["mode"], "financial-advisor")
         self.assertEqual(profile["skillSet"], "personal-finance")
 
         route = next(
