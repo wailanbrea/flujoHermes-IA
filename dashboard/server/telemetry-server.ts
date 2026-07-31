@@ -1274,15 +1274,21 @@ async function probeTelegram(): Promise<Probe> {
   let state: HealthState = "unknown";
   let detail = "Gateway de Hermes sin estado publicado";
   let reported = "unknown";
+  let activeAgents = 0;
+  let busy = false;
 
   try {
     const raw = await readFile(HERMES_GATEWAY_STATE, "utf8");
     const parsed: unknown = JSON.parse(raw);
-    const platforms =
+    const root =
       parsed && typeof parsed === "object"
-        ? (parsed as { platforms?: Record<string, { state?: unknown }> }).platforms
+        ? (parsed as {
+            platforms?: Record<string, { state?: unknown }>;
+            gateway_state?: unknown;
+            active_agents?: unknown;
+          })
         : undefined;
-    const telegram = platforms?.telegram;
+    const telegram = root?.platforms?.telegram;
     if (telegram && typeof telegram.state === "string") {
       reported = telegram.state;
       // El gateway distingue connecting/disconnected de un fallo real, así que
@@ -1293,11 +1299,21 @@ async function probeTelegram(): Promise<Probe> {
           : reported === "connecting"
             ? "degraded"
             : "offline";
-      detail =
-        reported === "connected"
-          ? "Canal conectado vía OpenClaw"
-          : `Canal no operativo (${reported})`;
     }
+    // active_agents es del gateway completo, no por plataforma. Con Telegram
+    // como único canal configurado, un agente activo es atribuible a él; si
+    // algún día se añade otro canal, este dato dejará de ser exclusivo suyo.
+    if (typeof root?.active_agents === "number") {
+      activeAgents = root.active_agents;
+    }
+    busy =
+      root?.gateway_state === "running" && activeAgents > 0 && state === "healthy";
+    detail =
+      state !== "healthy"
+        ? `Canal no operativo (${reported})`
+        : busy
+          ? `Atendiendo ${activeAgents} petición(es) ahora`
+          : "Canal conectado · en espera";
   } catch {
     // Sin gateway instalado o sin permisos: se reporta como desconocido en vez
     // de afirmar que el canal está caído.
@@ -1315,7 +1331,7 @@ async function probeTelegram(): Promise<Probe> {
       detail,
       latencyMs: latency(start),
       checkedAt: checked,
-      metrics: { reported },
+      metrics: { reported, activeAgents, busy },
     },
   };
 }
@@ -1616,9 +1632,11 @@ function buildBrainWorkflow(
   const nodes: WorkflowNode[] = [
     { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo, alcance y límites", state: "healthy", kind: "user", stageId: "input", x: 410, y: 10, width: 180, height: 38 },
     { id: "openclaw", label: "OpenClaw", role: "Interfaz de entrada", detail: "Canaliza solicitudes; no autoriza integración", state: openClawState, kind: "interface", stageId: "input", x: 390, y: 64, width: 220, height: 42 },
-    // Telegram entra por OpenClaw (`openclaw channels add --channel telegram`),
-    // así que es un canal de entrada más, sin autoridad propia de integración.
-    { id: "telegram", label: "Telegram", role: "Canal de chat", detail: "Entra por OpenClaw; sin autoridad de integración", state: telegramState, kind: "interface", stageId: "input", x: 60, y: 64, width: 220, height: 42 },
+    // Verificado en vivo: el canal lo atiende el gateway de Hermes con el token
+    // de su propio config.yaml. OpenClaw NO interviene: su canal de Telegram
+    // sigue en "not configured, token=none", y sólo el proceso del gateway de
+    // Hermes mantiene conexión con api.telegram.org.
+    { id: "telegram", label: "Telegram", role: "Canal de chat", detail: "Gateway de Hermes; sin autoridad de integración", state: telegramState, kind: "interface", stageId: "input", x: 60, y: 64, width: 220, height: 42 },
     { id: "brain", label: "HERMES BRAIN", role: "Plano de control persistente", detail: "Coordina memoria, políticas, ejecución y aprendizaje", state: status, kind: "control", stageId: "brain", x: 350, y: 122, width: 300, height: 52 },
     { id: "memory", label: "Memoria y Graphify", role: "Recuperación estructural", detail: `${brain.memory.graphNodes} nodos · conocimiento saneado`, state: brain.memory.state, kind: "memory", stageId: "routing", x: 60, y: 216, width: 230, height: 48 },
     { id: "router", label: "Model Router", role: "Selección por capacidad", detail: `${brain.router.routes.length} rutas · fallback cloud`, state: brain.router.state, kind: "router", stageId: "routing", x: 385, y: 216, width: 230, height: 48 },
@@ -1660,7 +1678,7 @@ function buildBrainWorkflow(
     nodes,
     edges: [
       link("user", "openclaw", "Solicita", "input"),
-      link("telegram", "openclaw", "Mensaje", "input", telegramState),
+      link("telegram", "brain", "Mensaje", "brain", telegramState),
       link("openclaw", "brain", "Entrega contrato", "brain"),
       link("brain", "memory", "Recupera", "routing", brain.memory.state),
       link("brain", "router", "Enruta", "routing", brain.router.state),

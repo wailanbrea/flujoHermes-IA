@@ -37,4 +37,14 @@ La configuración versionada está en `config/hermes-brain.json`.
 
 ## Canales de chat
 
-Telegram está configurado con `openclaw channels add --channel telegram --use-env`. Las credenciales se leen de variables de entorno (`TELEGRAM_BOT_TOKEN`) y nunca se almacenan en texto plano en el repositorio.
+Telegram lo atiende el gateway de Hermes del perfil `default`, con el token
+declarado en `messaging.telegram` de su `config.yaml`. **No pasa por OpenClaw**:
+su canal de Telegram sigue en `not configured, token=none`, y sólo el proceso
+del gateway de Hermes mantiene conexión con `api.telegram.org`.
+
+Un único gateway puede sondear un token dado. Arrancar el gateway de otro perfil
+que declare el mismo token haría que Telegram repartiese los mensajes entre
+ambos de forma impredecible: `hermes gateway list` debe mostrar un solo ✓.
+
+Las credenciales viven fuera del repositorio. TRAMA no las lee: observa el
+estado ya saneado que el gateway publica en `gateway_state.json`.
