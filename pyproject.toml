@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-brain"
-version = "1.0.0"
-description = "Deterministic control-plane helpers for Hermes Brain."
+version = "1.1.0"
+description = "Typed ingress, routing, and execution policy boundaries for Hermes Brain."
 requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
 hermes-brain = "hermes_brain.cli:main"
+execution-gateway = "execution_gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

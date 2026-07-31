@@ -3,50 +3,68 @@ import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 test("builds the compact Hermes Brain dashboard", async () => {
-  const [html, page, css, assets] = await Promise.all([
+  const [html, page, css, server, assets] = await Promise.all([
     readFile(new URL("../dist/index.html", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../server/telemetry-server.ts", import.meta.url), "utf8"),
     readdir(new URL("../dist/assets/", import.meta.url)),
   ]);
   assert.match(html, /<div id="root"><\/div>/);
   assert.ok(assets.some((name) => name.endsWith(".js")));
   for (const label of [
+    "Usuario",
+    "OpenClaw",
     "HERMES BRAIN",
     "Memoria y Graphify",
     "Model Router",
     "Agent Factory",
-    "Plan de solución",
-    "Ejecutor en sandbox",
-    "Tests + revisión + evidencia",
+    "Plan y políticas",
+    "Execution Gateway",
+    "Sandbox de código",
+    "Playwright",
+    "Automatizaciones",
+    "Tests · Evidencia · Aprobación",
     "Resultado validado",
     "Learning Engine",
     "Memoria · Skill · Benchmark",
-    "Presupuesto de contexto",
-  ]) assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    "TRAMA",
+  ]) assert.match(server, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  const workflowBuilder = server.match(
+    /function buildBrainWorkflow[\s\S]*?function buildWorkflowExecution/,
+  );
+  assert.ok(workflowBuilder);
+  assert.doesNotMatch(
+    workflowBuilder[0],
+    /lm-studio|submit-hermes-task|directors|project-catalog/i,
+  );
+  assert.doesNotMatch(server, /function buildWorkflow\(/);
+  assert.match(server, /link\("brain", "trama", "Telemetría read-only"/);
   assert.match(page, /viewBox="0 0 1000 780"/);
   assert.match(page, /EventSource/);
-  assert.match(page, /snapshot\.brain/);
+  assert.match(page, /workflow=\{snapshot\.workflow\}/);
+  assert.match(page, /workflow\.nodes\.map/);
+  assert.match(page, /workflow\.edges\.map/);
+  assert.match(page, /function edgePath/);
+  assert.match(page, /edge\.evidence === "observed"/);
+  assert.match(page, /executionMode === "live" \|\| executionMode === "waiting"/);
   assert.match(page, /node-inspector/);
-  assert.match(page, /const executionStages/);
   assert.match(page, /snapshot\.execution/);
   assert.match(page, /En vivo/);
-  assert.match(page, /Flujo continuo/);
-  assert.match(page, /pathStageIndexes/);
-  assert.match(page, /animationDelay/);
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
   assert.match(css, /overflow-x: auto/);
+  assert.match(css, /height: 780px; width: 1000px/);
   assert.match(css, /max-width: 1500px/);
   assert.match(css, /@keyframes workflow-flow/);
-  assert.match(css, /brain-links path\.telemetry-active/);
+  assert.match(css, /brain-links path\.telemetry-active \{[^}]*animation:/);
+  assert.doesNotMatch(css, /\.brain-links path \{[^}]*animation:/);
   assert.doesNotMatch(
     page,
-    /diagram-spread|draggingId|onPointerMove|setInterval|localStorage|matchMedia|animateMotion|Activar animación/,
+    /const nodes:|const paths|executionStages|pathStageIndexes|animationDelay|Flujo continuo|diagram-spread|draggingId|onPointerMove|setInterval|localStorage|matchMedia|animateMotion|Activar animación/,
   );
   assert.doesNotMatch(page, /Ahorro vs|Tokens delegados|Hermes Lab|worker principal/i);
 });
-
 test("keeps telemetry loopback-only, cached, and read-only", async () => {
   const [server, dashboardServer, page, packageJson] = await Promise.all([
     readFile(new URL("../server/telemetry-server.ts", import.meta.url), "utf8"),
@@ -69,6 +87,19 @@ test("keeps telemetry loopback-only, cached, and read-only", async () => {
   assert.match(server, /promptBudgetSchema/);
   assert.match(server, /readPromptBudget/);
   assert.match(server, /probeRtk/);
+  assert.match(
+    server,
+    /probeTcp\("openclaw", "OpenClaw", "Canal de entrada", 18789\)/,
+  );
+  assert.match(server, /state: openClawState/);
+  assert.match(
+    server,
+    /link\("execution-gateway", "playwright".{0,160}"configured"\)/,
+  );
+  assert.match(
+    server,
+    /link\("execution-gateway", "automations".{0,160}"configured"\)/,
+  );
   assert.match(server, /metrics\.sharedGiB > 2/);
   assert.match(server, /totalTasks: directories\.length/);
   assert.doesNotMatch(
@@ -112,6 +143,8 @@ test("uses a managed sandbox and an idempotent evidence gate", async () => {
   assert.match(sandbox, /worktree add --quiet --detach/);
   assert.doesNotMatch(sandbox, /Start-HermesWorker|hermes\.exe|lms\.exe/);
   assert.match(seal, /--binary --full-index/);
+  assert.match(seal, /StandardOutputEncoding = \$utf8/);
+  assert.match(seal, /StandardErrorEncoding = \$utf8/);
   assert.match(seal, /patch-contains-cr/);
   assert.match(seal, /patchSha256/);
   assert.match(seal, /apply --check/);

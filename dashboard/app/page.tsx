@@ -1,70 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WORKFLOW_STAGES } from "../lib/telemetry";
 import type {
-  BrainSummary,
   HealthState,
   TelemetrySnapshot,
+  WorkflowEdge,
   WorkflowExecutionSummary,
-  WorkflowStageId,
+  WorkflowNode,
 } from "../lib/telemetry";
 import "./globals.css";
 
 const API_URL = "http://127.0.0.1:4311";
 
 type StreamState = "connecting" | "live" | "retrying";
-type NodeId =
-  | "user"
-  | "brain"
-  | "memory"
-  | "router"
-  | "agents"
-  | "cases"
-  | "engines"
-  | "experts"
-  | "plan"
-  | "sandbox"
-  | "evidence"
-  | "validated"
-  | "learning"
-  | "promotion";
-
-interface DiagramNode {
-  id: NodeId;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  title: string;
-  subtitle: string;
-}
-
-interface ExecutionStage {
-  id: WorkflowStageId;
-  label: string;
-  nodes: NodeId[];
-  edgeIndexes: number[];
-}
-
-const executionStages: ExecutionStage[] = [
-  { ...WORKFLOW_STAGES[0], nodes: ["user"], edgeIndexes: [] },
-  { ...WORKFLOW_STAGES[1], nodes: ["brain"], edgeIndexes: [0] },
-  {
-    ...WORKFLOW_STAGES[2],
-    nodes: ["memory", "router", "agents"],
-    edgeIndexes: [1, 2, 3],
-  },
-  {
-    ...WORKFLOW_STAGES[3],
-    nodes: ["cases", "engines", "experts"],
-    edgeIndexes: [4, 5, 6],
-  },
-  { ...WORKFLOW_STAGES[4], nodes: ["plan"], edgeIndexes: [7, 8, 9] },
-  { ...WORKFLOW_STAGES[5], nodes: ["sandbox"], edgeIndexes: [10] },
-  { ...WORKFLOW_STAGES[6], nodes: ["evidence"], edgeIndexes: [11] },
-  { ...WORKFLOW_STAGES[7], nodes: ["validated"], edgeIndexes: [12] },
-  { ...WORKFLOW_STAGES[8], nodes: ["learning"], edgeIndexes: [13] },
-  { ...WORKFLOW_STAGES[9], nodes: ["promotion"], edgeIndexes: [14] },
-];
 
 const idleExecution: WorkflowExecutionSummary = {
   mode: "idle",
@@ -80,60 +27,6 @@ const idleExecution: WorkflowExecutionSummary = {
   terminal: false,
 };
 
-const nodes: DiagramNode[] = [
-  { id: "user", x: 410, y: 14, width: 180, height: 42, title: "Usuario", subtitle: "Objetivo y límites" },
-  { id: "brain", x: 360, y: 82, width: 280, height: 58, title: "HERMES BRAIN", subtitle: "Plano de control persistente" },
-  { id: "memory", x: 70, y: 190, width: 230, height: 54, title: "Memoria y Graphify", subtitle: "Recuperación estructural" },
-  { id: "router", x: 385, y: 190, width: 230, height: 54, title: "Model Router", subtitle: "Capacidad, no identidad" },
-  { id: "agents", x: 700, y: 190, width: 230, height: 54, title: "Agent Factory", subtitle: "Especialistas advisory" },
-  { id: "cases", x: 70, y: 286, width: 230, height: 48, title: "Casos anteriores", subtitle: "Sólo resultados validados" },
-  { id: "engines", x: 385, y: 286, width: 230, height: 48, title: "Local / Cloud", subtitle: "Motores reemplazables" },
-  { id: "experts", x: 700, y: 286, width: 230, height: 48, title: "Agentes expertos", subtitle: "Briefs de sólo lectura" },
-  { id: "plan", x: 385, y: 382, width: 230, height: 48, title: "Plan de solución", subtitle: "Decisión del director cloud" },
-  { id: "sandbox", x: 385, y: 458, width: 230, height: 48, title: "Ejecutor en sandbox", subtitle: "Worktree aislado" },
-  { id: "evidence", x: 350, y: 534, width: 300, height: 48, title: "Tests + revisión + evidencia", subtitle: "LF · SHA-256 · allowlist" },
-  { id: "validated", x: 385, y: 610, width: 230, height: 48, title: "Resultado validado", subtitle: "Integración idempotente" },
-  { id: "learning", x: 385, y: 686, width: 230, height: 48, title: "Learning Engine", subtitle: "Después de completar" },
-  { id: "promotion", x: 350, y: 746, width: 300, height: 30, title: "Memoria · Skill · Benchmark", subtitle: "" },
-];
-
-const paths = [
-  "M500 56 V82",
-  "M500 140 V164 H185 V190",
-  "M500 140 V190",
-  "M500 164 H815 V190",
-  "M185 244 V286",
-  "M500 244 V286",
-  "M815 244 V286",
-  "M185 334 V356 H500 V382",
-  "M500 334 V382",
-  "M815 334 V356 H500 V382",
-  "M500 430 V458",
-  "M500 506 V534",
-  "M500 582 V610",
-  "M500 658 V686",
-  "M500 734 V746",
-];
-
-const pathStageIndexes = [1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 6, 7, 8, 9];
-
-const nodeCopy: Record<NodeId, string> = {
-  user: "Entrega el objetivo, el alcance y la autorización. No decide detalles internos del runtime.",
-  brain: "Coordina memoria, routing, expertos, sandboxes, evidencia y aprendizaje. Sólo escribe dentro de ámbitos autorizados.",
-  memory: "Graphify localiza símbolos y relaciones antes de cualquier recorrido amplio.",
-  router: "Selecciona la capacidad requerida. El operador local actúa con permisos acotados y tiene fallback cloud.",
-  agents: "Convoca perfiles especializados que sólo entregan briefs estructurados.",
-  cases: "Recupera soluciones reproducibles y lecciones saneadas, nunca conversaciones completas.",
-  engines: "Gemma puede operar herramientas en sandbox; los directores cloud siguen disponibles como fallback.",
-  experts: "Arquitectura, seguridad, testing, frontend, backend, datos y aprendizaje.",
-  plan: "El director integra hallazgos y define la implementación con criterios verificables.",
-  sandbox: "Todo cambio ocurre dentro del worktree creado para un único task ID.",
-  evidence: "El diff se sella en LF, se limita por allowlist y se verifica con hash y git apply.",
-  validated: "Sólo Complete true aplica el parche una vez después de pruebas independientes.",
-  learning: "Una tarea completada genera una lección pequeña y trazable.",
-  promotion: "Ninguna skill se promueve sin benchmark aprobado y autorización explícita.",
-};
-
 function stateClass(state: HealthState): string {
   return `state-${state}`;
 }
@@ -146,33 +39,48 @@ function formatAge(value?: string | null): string {
   return `hace ${Math.floor(seconds / 3600)}h`;
 }
 
-function nodeState(id: NodeId, brain: BrainSummary): HealthState {
-  if (["memory", "cases"].includes(id)) return brain.memory.state;
-  if (["router", "engines"].includes(id)) return brain.router.state;
-  if (["agents", "experts"].includes(id)) return brain.agents.state;
-  if (id === "sandbox") return brain.sandbox.state;
-  if (id === "learning") return brain.learning.state;
-  if (id === "promotion") return brain.learning.promotionState;
-  if (id === "validated") return brain.lastValidatedOutcome ? "healthy" : "unknown";
-  return brain.state;
+function edgePath(
+  edge: WorkflowEdge,
+  nodesById: Map<string, WorkflowNode>,
+): string {
+  const source = nodesById.get(edge.source);
+  const target = nodesById.get(edge.target);
+  if (!source || !target) return "";
+
+  const sourceX = source.x + source.width / 2;
+  const sourceY = source.y + source.height / 2;
+  const targetX = target.x + target.width / 2;
+  const targetY = target.y + target.height / 2;
+  if (Math.abs(targetY - sourceY) < 8) {
+    const goesRight = targetX > sourceX;
+    return `M ${goesRight ? source.x + source.width : source.x} ${sourceY} H ${goesRight ? target.x : target.x + target.width}`;
+  }
+
+  const goesDown = targetY > sourceY;
+  const startY = goesDown ? source.y + source.height : source.y;
+  const endY = goesDown ? target.y : target.y + target.height;
+  const middleY = Math.round((startY + endY) / 2);
+  return `M ${sourceX} ${startY} V ${middleY} H ${targetX} V ${endY}`;
 }
 
 function BrainDiagram({
-  brain,
+  workflow,
   execution,
   selected,
   onSelect,
 }: {
-  brain: BrainSummary;
+  workflow: TelemetrySnapshot["workflow"];
   execution: WorkflowExecutionSummary;
-  selected: NodeId;
-  onSelect: (id: NodeId) => void;
+  selected: string;
+  onSelect: (id: string) => void;
 }) {
-  const selectedNode = nodes.find((node) => node.id === selected) ?? nodes[1];
+  const nodesById = new Map(workflow.nodes.map((node) => [node.id, node]));
+  const selectedNode = nodesById.get(selected) ?? nodesById.get("brain") ?? workflow.nodes[0];
   const diagramScroller = useRef<HTMLDivElement>(null);
-  const activeStageIndex = execution.stageIndex;
-  const activeStage = executionStages[activeStageIndex];
+  const activeStageIndex = Math.max(0, execution.stageIndex);
+  const activeStage = WORKFLOW_STAGES[activeStageIndex] ?? WORKFLOW_STAGES[0];
   const executionMode = execution.mode;
+  const executionIsActive = executionMode === "live" || executionMode === "waiting";
   const executionModeLabel = {
     idle: "Sin tarea",
     live: "En vivo",
@@ -202,28 +110,27 @@ function BrainDiagram({
           <span>
             Secuencia operativa
             <em className={`execution-mode mode-${executionMode}`}>{executionModeLabel}</em>
-            <em className="execution-mode mode-flow">Flujo continuo</em>
           </span>
           <strong>
             {String(activeStageIndex + 1).padStart(2, "0")}
             <i>/</i>
-            {String(executionStages.length).padStart(2, "0")}
+            {String(WORKFLOW_STAGES.length).padStart(2, "0")}
             <b>{activeStage.label}</b>
           </strong>
           <small>{executionDetail}</small>
         </div>
         <div
           className="execution-progress"
-          aria-label={`Fase ${activeStageIndex + 1} de ${executionStages.length}: ${activeStage.label}`}
+          aria-label={`Fase ${activeStageIndex + 1} de ${WORKFLOW_STAGES.length}: ${activeStage.label}`}
           role="progressbar"
           aria-valuemin={1}
-          aria-valuemax={executionStages.length}
+          aria-valuemax={WORKFLOW_STAGES.length}
           aria-valuenow={activeStageIndex + 1}
         >
-          {executionStages.map((stage, index) => (
+          {WORKFLOW_STAGES.map((stage, index) => (
             <i
               className={index === activeStageIndex ? "active" : index < activeStageIndex ? "passed" : ""}
-              key={stage.label}
+              key={stage.id}
             />
           ))}
         </div>
@@ -231,7 +138,7 @@ function BrainDiagram({
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
         <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
           <title id="brain-title">Flujo operativo de Hermes Brain</title>
-          <desc id="brain-desc">Del usuario a memoria, routing, agentes, sandbox, evidencia y aprendizaje.</desc>
+          <desc id="brain-desc">Arquitectura operativa publicada por la telemetría local.</desc>
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" />
@@ -241,30 +148,34 @@ function BrainDiagram({
             </marker>
           </defs>
           <g className="brain-links">
-            {paths.map((path, index) => {
-              const isTraversing = activeStage.edgeIndexes.includes(index);
-              return (
+            {workflow.edges.map((edge) => {
+              const path = edgePath(edge, nodesById);
+              const isTraversing =
+                executionIsActive &&
+                edge.evidence === "observed" &&
+                edge.stageId === execution.stageId;
+              return path ? (
                 <path
-                  className={`flow-path${isTraversing ? " telemetry-active" : ""}`}
+                  className={`flow-path evidence-${edge.evidence}${isTraversing ? " telemetry-active" : ""}`}
                   d={path}
-                  key={path}
+                  data-evidence={edge.evidence}
+                  key={edge.id}
                   markerEnd={isTraversing ? "url(#arrow-active)" : "url(#arrow)"}
-                  style={{ animationDelay: `${(pathStageIndexes[index] - 1) * 0.6}s` }}
                 />
-              );
+              ) : null;
             })}
           </g>
-          {nodes.map((node) => {
-            const state = nodeState(node.id, brain);
+          {workflow.nodes.map((node) => {
             const active = node.id === selected;
-            const isSequenceActive = activeStage.nodes.includes(node.id);
+            const isSequenceActive = node.stageId === execution.stageId;
+            const showRole = node.height >= 40 && Boolean(node.role);
             return (
               <g
-                className={`brain-node ${stateClass(state)}${active ? " selected" : ""}${isSequenceActive ? " sequence-active" : ""}`}
+                className={`brain-node kind-${node.kind} ${stateClass(node.state)}${active ? " selected" : ""}${isSequenceActive ? " sequence-active" : ""}`}
                 key={node.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`${node.title}: ${node.subtitle}`}
+                aria-label={`${node.label}: ${node.role}`}
                 aria-current={isSequenceActive ? "step" : undefined}
                 onClick={() => onSelect(node.id)}
                 onKeyDown={(event) => {
@@ -273,12 +184,12 @@ function BrainDiagram({
               >
                 <rect x={node.x} y={node.y} width={node.width} height={node.height} rx="4" />
                 <circle cx={node.x + 14} cy={node.y + 14} r="4" />
-                <text className="node-title" x={node.x + node.width / 2} y={node.y + (node.subtitle ? 23 : 20)} textAnchor="middle">
-                  {node.title}
+                <text className="node-title" x={node.x + node.width / 2} y={node.y + (showRole ? 20 : node.height / 2 + 5)} textAnchor="middle">
+                  {node.label}
                 </text>
-                {node.subtitle && (
-                  <text className="node-subtitle" x={node.x + node.width / 2} y={node.y + 40} textAnchor="middle">
-                    {node.subtitle}
+                {showRole && (
+                  <text className="node-subtitle" x={node.x + node.width / 2} y={node.y + 35} textAnchor="middle">
+                    {node.role}
                   </text>
                 )}
               </g>
@@ -288,21 +199,21 @@ function BrainDiagram({
       </div>
       <aside className="node-inspector" aria-live="polite">
         <span>Inspector</span>
-        <h3>{selectedNode.title}</h3>
-        <p>{nodeCopy[selectedNode.id]}</p>
+        <h3>{selectedNode?.label ?? "Workflow"}</h3>
+        <p>{selectedNode?.detail ?? "Sin detalle disponible."}</p>
         <dl>
-          <div><dt>Estado</dt><dd className={stateClass(nodeState(selected, brain))}>{nodeState(selected, brain)}</dd></div>
-          <div><dt>Autoridad</dt><dd>{selected === "brain" ? "control" : "acotada"}</dd></div>
+          <div><dt>Rol</dt><dd>{selectedNode?.role ?? "desconocido"}</dd></div>
+          <div><dt>Estado</dt><dd className={stateClass(selectedNode?.state ?? "unknown")}>{selectedNode?.state ?? "unknown"}</dd></div>
+          <div><dt>Autoridad</dt><dd>{selectedNode?.kind === "control" ? "control" : selectedNode?.kind === "observer" ? "observación" : "acotada"}</dd></div>
         </dl>
       </aside>
     </div>
   );
 }
-
 function Home() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [stream, setStream] = useState<StreamState>("connecting");
-  const [selected, setSelected] = useState<NodeId>("brain");
+  const [selected, setSelected] = useState("brain");
 
   useEffect(() => {
     let active = true;
@@ -369,11 +280,11 @@ function Home() {
             <p className="kicker">Flujo real</p>
             <h2>Decisión, evidencia y memoria en un solo circuito</h2>
           </div>
-          <p>La IA local opera con límites. Los expertos asesoran. La evidencia decide.</p>
+          <p>OpenClaw canaliza solicitudes. Hermes razona bajo políticas. La evidencia decide.</p>
         </header>
         {snapshot ? (
           <BrainDiagram
-            brain={snapshot.brain}
+            workflow={snapshot.workflow}
             execution={snapshot.execution ?? idleExecution}
             selected={selected}
             onSelect={setSelected}

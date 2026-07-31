@@ -26,6 +26,7 @@ import type {
   WorkflowEdge,
   WorkflowExecutionSummary,
   WorkflowNode,
+  WorkflowStageId,
 } from "../lib/telemetry";
 
 const execFileAsync = promisify(execFile);
@@ -1530,160 +1531,51 @@ function connectionFrom(probe: Probe): ConnectionHealth {
   };
 }
 
-function buildWorkflow(
-  services: ServiceHealth[],
-  graph: KnowledgeGraphSummary,
-  delegation: HermesDelegationSummary,
+function buildBrainWorkflow(
+  brain: BrainSummary,
+  execution: WorkflowExecutionSummary,
+  openClawState: HealthState,
   observedAt: string,
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
-  const byId = new Map(services.map((service) => [service.id, service]));
-  const stateOf = (id: string): HealthState => byId.get(id)?.state ?? "unknown";
-  const directorsIntegrated =
-    graph.codexIntegrated &&
-    graph.claudeIntegrated &&
-    graph.antigravityIntegrated &&
-    graph.openCodeIntegrated;
-  const hasTaskEvidence = delegation.totalTasks > 0;
-  const taskState: HealthState =
-    delegation.latestTask &&
-    ["failed", "blocked", "validation-failed"].includes(
-      delegation.latestTask.state,
-    )
+  const latest = brain.lastValidatedOutcome;
+  const status = brain.state;
+  const executionState: HealthState =
+    execution.taskState &&
+    ["failed", "blocked", "validation-failed"].includes(execution.taskState)
       ? "degraded"
-      : hasTaskEvidence
-        ? "healthy"
-        : "unknown";
+      : execution.mode === "idle"
+        ? "unknown"
+        : status;
   const nodes: WorkflowNode[] = [
-    {
-      id: "operator",
-      label: "Usuario",
-      role: "Paso 01 · Solicitud",
-      detail: "Instrucciones de alto nivel",
-      state: "healthy",
-      kind: "observer",
-      x: 6,
-      y: 24,
-    },
-    {
-      id: "directors",
-      label: "IA de Pago (Manager)",
-      role: "Paso 02 · Arquitecta",
-      detail: "Antigravity · Codex · Claude (Diseño y Contrato)",
-      state: directorsIntegrated ? "healthy" : "degraded",
-      kind: "agent",
-      x: 23,
-      y: 24,
-    },
-    {
-      id: "graphify",
-      label: "Graphify AST ($0)",
-      role: "Subgrafo Acotado",
-      detail: `${graph.nodeCount.toLocaleString("es-DO")} nodos · 0 tokens consumidos`,
-      state: graph.state,
-      kind: "graph",
-      x: 40,
-      y: 12,
-    },
-    {
-      id: "hermes-broker",
-      label: "submit-hermes-task.ps1",
-      role: "Paso 03 · Contrato",
-      detail: `${delegation.activeCount} activas · ${delegation.awaitingReviewCount} revisión`,
-      state: delegation.state,
-      kind: "queue",
-      x: 40,
-      y: 48,
-    },
-    {
-      id: "graph-store",
-      label: "Grafo Global AST",
-      role: "Conocimiento Local",
-      detail: `${graph.projectCount} proyectos indexados`,
-      state: graph.state,
-      kind: "graph",
-      x: 56,
-      y: 12,
-    },
-    {
-      id: "hermes",
-      label: "Hermes (IA Local)",
-      role: "Paso 04 · Worker ($0)",
-      detail: byId.get("hermes")?.detail ?? "Qwen 3.6 35B en LM Studio",
-      state: stateOf("hermes"),
-      kind: "agent",
-      x: 56,
-      y: 48,
-    },
-    {
-      id: "worktree",
-      label: "changes.patch",
-      role: "Paso 05 · Parche",
-      detail: hasTaskEvidence ? "Diff local generado" : "En espera",
-      state: taskState,
-      kind: "workspace",
-      x: 73,
-      y: 48,
-    },
-    {
-      id: "director-review",
-      label: "Revisión Manager",
-      role: "Paso 06 · Puerta de Calidad",
-      detail: delegation.latestTask
-        ? `${delegation.latestTask.requestedBy} · ${delegation.latestTask.state}`
-        : "Revisión diff + tests independientes",
-      state: taskState,
-      kind: "review",
-      x: 89,
-      y: 48,
-    },
-    {
-      id: "project-catalog",
-      label: "Repositorio Git",
-      role: "Paso 07 · Integración",
-      detail: `${graph.projectCount} proyectos autorizados`,
-      state: graph.state,
-      kind: "project",
-      x: 89,
-      y: 12,
-    },
-    {
-      id: "lm-studio",
-      label: "LM Studio",
-      role: "Inferencia Local 100% Gratis",
-      detail: byId.get("lm-studio")?.detail ?? "Sin datos",
-      state: stateOf("lm-studio"),
-      kind: "model",
-      x: 56,
-      y: 78,
-    },
-    {
-      id: "rx9070",
-      label: "RX 9070 GPU",
-      role: "Aceleración Cómputo",
-      detail: byId.get("rx9070")?.detail ?? "Sin datos",
-      state: stateOf("rx9070"),
-      kind: "compute",
-      x: 73,
-      y: 78,
-    },
-    {
-      id: "dashboard",
-      label: "TRAMA Dashboard",
-      role: "Observador Privado",
-      detail: "Métricas y estados sin capturar prompts/código",
-      state: "healthy",
-      kind: "observer",
-      x: 6,
-      y: 84,
-    },
+    { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo, alcance y límites", state: "healthy", kind: "user", stageId: "input", x: 410, y: 10, width: 180, height: 38 },
+    { id: "openclaw", label: "OpenClaw", role: "Interfaz de entrada", detail: "Canaliza solicitudes; no autoriza integración", state: openClawState, kind: "interface", stageId: "input", x: 390, y: 64, width: 220, height: 42 },
+    { id: "brain", label: "HERMES BRAIN", role: "Plano de control persistente", detail: "Coordina memoria, políticas, ejecución y aprendizaje", state: status, kind: "control", stageId: "brain", x: 350, y: 122, width: 300, height: 52 },
+    { id: "memory", label: "Memoria y Graphify", role: "Recuperación estructural", detail: `${brain.memory.graphNodes} nodos · conocimiento saneado`, state: brain.memory.state, kind: "memory", stageId: "routing", x: 60, y: 216, width: 230, height: 48 },
+    { id: "router", label: "Model Router", role: "Selección por capacidad", detail: `${brain.router.routes.length} rutas · fallback cloud`, state: brain.router.state, kind: "router", stageId: "routing", x: 385, y: 216, width: 230, height: 48 },
+    { id: "agents", label: "Agent Factory", role: "Especialistas reemplazables", detail: `${brain.agents.operatorCount} operador · ${brain.agents.advisoryCount} asesores`, state: brain.agents.state, kind: "factory", stageId: "routing", x: 710, y: 216, width: 230, height: 48 },
+    { id: "plan", label: "Plan y políticas", role: "Decisión verificable", detail: "Alcance, permisos y criterios de salida", state: status, kind: "policy", stageId: "context", x: 365, y: 302, width: 270, height: 46 },
+    { id: "execution-gateway", label: "Execution Gateway", role: "Control de ejecución", detail: "Allowlist, task ID y permisos", state: brain.sandbox.state, kind: "gateway", stageId: "plan", x: 350, y: 380, width: 300, height: 50 },
+    { id: "code-sandbox", label: "Sandbox de código", role: "Worktree aislado", detail: `${brain.sandbox.active.length} tareas activas`, state: brain.sandbox.state, kind: "executor", stageId: "sandbox", x: 60, y: 470, width: 230, height: 48 },
+    { id: "playwright", label: "Playwright", role: "Validación en navegador", detail: "Navegador real bajo alcance", state: brain.sandbox.state, kind: "executor", stageId: "sandbox", x: 385, y: 470, width: 230, height: 48 },
+    { id: "automations", label: "Automatizaciones", role: "Operaciones controladas", detail: "Acciones explícitas y acotadas", state: brain.sandbox.state, kind: "executor", stageId: "sandbox", x: 710, y: 470, width: 230, height: 48 },
+    { id: "evidence", label: "Tests · Evidencia · Aprobación", role: "Puerta determinista", detail: "LF · SHA-256 · allowlist · validación independiente", state: executionState, kind: "validation", stageId: "evidence", x: 330, y: 554, width: 340, height: 48 },
+    { id: "validated", label: "Resultado validado", role: "Integración única", detail: latest ? `${latest.projectName} · ${latest.state}` : "Sin resultado reciente", state: latest ? "healthy" : "unknown", kind: "result", stageId: "validated", x: 385, y: 628, width: 230, height: 44 },
+    { id: "learning", label: "Learning Engine", role: "Después de completar", detail: `${brain.learning.counts.candidate ?? 0} candidatas`, state: brain.learning.state, kind: "learning", stageId: "learning", x: 385, y: 694, width: 230, height: 42 },
+    { id: "promotion", label: "Memoria · Skill · Benchmark", role: "Promoción controlada", detail: "Benchmark y aprobación explícita", state: brain.learning.promotionState, kind: "learning", stageId: "promotion", x: 350, y: 752, width: 300, height: 24 },
+    { id: "trama", label: "TRAMA", role: "Observador lateral", detail: "SSE read-only · sin autoridad", state: "healthy", kind: "observer", stageId: "brain", x: 60, y: 122, width: 210, height: 52 },
   ];
-
-  const edge = (
+  const observedThrough = execution.mode === "idle" ? -1 : execution.stageIndex;
+  const evidenceFor = (stageId: WorkflowStageId): WorkflowEdge["evidence"] =>
+    WORKFLOW_STAGES.findIndex((stage) => stage.id === stageId) <= observedThrough
+      ? "observed"
+      : "configured";
+  const link = (
     source: string,
     target: string,
     label: string,
-    state: HealthState,
-    evidence: WorkflowEdge["evidence"],
+    stageId: WorkflowStageId,
+    state: HealthState = status,
+    evidence: WorkflowEdge["evidence"] = evidenceFor(stageId),
   ): WorkflowEdge => ({
     id: `${source}-${target}`,
     source,
@@ -1691,124 +1583,34 @@ function buildWorkflow(
     label,
     state,
     evidence,
-    lastObservedAt: observedAt,
-  });
-  const edges: WorkflowEdge[] = [
-    edge("operator", "directors", "1. Solicitud de tarea", "healthy", "configured"),
-    edge(
-      "directors",
-      "graphify",
-      "2. Consulta subgrafo AST ($0 tokens)",
-      directorsIntegrated ? "healthy" : "degraded",
-      "configured",
-    ),
-    edge(
-      "directors",
-      "hermes-broker",
-      "3. Envía contrato de tarea",
-      delegation.state,
-      hasTaskEvidence ? "observed" : "configured",
-    ),
-    edge("graphify", "graph-store", "Subgrafo acotado", graph.state, "observed"),
-    edge("graph-store", "project-catalog", "Localización de fuentes", graph.state, "indexed"),
-    edge(
-      "hermes-broker",
-      "hermes",
-      "4. Ejecución pesada local",
-      stateOf("hermes"),
-      hasTaskEvidence ? "observed" : "configured",
-    ),
-    edge(
-      "hermes",
-      "worktree",
-      "5. Genera changes.patch",
-      taskState,
-      hasTaskEvidence ? "observed" : "configured",
-    ),
-    edge(
-      "worktree",
-      "director-review",
-      "6. Entrega diff + evidencias",
-      taskState,
-      hasTaskEvidence ? "observed" : "configured",
-    ),
-    edge(
-      "director-review",
-      "project-catalog",
-      "7. Aprueba review-hermes-task.ps1",
-      taskState,
-      hasTaskEvidence ? "observed" : "configured",
-    ),
-    edge("hermes", "lm-studio", "Inferencia local $0", stateOf("lm-studio"), "observed"),
-    edge("lm-studio", "rx9070", "Aceleración GPU", stateOf("rx9070"), "observed"),
-    edge("dashboard", "graphify", "Estado Grafo", graph.state, "observed"),
-    edge(
-      "dashboard",
-      "hermes-broker",
-      "Monitoreo Cola",
-      delegation.state,
-      "observed",
-    ),
-    edge("dashboard", "lm-studio", "Salud LM Studio", stateOf("lm-studio"), "observed"),
-  ];
-  return { nodes, edges };
-}
-
-function buildBrainWorkflow(
-  services: ServiceHealth[],
-  graph: KnowledgeGraphSummary,
-  brain: BrainSummary,
-  observedAt: string,
-): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
-  const latest = brain.lastValidatedOutcome;
-  const status = brain.state;
-  const nodes: WorkflowNode[] = [
-    { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo y límites", state: "healthy", kind: "observer", x: 50, y: 4 },
-    { id: "brain", label: "HERMES BRAIN", role: "Plano de control", detail: "Decide, recuerda y controla evidencia", state: status, kind: "agent", x: 50, y: 14 },
-    { id: "memory", label: "Memoria y Graphify", role: "Recuperación", detail: `${brain.memory.graphNodes} nodos`, state: brain.memory.state, kind: "graph", x: 18, y: 27 },
-    { id: "router", label: "Model Router", role: "Capacidad", detail: "Local opcional / cloud", state: brain.router.state, kind: "queue", x: 50, y: 27 },
-    { id: "agents", label: "Agent Factory", role: "Perfiles", detail: `${brain.agents.operatorCount} operador · ${brain.agents.advisoryCount} asesores`, state: brain.agents.state, kind: "agent", x: 82, y: 27 },
-    { id: "cases", label: "Casos anteriores", role: "Memoria validada", detail: brain.memory.policy, state: brain.memory.state, kind: "graph", x: 18, y: 38 },
-    { id: "engines", label: "Local / Cloud", role: "Motores reemplazables", detail: "El director nunca queda bloqueado", state: brain.router.state, kind: "model", x: 50, y: 38 },
-    { id: "experts", label: "Agentes expertos", role: "Briefs read-only", detail: "Hallazgos, riesgos y pruebas", state: brain.agents.state, kind: "agent", x: 82, y: 38 },
-    { id: "plan", label: "Plan de solución", role: "Director cloud", detail: "Codex · Claude · Antigravity · OpenCode", state: status, kind: "review", x: 50, y: 50 },
-    { id: "sandbox", label: "Ejecutor en sandbox", role: "Worktree aislado", detail: `${brain.sandbox.active.length} tareas activas`, state: brain.sandbox.state, kind: "workspace", x: 50, y: 60 },
-    { id: "evidence", label: "Tests + revisión + evidencia", role: "Puerta determinista", detail: "LF · SHA-256 · allowlist · apply-check", state: status, kind: "review", x: 50, y: 70 },
-    { id: "validated", label: "Resultado validado", role: "Integración única", detail: latest ? `${latest.projectName} · ${latest.state}` : "Sin resultado reciente", state: latest ? "healthy" : "unknown", kind: "project", x: 50, y: 80 },
-    { id: "learning", label: "Learning Engine", role: "Después de validar", detail: `${brain.learning.counts.candidate ?? 0} candidatas`, state: brain.learning.state, kind: "graph", x: 50, y: 89 },
-    { id: "promotion", label: "Memoria · Skill · Benchmark", role: "Promoción controlada", detail: "Benchmark + aprobación", state: brain.skills.state, kind: "review", x: 50, y: 97 },
-  ];
-  const link = (source: string, target: string, label: string): WorkflowEdge => ({
-    id: `${source}-${target}`,
-    source,
-    target,
-    label,
-    state: status,
-    evidence: "configured",
+    stageId,
     lastObservedAt: observedAt,
   });
   return {
     nodes,
     edges: [
-      link("user", "brain", "Instrucción"),
-      link("brain", "memory", "Recupera"),
-      link("brain", "router", "Enruta"),
-      link("brain", "agents", "Selecciona"),
-      link("memory", "cases", "Contexto"),
-      link("router", "engines", "Capacidad"),
-      link("agents", "experts", "Asesoría"),
-      link("cases", "plan", "Síntesis"),
-      link("engines", "plan", "Síntesis"),
-      link("experts", "plan", "Síntesis"),
-      link("plan", "sandbox", "Implementa"),
-      link("sandbox", "evidence", "Sella"),
-      link("evidence", "validated", "Valida"),
-      link("validated", "learning", "Aprende"),
-      link("learning", "promotion", "Promueve"),
+      link("user", "openclaw", "Solicita", "input"),
+      link("openclaw", "brain", "Entrega contrato", "brain"),
+      link("brain", "memory", "Recupera", "routing", brain.memory.state),
+      link("brain", "router", "Enruta", "routing", brain.router.state),
+      link("brain", "agents", "Selecciona", "routing", brain.agents.state),
+      link("memory", "plan", "Contexto", "context", brain.memory.state),
+      link("router", "plan", "Capacidad", "context", brain.router.state),
+      link("agents", "plan", "Briefs", "context", brain.agents.state),
+      link("plan", "execution-gateway", "Autoriza alcance", "plan"),
+      link("execution-gateway", "code-sandbox", "Código", "sandbox", brain.sandbox.state),
+      link("execution-gateway", "playwright", "Navegador", "sandbox", brain.sandbox.state, "configured"),
+      link("execution-gateway", "automations", "Operaciones", "sandbox", brain.sandbox.state, "configured"),
+      link("code-sandbox", "evidence", "Diff y tests", "evidence", executionState),
+      link("playwright", "evidence", "Evidencia visual", "evidence", executionState, "configured"),
+      link("automations", "evidence", "Registro", "evidence", executionState, "configured"),
+      link("evidence", "validated", "Completa", "validated", executionState),
+      link("validated", "learning", "Sanea", "learning", brain.learning.state),
+      link("learning", "promotion", "Evalúa", "promotion", brain.learning.promotionState),
+      link("brain", "trama", "Telemetría read-only", "brain", "healthy"),
     ],
   };
 }
-
 function buildWorkflowExecution(
   delegation: HermesDelegationSummary,
   brain: BrainSummary,
@@ -1897,6 +1699,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     wslProbe,
     mariadbProbe,
     apacheProbe,
+    openClawProbe,
     graphProbe,
     gpuProbe,
     rtkProbe,
@@ -1910,6 +1713,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeWsl(),
     probeTcp("mariadb", "MariaDB", "Datos locales", 3306),
     probeTcp("apache", "Apache", "Aplicaciones XAMPP", 80),
+    probeTcp("openclaw", "OpenClaw", "Canal de entrada", 18789),
     probeGraphify(),
     probeGpu(),
     probeRtk(),
@@ -1924,6 +1728,7 @@ async function collect(): Promise<TelemetrySnapshot> {
     wslProbe,
     mariadbProbe,
     apacheProbe,
+    openClawProbe,
     graphProbe,
     gpuProbe,
     rtkProbe,
@@ -1935,6 +1740,11 @@ async function collect(): Promise<TelemetrySnapshot> {
   const total = totalmem();
   const generatedAt = checkedAt();
   sequence += 1;
+  const execution = buildWorkflowExecution(
+    hermesBrokerProbe.delegation,
+    brain,
+    generatedAt,
+  );
   return {
     generatedAt,
     sequence,
@@ -1948,17 +1758,8 @@ async function collect(): Promise<TelemetrySnapshot> {
     brain,
     promptBudget,
     delegation: hermesBrokerProbe.delegation,
-    execution: buildWorkflowExecution(
-      hermesBrokerProbe.delegation,
-      brain,
-      generatedAt,
-    ),
-    workflow: buildBrainWorkflow(
-      services,
-      graphProbe.graph,
-      brain,
-      generatedAt,
-    ),
+    execution,
+    workflow: buildBrainWorkflow(brain, execution, openClawProbe.service.state, generatedAt),
     system: {
       memoryUsedGiB: Number(((total - free) / 1024 ** 3).toFixed(2)),
       memoryTotalGiB: Number((total / 1024 ** 3).toFixed(2)),
@@ -2045,6 +1846,14 @@ async function refreshHermesBroker(): Promise<void> {
 
     sequence += 1;
     const generatedAt = checkedAt();
+    const execution = buildWorkflowExecution(
+      probe.delegation,
+      current.brain,
+      generatedAt,
+    );
+    const openClawState =
+      current.services.find((service) => service.id === "openclaw")?.state ??
+      "unknown";
     updateEvents(updatedServices);
     current = {
       ...current,
@@ -2053,15 +1862,11 @@ async function refreshHermesBroker(): Promise<void> {
       services: updatedServices,
       connections: updatedConnections,
       delegation: probe.delegation,
-      execution: buildWorkflowExecution(
-        probe.delegation,
-        current.brain,
-        generatedAt,
-      ),
+      execution,
       workflow: buildBrainWorkflow(
-        updatedServices,
-        current.graph,
         current.brain,
+        execution,
+        openClawState,
         generatedAt,
       ),
       events: [...events],

@@ -5,23 +5,26 @@
     "Graphify is queried before broad project navigation.",
     "Any project edit occurs only inside an isolated Git worktree with checkpoints and explicit approval.",
     "Only reproducible evidence permits integration.",
-    "Learning is derived only from validated outcomes."
+    "Learning is derived only from validated outcomes.",
+    "Only ingress from an already-authenticated official OpenClaw WS/RPC context reaches the Brain.",
+    "OpenClaw remains the source of truth for sessions, routing, and channels.",
+    "All side effects are authorized by the execution gateway."
   ],
   "modelRouter": {
     "policy": "capability-first",
     "hermesExternalInference": "disabled",
     "localTimeoutSeconds": 45,
     "routes": [
-      { "capability": "classification", "profile": "clasificador", "executor": "local-optional", "fallback": "director" },
-      { "capability": "sanitized-summary", "profile": "hermesbrain", "executor": "local-optional", "fallback": "director" },
-      { "capability": "research", "profile": "researchexpert", "executor": "local-controlled", "fallback": "director" },
+      { "capability": "classification", "profile": "clasificador", "executor": "local-optional", "fallback": "director", "riskClass": "low", "executionCapability": "sandbox-code", "approvalRequirement": "none", "requiredToolsets": ["context_engine", "skills"], "requiredSkills": ["hermes-model-router"] },
+      { "capability": "sanitized-summary", "profile": "hermesbrain", "executor": "local-optional", "fallback": "director", "riskClass": "low", "executionCapability": "sandbox-code", "approvalRequirement": "none", "requiredToolsets": ["context_engine", "skills"], "requiredSkills": ["hermes-brain"] },
+      { "capability": "research", "profile": "researchexpert", "executor": "local-controlled", "fallback": "director", "riskClass": "low", "executionCapability": "external-automation", "approvalRequirement": "none", "requiredToolsets": ["context_engine", "skills"], "requiredSkills": ["tech-research-agent"] },
       { "capability": "personal-finance", "profile": "personalfinanceexpert", "executor": "local-advisory", "fallback": "cloud-director" },
-      { "capability": "skill-authoring", "profile": "hermesbrain", "executor": "local-controlled", "fallback": "director" },
-      { "capability": "architecture", "profile": "architectureexpert", "executor": "local-advisory", "fallback": "cloud-director" },
-      { "capability": "programming", "profile": "auto", "executor": "local-controlled", "fallback": "cloud-director" },
-      { "capability": "critical-security", "profile": "securityexpert", "executor": "local-advisory", "fallback": "cloud-security-expert" },
-      { "capability": "testing", "profile": "testingexpert", "executor": "deterministic-scripts", "fallback": "local-advisory" },
-      { "capability": "integration", "profile": "quality", "executor": "evidence-gate", "fallback": "blocked" }
+      { "capability": "skill-authoring", "profile": "hermesbrain", "executor": "local-controlled", "fallback": "director", "riskClass": "medium", "executionCapability": "sandbox-code", "approvalRequirement": "isolated-sandbox", "requiredToolsets": ["context_engine", "file", "skills", "terminal"], "requiredSkills": ["hermes-brain", "hermes-agent-factory"] },
+      { "capability": "architecture", "profile": "architectureexpert", "executor": "local-advisory", "fallback": "cloud-director", "riskClass": "low", "executionCapability": "sandbox-code", "approvalRequirement": "none", "requiredToolsets": ["context_engine", "skills"], "requiredSkills": ["architecture-diagram"] },
+      { "capability": "programming", "profile": "auto", "executor": "local-controlled", "fallback": "cloud-director", "riskClass": "medium", "executionCapability": "sandbox-code", "approvalRequirement": "isolated-sandbox", "requiredToolsets": ["context_engine", "file", "skills", "terminal", "code_execution"] },
+      { "capability": "critical-security", "profile": "securityexpert", "executor": "local-advisory", "fallback": "cloud-security-expert", "riskClass": "high", "executionCapability": "sandbox-code", "approvalRequirement": "isolated-sandbox", "requiredToolsets": ["context_engine", "file", "skills"], "requiredSkills": ["bsolutions-security-review"] },
+      { "capability": "testing", "profile": "testingexpert", "executor": "deterministic-scripts", "fallback": "local-advisory", "riskClass": "medium", "executionCapability": "playwright-validation", "approvalRequirement": "none", "requiredToolsets": ["context_engine", "skills"], "requiredSkills": ["bsolutions-playwright"] },
+      { "capability": "integration", "profile": "quality", "executor": "evidence-gate", "fallback": "blocked", "riskClass": "high", "executionCapability": "sandbox-code", "approvalRequirement": "evidence-gate", "requiredToolsets": ["context_engine", "skills"], "requiredSkills": ["hermes-evidence-gate", "bsolutions-quality-gate"] }
     ],
     "stackProfiles": {
       "android": "android",
@@ -227,7 +230,8 @@
     "dashboardCanAuthorize": false,
     "deployments": "denied",
     "databaseMutation": "denied",
-    "secrets": "denied"
+    "secrets": "denied",
+    "secretReferences": "metadata-only"
   },
   "observability": {
     "statusPath": "telemetry/runtime/hermes-brain-status.json",

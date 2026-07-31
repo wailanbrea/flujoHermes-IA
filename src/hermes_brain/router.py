@@ -1,24 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import re
 from typing import Any, Iterable
 
+from execution_gateway.contracts import ExecutionCapability, RiskClass
 
-@dataclass(frozen=True)
-class RouteDecision:
-    capability: str
-    executor: str
-    fallback: str
-    profile: str
-    model: str | None
-    toolsets: list[str]
-    skills: list[str]
-    reason: str
-    manual_model: bool
-
-    def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+from .contracts import RouteDecision
 
 
 def _normalized_signals(values: Iterable[str]) -> set[str]:
@@ -49,6 +36,43 @@ def _programming_profile(config: dict[str, Any], signals: set[str]) -> tuple[str
         if signals.intersection(markers):
             return str(stack_profiles[stack]), f"stack:{stack}"
     return str(stack_profiles["default"]), "stack:default"
+
+
+def _least_privilege_context(
+    config: dict[str, Any],
+    route: dict[str, Any],
+    mode: dict[str, Any],
+    profile_config: dict[str, Any],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    available_tools = set(mode["toolsets"])
+    requested_tools = route.get("requiredToolsets")
+    if requested_tools is None:
+        requested_tools = list(mode["toolsets"])
+    if not isinstance(requested_tools, list) or not requested_tools:
+        raise ValueError("route must select at least one required toolset")
+    unknown_tools = set(requested_tools).difference(available_tools)
+    if unknown_tools:
+        raise ValueError(
+            "route requests tools unavailable to its profile: "
+            + ", ".join(sorted(unknown_tools))
+        )
+
+    available_skills = config["skills"]["roleSets"][profile_config["skillSet"]]
+    requested_skills = route.get("requiredSkills")
+    maximum = int(config["skills"]["selectionPolicy"]["maxBodiesPerTask"])
+    if requested_skills is None:
+        requested_skills = available_skills[:maximum]
+    if not isinstance(requested_skills, list) or not requested_skills:
+        raise ValueError("route must select at least one skill")
+    unknown_skills = set(requested_skills).difference(available_skills)
+    if unknown_skills:
+        raise ValueError(
+            "route requests skills unavailable to its profile: "
+            + ", ".join(sorted(unknown_skills))
+        )
+    if len(requested_skills) > maximum:
+        raise ValueError("route selects more skills than the configured maximum")
+    return tuple(requested_tools), tuple(requested_skills)
 
 
 def route_task(
@@ -84,7 +108,7 @@ def route_task(
     if profile_config is None:
         raise ValueError(f"route selects an unknown profile: {profile}")
     mode = config["profileModes"][profile_config["mode"]]
-    skills = config["skills"]["roleSets"][profile_config["skillSet"]]
+    toolsets, skills = _least_privilege_context(config, route, mode, profile_config)
 
     executor = str(route["executor"])
     model: str | None = config["modelRouter"]["localModel"]
@@ -107,8 +131,13 @@ def route_task(
         fallback=str(route["fallback"]),
         profile=profile,
         model=model,
-        toolsets=list(mode["toolsets"]),
-        skills=list(skills),
+        toolsets=toolsets,
+        skills=skills,
         reason=reason,
         manual_model=bool(manual_model),
+        risk_class=RiskClass(str(route.get("riskClass", "low"))),
+        execution_capability=ExecutionCapability(
+            str(route.get("executionCapability", "sandbox-code"))
+        ),
+        approval_requirement=str(route.get("approvalRequirement", "none")),
     )

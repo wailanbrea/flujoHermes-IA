@@ -78,20 +78,22 @@ h1 { font-size: clamp(30px, 4vw, 52px); letter-spacing: -.045em; line-height: 1;
 .execution-mode.mode-live { border-color: #3d8d71; color: #9ee7c7; }
 .execution-mode.mode-waiting { border-color: #9a7040; color: #e9bd7e; }
 .execution-mode.mode-last { border-color: #4d7585; color: #a8d4e2; }
-.execution-mode.mode-flow { border-color: #376f80; color: #8fe8ff; }
 .execution-progress { display: grid; gap: 5px; grid-template-columns: repeat(10, 1fr); }
 .execution-progress i { background: #1d3540; display: block; height: 2px; overflow: hidden; position: relative; }
 .execution-progress i.passed { background: #365967; }
 .execution-progress i.active { background: #4d8799; }
 .execution-progress i.active::after { animation: sequence-progress .75s linear infinite; background: #d8f8ff; box-shadow: 0 0 12px rgba(85, 184, 214, .95); content: ""; inset: 0 auto 0 0; position: absolute; width: 45%; }
 .diagram-scroll { min-width: 0; overflow-x: auto; }
-.brain-svg { display: block; height: min(60vh, 650px); min-width: 900px; width: 100%; }
-.brain-links path { --flow-rest: .42; animation: workflow-flow 5.4s linear infinite; fill: none; opacity: var(--flow-rest); stroke: #54727f; stroke-dasharray: 2 8; stroke-linecap: round; stroke-width: 1.3; vector-effect: non-scaling-stroke; }
-.brain-links path.telemetry-active { --flow-rest: .72; }
+.brain-svg { display: block; flex: 0 0 1000px; height: 780px; width: 1000px; }
+.brain-links path { --flow-rest: .42; fill: none; opacity: var(--flow-rest); stroke: #54727f; stroke-dasharray: 2 8; stroke-linecap: round; stroke-width: 1.3; vector-effect: non-scaling-stroke; }
+.brain-links path.evidence-observed { opacity: .62; }
+.brain-links path.telemetry-active { --flow-rest: .72; animation: workflow-flow 5.4s linear infinite; }
 #arrow path { fill: #54727f; }
 #arrow-active path { fill: #a4edff; }
 .brain-node { cursor: pointer; outline: none; }
 .brain-node rect { fill: #102630; stroke: #3a5965; stroke-width: 1; transition: fill 160ms ease, stroke 160ms ease; }
+.brain-node.kind-control rect, .brain-node.kind-gateway rect { fill: #15313d; stroke: #4c7787; }
+.brain-node.kind-observer rect { fill: #0b1c24; stroke-dasharray: 4 4; }
 .brain-node circle { fill: var(--muted); }
 .brain-node:hover rect, .brain-node:focus-visible rect, .brain-node.selected rect { fill: #173441; stroke: var(--blue); stroke-width: 2; }
 .brain-node.selected rect { filter: drop-shadow(0 0 10px rgba(85, 184, 214, .25)); }
@@ -111,7 +113,7 @@ h1 { font-size: clamp(30px, 4vw, 52px); letter-spacing: -.045em; line-height: 1;
 .node-inspector dl { border-top: 1px solid var(--line); margin-top: 26px; padding-top: 18px; }
 .node-inspector dl div { display: flex; justify-content: space-between; margin-top: 10px; }
 .node-inspector dt { color: var(--muted); font: 9px var(--data); text-transform: uppercase; }
-.node-inspector dd { font: 10px var(--data); margin: 0; text-transform: uppercase; }
+.node-inspector dd { font: 10px var(--data); margin: 0; max-width: 150px; text-align: right; text-transform: uppercase; }
 .loading { align-items: center; border: 1px solid var(--line); color: var(--muted); display: flex; font: 11px var(--data); height: 420px; justify-content: center; }
 
 @keyframes workflow-flow {
@@ -202,7 +204,6 @@ footer { border-top: 1px solid var(--line); color: var(--muted); display: flex; 
   .execution-readout { align-items: flex-start; grid-template-columns: 1fr; }
   .execution-readout > small { grid-column: 1; max-width: 72vw; }
   .execution-progress { grid-column: 1 / -1; grid-row: 2; }
-  .brain-svg { height: 620px; min-width: 790px; }
   .control-grid, .lower-grid { grid-template-columns: 1fr; padding-left: 18px; padding-right: 18px; }
   footer { align-items: center; flex-direction: column; gap: 8px; }
 }

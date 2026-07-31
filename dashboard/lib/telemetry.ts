@@ -41,17 +41,24 @@ export interface WorkflowNode {
   detail: string;
   state: HealthState;
   kind:
-    | "observer"
-    | "agent"
-    | "model"
-    | "compute"
-    | "graph"
-    | "project"
-    | "queue"
-    | "workspace"
-    | "review";
+    | "user"
+    | "interface"
+    | "control"
+    | "memory"
+    | "router"
+    | "factory"
+    | "policy"
+    | "gateway"
+    | "executor"
+    | "validation"
+    | "result"
+    | "learning"
+    | "observer";
+  stageId: WorkflowStageId;
   x: number;
   y: number;
+  width: number;
+  height: number;
 }
 
 export interface WorkflowEdge {
@@ -61,6 +68,7 @@ export interface WorkflowEdge {
   label: string;
   state: HealthState;
   evidence: WorkflowEvidence;
+  stageId: WorkflowStageId;
   lastObservedAt: string;
 }
 
@@ -117,16 +125,16 @@ export type HermesTaskState =
   | "validation-failed";
 
 export const WORKFLOW_STAGES = [
-  { id: "input", label: "Entrada autorizada" },
+  { id: "input", label: "Usuario y OpenClaw" },
   { id: "brain", label: "Hermes Brain coordina" },
-  { id: "routing", label: "Consulta, routing y selección" },
-  { id: "context", label: "Contexto, motor y especialistas" },
-  { id: "plan", label: "Plan verificable" },
+  { id: "routing", label: "Memoria, routing y agentes" },
+  { id: "context", label: "Plan y políticas" },
+  { id: "plan", label: "Execution Gateway" },
   { id: "sandbox", label: "Ejecución aislada" },
-  { id: "evidence", label: "Tests, revisión y evidencia" },
-  { id: "validated", label: "Integración validada" },
-  { id: "learning", label: "Aprendizaje saneado" },
-  { id: "promotion", label: "Benchmark y promoción" },
+  { id: "evidence", label: "Tests, evidencia y aprobación" },
+  { id: "validated", label: "Resultado validado" },
+  { id: "learning", label: "Learning Engine" },
+  { id: "promotion", label: "Memoria, skill y benchmark" },
 ] as const;
 
 export type WorkflowStageId = (typeof WORKFLOW_STAGES)[number]["id"];

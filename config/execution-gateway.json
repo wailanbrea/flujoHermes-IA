@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "mode": "policy-check-only",
+  "allowedCapabilities": [
+    "sandbox-code",
+    "playwright-validation",
+    "external-automation"
+  ],
+  "sandboxCode": {
+    "requiredPathSegment": "hermes-worktrees",
+    "allowedOperations": [
+      "read",
+      "edit",
+      "test",
+      "review",
+      "author-skill",
+      "integrate"
+    ]
+  },
+  "playwrightValidation": {
+    "allowedOperations": ["validate", "inspect", "navigate"],
+    "allowedOrigins": [
+      "http://127.0.0.1:4310",
+      "http://localhost:4310"
+    ]
+  },
+  "externalAutomation": {
+    "connectors": {}
+  },
+  "telemetry": {
+    "forbiddenFields": [
+      "objective",
+      "content",
+      "arguments",
+      "token",
+      "secretReference",
+      "approvalReceipt",
+      "idempotencyKey"
+    ]
+  }
+}

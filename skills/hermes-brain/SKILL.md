@@ -19,6 +19,23 @@ description: Coordinar Hermes como asistente local controlado mediante Graphify,
 6. Crear o editar una skill únicamente con autorización, `quick_validate.py`,
    benchmark y aprobación antes de promoverla.
 
+## Aceptar entrada y autorizar ejecucion
+
+1. Aceptar objetivos y contenido unicamente desde `AcceptedIngress`, producido
+   por el adaptador al recibir un contexto WS/RPC ya autenticado por OpenClaw.
+2. Tratar el runtime oficial y self-hosted de OpenClaw como fuente de verdad para
+   sesiones, routing y canales. Su puerto loopback multiplexado es `18789`.
+3. Exigir que el contexto declare primer frame `connect` y respuesta `hello-ok`
+   con snapshot. No implementar servidor, autenticacion ni gestion de secretos.
+4. No incluir objetivo, contenido, argumentos, tokens, sesiones ni secretos en
+   telemetria. La autenticacion pertenece a `gateway.auth` de OpenClaw.
+5. Recuperar de aprendizaje solo metadatos de lecciones `validated` o `promoted`;
+   no cargar el payload completo de una leccion en el enrutador.
+6. Asignar clase de riesgo, capacidad de ejecucion y requisito de aprobacion,
+   seleccionando el perfil, toolsets y un maximo de cinco skills necesarios.
+7. Enviar solicitudes tipadas al Execution Gateway. Una decision de politica no
+   demuestra que una accion haya sido ejecutada.
+
 ## Seleccionar contexto progresivamente
 
 1. Inspeccionar primero metadatos y descripciones.

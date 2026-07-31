@@ -7,7 +7,9 @@ import unittest
 from pathlib import Path
 
 from hermes_brain.cli import validate_config
+from execution_gateway import ExecutionGateway
 from hermes_brain.core import (
+    build_brain_status,
     create_learning_record,
     persist_learning,
     promote_learning,
@@ -15,6 +17,12 @@ from hermes_brain.core import (
     validate_learning,
 )
 from hermes_brain.router import route_task
+from hermes_brain.service import HermesBrainService
+from openclaw_gateway import (
+    IngressRequest,
+    OpenClawIngressAdapter,
+    OpenClawWsRpcContext,
+)
 
 
 class BrainConfigTests(unittest.TestCase):
@@ -23,6 +31,7 @@ class BrainConfigTests(unittest.TestCase):
         self.assertEqual(result["profiles"], 19)
         self.assertEqual(result["modes"], 10)
         self.assertEqual(result["skillSets"], 19)
+        self.assertEqual(result["gateways"], 2)
 
     def test_personal_finance_profile_passes_policy_benchmark(self) -> None:
         repo = Path(__file__).resolve().parents[1]
@@ -44,6 +53,7 @@ class BrainConfigTests(unittest.TestCase):
         )
         self.assertEqual(route["profile"], "personalfinanceexpert")
         self.assertEqual(route["executor"], "local-advisory")
+        self.assertNotIn("executionCapability", route)
         decision = route_task(
             config,
             capability="personal-finance",
@@ -51,6 +61,13 @@ class BrainConfigTests(unittest.TestCase):
         )
         self.assertEqual(decision.profile, "personalfinanceexpert")
         self.assertEqual(decision.executor, "local-advisory")
+        self.assertEqual(decision.risk_class.value, "low")
+        self.assertEqual(decision.execution_capability.value, "sandbox-code")
+        self.assertEqual(decision.approval_requirement, "none")
+        self.assertLessEqual(len(decision.skills), 5)
+        for toolset in ("terminal", "file", "code_execution"):
+            self.assertNotIn(toolset, decision.toolsets)
+        self.assertIn("web", decision.toolsets)
 
         benchmark = json.loads(
             (
@@ -82,6 +99,9 @@ class BrainConfigTests(unittest.TestCase):
                         "profile": "lead",
                         "executor": "local-optional",
                         "fallback": "director",
+                        "riskClass": "low",
+                        "executionCapability": "sandbox-code",
+                        "approvalRequirement": "none",
                     }
                 ],
                 "stackProfiles": {"default": "lead"},
@@ -136,6 +156,21 @@ class LearningEngineTests(unittest.TestCase):
                 solution_summary="The literal was normalized.",
                 passed_commands=["pwsh parser"],
                 files=[r"C:\private\sample.ps1"],
+            )
+        with self.assertRaises(ValueError):
+            sanitize_text("Failure at /home/alice/private/project", "summary")
+        with self.assertRaises(ValueError):
+            sanitize_text("Bearer abc.def.ghi", "summary")
+        with self.assertRaises(ValueError):
+            create_learning_record(
+                task_id="hermes-20260729-120000-abcdef12",
+                domain="testing",
+                problem_pattern="A reproducible parser failure.",
+                root_cause="An invalid literal was emitted.",
+                solution_summary="The literal was normalized.",
+                passed_commands=["PowerShell parser passed"],
+                files=["scripts/sample.ps1"],
+                metrics={"path": "/home/alice/private"},
             )
 
     def test_promotion_requires_benchmark_and_approval(self) -> None:
@@ -233,6 +268,116 @@ class LearningEngineTests(unittest.TestCase):
                     benchmark_artifact=artifact_path,
                 )
 
+
+class PublicStatusTests(unittest.TestCase):
+    def test_status_exposes_only_learning_metadata(self) -> None:
+        source_repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "config").mkdir()
+            (repo / "config" / "hermes-brain.json").write_text(
+                (source_repo / "config" / "hermes-brain.json").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            learning = repo / "telemetry" / "runtime" / "hermes-learning"
+            learning.mkdir(parents=True)
+            (learning / "lesson.json").write_text(
+                json.dumps(
+                    {
+                        "record_id": "lesson-safe-001",
+                        "recorded_at": "2026-07-31T12:00:00Z",
+                        "domain": "testing",
+                        "problem_pattern": "private lesson payload",
+                        "root_cause": "complete root cause must remain private",
+                        "solution_summary": "complete solution must remain private",
+                        "metrics": {"private": "value"},
+                        "related_skill": "sample-skill",
+                        "state": "validated",
+                        "benchmarkEvidence": {
+                            "benchmarkId": "sample-benchmark-v1",
+                            "validatedAt": "2026-07-31T12:01:00Z",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status = build_brain_status(repo)
+            public = status["brain"]["learning"]["last"]
+            serialized = json.dumps(public)
+            self.assertEqual(public["recordId"], "lesson-safe-001")
+            for private in ("problem_pattern", "root_cause", "solution_summary", "metrics"):
+                self.assertNotIn(private, serialized)
+
+
+class BrainVerticalSliceTests(unittest.TestCase):
+    def test_official_ingress_routes_programming_to_sandbox_policy(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        brain_config = json.loads(
+            (repo / "config" / "hermes-brain.json").read_text(encoding="utf-8")
+        )
+        ingress_config = json.loads(
+            (repo / "config" / "openclaw-gateway.json").read_text(encoding="utf-8")
+        )
+        execution_config = json.loads(
+            (repo / "config" / "execution-gateway.json").read_text(encoding="utf-8")
+        )
+        now = 1_785_520_000
+        request = IngressRequest(
+            request_id="request-brain-001",
+            capability="programming",
+            objective="Update the Python service in the authorized sandbox.",
+            content=None,
+            arguments={
+                "projectSignals": ["python"],
+                "sandboxPath": (
+                    "C:/Users/waila/AppData/Local/local-ai-orchestrator/"
+                    "hermes-worktrees/hermes-test"
+                ),
+            },
+        )
+        context = OpenClawWsRpcContext(
+            endpoint="ws://127.0.0.1:18789",
+            connection_id="connection-brain-001",
+            session_id="session-brain-001",
+            channel="local-chat",
+            route="agent:hermes:main",
+            authenticated=True,
+            authentication_mode="token",
+            first_frame="connect",
+            hello={
+                "type": "hello-ok",
+                "snapshot": {"sessions": [], "routing": {}, "channels": []},
+            },
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            brain = HermesBrainService(brain_config, Path(directory))
+            with self.assertRaisesRegex(TypeError, "official OpenClaw"):
+                brain.plan(request)  # type: ignore[arg-type]
+            accepted, _ = OpenClawIngressAdapter(ingress_config).accept(
+                context, request, now=now
+            )
+            plan, decision = brain.policy_check(
+                accepted,
+                ExecutionGateway(execution_config),
+                now=now,
+            )
+            self.assertTrue(decision.allowed)
+            self.assertEqual(plan.route.execution_capability.value, "sandbox-code")
+            self.assertEqual(accepted.openclaw.session_id, "session-brain-001")
+            self.assertEqual(accepted.openclaw.channel, "local-chat")
+            public_plan = json.dumps(plan.as_dict()).casefold()
+            self.assertNotIn("update the python service", public_plan)
+            self.assertNotIn("session-brain-001", public_plan)
+
+    def test_testing_routes_to_playwright(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        config = json.loads(
+            (repo / "config" / "hermes-brain.json").read_text(encoding="utf-8")
+        )
+        decision = route_task(config, capability="testing", project_signals=[])
+        self.assertEqual(decision.execution_capability.value, "playwright-validation")
 
 class ModelRouterTests(unittest.TestCase):
     @classmethod

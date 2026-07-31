@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -24,9 +25,16 @@ TASK_STATES = {
     "failed",
 }
 SECRET_PATTERN = re.compile(
-    r"(?i)(api[_-]?key|authorization|bearer|password|secret|token)\s*[:=]"
+    r"(?i)(?:(?:api[_ -]?key|authorization|password|secret|token)\s*[:=]|\bbearer\s+\S+)"
 )
 ABSOLUTE_WINDOWS_PATH = re.compile(r"(?i)\b[a-z]:[\\/]")
+ABSOLUTE_UNIX_PATH = re.compile(
+    r"(?i)(?<![a-z0-9:])/(?:home|users|root|private|tmp|var|etc|opt|srv|mnt|volumes|workspace)(?:/|\b)"
+)
+METRIC_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}")
+SENSITIVE_METRIC_KEY = re.compile(
+    r"(?i)(?:api.?key|authorization|bearer|credential|password|secret|token|path|command)"
+)
 
 
 def utc_now() -> str:
@@ -64,7 +72,7 @@ def sanitize_text(value: str, field: str, maximum: int = 500) -> str:
         raise ValueError(f"{field} must be concrete and nonblank")
     if SECRET_PATTERN.search(normalized):
         raise ValueError(f"{field} must not contain credentials")
-    if ABSOLUTE_WINDOWS_PATH.search(normalized):
+    if ABSOLUTE_WINDOWS_PATH.search(normalized) or ABSOLUTE_UNIX_PATH.search(normalized):
         raise ValueError(f"{field} must not contain absolute private paths")
     return normalized[:maximum].rstrip()
 
@@ -86,6 +94,30 @@ def relative_paths(values: Iterable[str]) -> list[str]:
             raise ValueError("files must contain safe project-relative paths")
         result.append(candidate)
     return sorted(set(result))
+
+
+def sanitize_metrics(
+    metrics: dict[str, float | int | str | bool] | None,
+) -> dict[str, float | int | str | bool]:
+    if metrics is None:
+        return {}
+    if len(metrics) > 32:
+        raise ValueError("metrics must contain at most 32 values")
+    result: dict[str, float | int | str | bool] = {}
+    for key, value in metrics.items():
+        if not METRIC_KEY.fullmatch(key) or SENSITIVE_METRIC_KEY.search(key):
+            raise ValueError("metric keys must be safe non-sensitive identifiers")
+        if isinstance(value, bool) or isinstance(value, int):
+            result[key] = value
+        elif isinstance(value, float):
+            if not math.isfinite(value):
+                raise ValueError("metric values must be finite")
+            result[key] = value
+        elif isinstance(value, str):
+            result[key] = sanitize_text(value, f"metric {key}", 120)
+        else:
+            raise ValueError("metric values must be scalar JSON values")
+    return result
 
 
 @dataclass(frozen=True)
@@ -140,7 +172,7 @@ def create_learning_record(
         solution_summary=sanitize_text(solution_summary, "solution summary"),
         passed_commands=commands,
         files=relative_paths(files),
-        metrics=metrics or {},
+        metrics=sanitize_metrics(metrics),
         related_skill=(
             sanitize_text(related_skill, "related skill", 80)
             if related_skill
@@ -259,6 +291,39 @@ def promote_learning(
     record["promotedAt"] = utc_now()
     atomic_json(path, record)
     return record
+
+
+def public_learning_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    def safe(value: Any, field: str, maximum: int = 120) -> str:
+        try:
+            return sanitize_text(str(value or ""), field, maximum)
+        except ValueError:
+            return "unavailable"
+
+    evidence = record.get("benchmarkEvidence")
+    validation = None
+    if isinstance(evidence, dict):
+        validation = {
+            "benchmarkId": safe(evidence.get("benchmarkId"), "benchmark id"),
+            "validatedAt": safe(evidence.get("validatedAt"), "validated at"),
+        }
+    return {
+        "recordId": safe(record.get("record_id"), "record id"),
+        "recordedAt": safe(record.get("recorded_at"), "recorded at"),
+        "domain": safe(record.get("domain"), "domain", 80),
+        "relatedSkill": (
+            safe(record.get("related_skill"), "related skill", 80)
+            if record.get("related_skill")
+            else None
+        ),
+        "state": str(record.get("state", "unknown")),
+        "validation": validation,
+        "promotedAt": (
+            safe(record.get("promotedAt"), "promoted at")
+            if record.get("promotedAt")
+            else None
+        ),
+    }
 
 
 def build_brain_status(repo_root: Path) -> dict[str, Any]:
@@ -383,7 +448,7 @@ def build_brain_status(repo_root: Path) -> dict[str, Any]:
                 "promotionState": "healthy",
                 "pendingApproval": lesson_counts.get("validated", 0),
                 "counts": lesson_counts,
-                "last": lessons[-1] if lessons else None,
+                "last": public_learning_metadata(lessons[-1]) if lessons else None,
             },
             "sandbox": {
                 "state": "healthy",

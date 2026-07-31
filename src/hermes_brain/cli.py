@@ -4,6 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
+from execution_gateway.service import validate_config as validate_execution_config
+from openclaw_gateway.service import validate_config as validate_openclaw_config
+
 from .core import (
     atomic_json,
     build_brain_status,
@@ -97,6 +100,48 @@ def validate_config(repo: Path) -> dict[str, object]:
     ):
         raise ValueError("invalid Hermes Brain config; model routes must be unique")
 
+    allowed_risks = {"low", "medium", "high"}
+    allowed_execution = {
+        "sandbox-code",
+        "playwright-validation",
+        "external-automation",
+    }
+    for route in routes:
+        risk_class = route.get("riskClass", "low")
+        execution_capability = route.get("executionCapability", "sandbox-code")
+        approval_requirement = route.get("approvalRequirement", "none")
+        if (
+            risk_class not in allowed_risks
+            or execution_capability not in allowed_execution
+            or not isinstance(approval_requirement, str)
+            or not approval_requirement
+        ):
+            raise ValueError(
+                "invalid Hermes Brain config; routes require risk, execution "
+                "capability and approval policy"
+            )
+        for field in ("requiredToolsets", "requiredSkills"):
+            selected = route.get(field)
+            if selected is not None and (
+                not isinstance(selected, list)
+                or not selected
+                or any(not isinstance(item, str) or not item for item in selected)
+                or len(selected) != len(set(selected))
+            ):
+                raise ValueError(f"invalid route selection: {field}")
+
+    routes_by_capability = {route["capability"]: route for route in routes}
+    programming_route = routes_by_capability.get("programming")
+    if programming_route is not None and programming_route.get(
+        "executionCapability"
+    ) != "sandbox-code":
+        raise ValueError("programming must route to sandbox-code")
+    testing_route = routes_by_capability.get("testing")
+    if testing_route is not None and testing_route.get("executionCapability") != (
+        "playwright-validation"
+    ):
+        raise ValueError("testing must route to Playwright validation")
+
     profile_ids: set[str] = set()
     runtime_ids: set[str] = set()
     for profile in profiles:
@@ -148,6 +193,13 @@ def validate_config(repo: Path) -> dict[str, object]:
     orchestrator_tools = set(profile_modes.get("orchestrator", {}).get("toolsets", []))
     if orchestrator_tools.intersection(forbidden_orchestrator_tools):
         raise ValueError("invalid orchestrator mode; implementation tools are forbidden")
+
+    finance_tools = set(
+        profile_modes.get("financial-advisor", {}).get("toolsets", [])
+    )
+    forbidden_finance_tools = {"terminal", "file", "code_execution"}
+    if finance_tools.intersection(forbidden_finance_tools):
+        raise ValueError("personal-finance profile must remain read-only")
 
     for set_name, skill_names in role_sets.items():
         if (
@@ -206,12 +258,17 @@ def validate_config(repo: Path) -> dict[str, object]:
     local_model = config["modelRouter"].get("localModel")
     if local_model in set(config["modelRouter"].get("manualOnlyModels", [])):
         raise ValueError("local default model cannot be manual-only")
+    openclaw = read_json(repo / "config" / "openclaw-gateway.json")
+    execution = read_json(repo / "config" / "execution-gateway.json")
+    validate_openclaw_config(openclaw or {})
+    validate_execution_config(execution or {})
     return {
         "valid": True,
         "schemaVersion": config["schemaVersion"],
         "profiles": len(profiles),
         "modes": len(profile_modes),
         "skillSets": len(role_sets),
+        "gateways": 2,
     }
 
 

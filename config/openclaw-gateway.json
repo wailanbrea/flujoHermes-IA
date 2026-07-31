@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "implementation": "official-openclaw",
+    "deployment": "self-hosted",
+    "embeddedServer": false,
+    "endpoint": "ws://127.0.0.1:18789",
+    "port": 18789,
+    "singlePort": true,
+    "protocols": ["websocket-rpc", "http"],
+    "sourceOfTruth": ["sessions", "routing", "channels"]
+  },
+  "protocol": {
+    "firstWebSocketFrame": "connect",
+    "helloFrame": "hello-ok",
+    "helloSnapshotRequired": true
+  },
+  "authentication": {
+    "ownedBy": "official-openclaw",
+    "required": true,
+    "mode": "token",
+    "configPath": "gateway.auth.token",
+    "tokenSecretRef": {
+      "source": "env",
+      "provider": "default",
+      "id": "OPENCLAW_GATEWAY_TOKEN"
+    }
+  },
+  "health": {
+    "commands": [
+      "openclaw gateway status --json",
+      "openclaw gateway status --require-rpc"
+    ]
+  },
+  "telemetry": {
+    "allowedFields": [
+      "event",
+      "requestId",
+      "source",
+      "capability",
+      "authenticated",
+      "outcome",
+      "reasonCode",
+      "observedAt"
+    ],
+    "forbiddenFields": [
+      "objective",
+      "content",
+      "arguments",
+      "token",
+      "password",
+      "secret",
+      "sessionId",
+      "connectionId"
+    ]
+  }
+}

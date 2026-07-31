@@ -117,6 +117,59 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
     assert.equal(observed.execution.stageIndex, 5);
     assert.equal(observed.execution.taskId, taskId);
     assert.equal(observed.execution.taskState, "executing");
+    assert.deepEqual(
+      observed.workflow.nodes.map((node) => node.id),
+      [
+        "user",
+        "openclaw",
+        "brain",
+        "memory",
+        "router",
+        "agents",
+        "plan",
+        "execution-gateway",
+        "code-sandbox",
+        "playwright",
+        "automations",
+        "evidence",
+        "validated",
+        "learning",
+        "promotion",
+        "trama",
+      ],
+    );
+    assert.ok(
+      observed.workflow.nodes.every((node) =>
+        [node.x, node.y, node.width, node.height].every(Number.isInteger)
+      ),
+    );
+    assert.ok(
+      observed.workflow.edges
+        .filter((edge) => edge.target === "code-sandbox")
+        .every((edge) => edge.evidence === "observed"),
+    );
+    assert.ok(
+      observed.workflow.edges
+        .filter((edge) =>
+          ["playwright", "automations"].includes(edge.source) ||
+          ["playwright", "automations"].includes(edge.target)
+        )
+        .every((edge) => edge.evidence === "configured"),
+    );
+    assert.deepEqual(
+      observed.workflow.edges
+        .filter((edge) => edge.target === "trama")
+        .map((edge) => edge.source),
+      ["brain"],
+    );
+    assert.equal(
+      observed.workflow.edges.some((edge) => edge.source === "trama"),
+      false,
+    );
+    assert.doesNotMatch(
+      JSON.stringify(observed.workflow),
+      /lm-studio|submit-hermes-task|directors|project-catalog/i,
+    );
     assert.doesNotMatch(JSON.stringify(observed), /must never reach TRAMA|feedback/i);
 
     const statusResponse = await fetch(`http://127.0.0.1:${port}/api/status`);
@@ -130,6 +183,16 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
     assert.ok(
       status.services.some((service) => service.id === "rtk"),
       "RTK service telemetry is missing.",
+    );
+    const openClaw = status.services.find((service) => service.id === "openclaw");
+    assert.ok(openClaw, "OpenClaw service telemetry is missing.");
+    assert.equal(
+      status.connections.some((connection) => connection.target === "openclaw"),
+      true,
+    );
+    assert.equal(
+      status.workflow.nodes.find((node) => node.id === "openclaw")?.state,
+      openClaw.state,
     );
     const lmStudio = status.services.find((service) => service.id === "lm-studio");
     assert.equal(lmStudio?.metrics?.approvedModel, true);

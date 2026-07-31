@@ -82,6 +82,7 @@ if ($removedLines -gt [int]$contract.patchPolicy.maxRemovedLines) {
     $violations.Add('removed-lines-limit')
 }
 
+$utf8 = [Text.UTF8Encoding]::new($false)
 $diffInfo = [Diagnostics.ProcessStartInfo]::new()
 $diffInfo.FileName = 'git.exe'
 $diffInfo.Arguments = "-C `"$($worktreePath.Replace('"', '\"'))`" diff --binary --full-index --no-ext-diff --no-color --unified=3 HEAD"
@@ -89,6 +90,8 @@ $diffInfo.UseShellExecute = $false
 $diffInfo.CreateNoWindow = $true
 $diffInfo.RedirectStandardOutput = $true
 $diffInfo.RedirectStandardError = $true
+$diffInfo.StandardOutputEncoding = $utf8
+$diffInfo.StandardErrorEncoding = $utf8
 $diffProcess = [Diagnostics.Process]::new()
 $diffProcess.StartInfo = $diffInfo
 try {
@@ -106,7 +109,6 @@ finally {
     $diffProcess.Dispose()
 }
 
-$utf8 = [Text.UTF8Encoding]::new($false)
 $patchText = $rawPatch.Replace("`r`n", "`n").Replace("`r", "`n")
 if ($patchText.Length -gt 0 -and -not $patchText.EndsWith("`n")) {
     $patchText += "`n"
