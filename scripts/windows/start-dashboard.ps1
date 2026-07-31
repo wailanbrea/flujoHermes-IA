@@ -23,16 +23,37 @@ function Test-LocalPort([int]$Port) {
     }
 }
 
+# `npm.cmd` sólo lanza al proceso node que acaba escuchando: su PID muere en
+# cuanto npm entrega el control, así que guardarlo dejaba un pid file apuntando
+# a un proceso inexistente y cualquier parada posterior fallaba en silencio
+# mientras el servidor real seguía vivo. Se registra el dueño real del puerto.
+function Save-ListenerPid([int]$Port, [string]$PidPath) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(25)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $owner = Get-NetTCPConnection -LocalPort $Port -State Listen `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty OwningProcess
+        if ($owner) {
+            Set-Content -LiteralPath $PidPath -Value $owner
+            return $true
+        }
+        Start-Sleep -Milliseconds 400
+    }
+    # Sin dueño identificable, es preferible no dejar un pid file mentiroso.
+    if (Test-Path -LiteralPath $PidPath) { Remove-Item -LiteralPath $PidPath -Force }
+    return $false
+}
+
 if (-not (Test-LocalPort 4311)) {
-    $api = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'telemetry' `
-        -WorkingDirectory $dashboard -WindowStyle Hidden -PassThru
-    Set-Content -LiteralPath (Join-Path $runtime 'telemetry-api.pid') -Value $api.Id
+    Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'telemetry' `
+        -WorkingDirectory $dashboard -WindowStyle Hidden | Out-Null
+    Save-ListenerPid -Port 4311 -PidPath (Join-Path $runtime 'telemetry-api.pid') | Out-Null
 }
 
 if (-not (Test-LocalPort 4310)) {
-    $ui = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'start' `
-        -WorkingDirectory $dashboard -WindowStyle Hidden -PassThru
-    Set-Content -LiteralPath (Join-Path $runtime 'dashboard-ui.pid') -Value $ui.Id
+    Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'start' `
+        -WorkingDirectory $dashboard -WindowStyle Hidden | Out-Null
+    Save-ListenerPid -Port 4310 -PidPath (Join-Path $runtime 'dashboard-ui.pid') | Out-Null
 }
 
 $deadline = [DateTime]::UtcNow.AddSeconds(20)
