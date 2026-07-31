@@ -148,6 +148,10 @@ test("versions governance, Brain config, and the managed skills", async () => {
   assert.equal(parsed.modelRouter.localModel, "google/gemma-4-12b-qat");
   assert.equal(parsed.modelRouter.hermesExternalInference, "disabled");
   assert.match(brainSync, /moa:`n  enabled: false/);
+  assert.match(brainSync, /'financial-advisor'/);
+  assert.match(brainSync, /strong signs of possible fraud/);
+  assert.match(brainSync, /Never execute or facilitate purchases, sales, transfers/);
+  assert.match(brainSync, /Never call fraud, illegality, licensing/);
   assert.equal(parsed.autonomy.localAiCanWrite, true);
   assert.equal(parsed.autonomy.localAiProjectWrites, "isolated-worktree-only");
   assert.equal(parsed.profiles.length, 19);
