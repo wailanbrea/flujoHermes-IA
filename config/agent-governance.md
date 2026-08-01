@@ -56,6 +56,14 @@ Cuando el usuario solicite abrir el navegador, automatizar un flujo web, hacer s
 3. Ejecuta directamente la navegación usando la skill `bsolutions-playwright` o ejecutando scripts con Playwright (`npx playwright` o `python -m playwright`).
 4. Extrae la información, texto o capturas necesarias y entrega la respuesta final estructurada.
 
+## Regla de Acción Directa sin Meta-Respuestas Excusatorias
+
+Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer web scraping, buscar información o ejecutar pruebas):
+
+1. No emitas meta-respuestas explicativas sobre la falta de herramientas nombradas literalmente ("No tengo una herramienta llamada Playwright...") ni pidas confirmación sobre qué alternativa usar.
+2. Utiliza de forma autónoma las herramientas disponibles (`code_execution`, `terminal`, `browser`, `web`) para escribir y ejecutar el script de Playwright o el comando necesario.
+3. Extrae directamente la información requerida y entrega el resultado final al usuario de forma estructurada y limpia.
+
 La configuración versionada está en `config/hermes-brain.json`.
 
 
