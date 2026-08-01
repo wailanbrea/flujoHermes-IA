@@ -11,6 +11,13 @@ Require an authorized base URL, startup/stop commands, test account or fixture
 strategy, target flow, browsers/viewports, acceptance criteria, and data cleanup.
 Never use production, personal accounts, or real customer data.
 
+## System Playwright Executable Paths
+
+- Python Virtual Environment: `C:\Users\waila\AppData\Local\hermes\hermes-agent\venv\Scripts\playwright.exe`
+- Python Module Execution: `C:\Users\waila\AppData\Local\hermes\hermes-agent\venv\Scripts\python.exe -m playwright`
+- Node.js Playwright Execution: `npx playwright`
+- Cached Browser Binaries: `C:\Users\waila\AppData\Local\ms-playwright`
+
 ## Process
 
 1. Read the existing Playwright config, fixtures, page objects, and nearby tests.
