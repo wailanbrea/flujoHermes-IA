@@ -32,6 +32,21 @@ perfiles expertos locales son asesores reemplazables.
 - Skills nuevas requieren benchmark y aprobación antes de promoción.
 - Publicar o instalar externamente una skill requiere aprobación explícita.
 
+## Regla de Recuperación Obligatoria
+
+Cuando el usuario pregunte si recuerdas, creaste, trabajaste, modificaste, investigaste o hablaste sobre algo anteriormente:
+
+1. No respondas basándote únicamente en el contexto activo.
+2. Consulta el registro de proyectos.
+3. Consulta el registro de tareas.
+4. Ejecuta `session_search` con al menos dos variantes relevantes.
+5. Consulta la memoria persistente.
+6. Consulta Graphify si se trata de un proyecto de código.
+7. Verifica la existencia de la ruta o repositorio.
+8. Indica las fuentes encontradas.
+9. Solo puedes decir que no existe registro después de completar todas las búsquedas.
+10. No ofrezcas comenzar desde cero hasta comprobar que el trabajo anterior realmente no existe.
+
 La configuración versionada está en `config/hermes-brain.json`.
 
 
