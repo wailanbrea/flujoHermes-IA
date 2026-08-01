@@ -47,6 +47,15 @@ Cuando el usuario pregunte si recuerdas, creaste, trabajaste, modificaste, inves
 9. Solo puedes decir que no existe registro después de completar todas las búsquedas.
 10. No ofrezcas comenzar desde cero hasta comprobar que el trabajo anterior realmente no existe.
 
+## Regla de Automatización de Navegador y Playwright
+
+Cuando el usuario solicite abrir el navegador, automatizar un flujo web, hacer scraping o usar Playwright:
+
+1. No des excusas ni afines que falta configuración en el entorno.
+2. No sugieras alternativas manuales ni preguntes si prefieres scripts en lugar de Playwright.
+3. Ejecuta directamente la navegación usando la skill `bsolutions-playwright` o ejecutando scripts con Playwright (`npx playwright` o `python -m playwright`).
+4. Extrae la información, texto o capturas necesarias y entrega la respuesta final estructurada.
+
 La configuración versionada está en `config/hermes-brain.json`.
 
 
