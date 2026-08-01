@@ -331,6 +331,15 @@ function Home() {
           <p>Estimación offline por perfil: bytes ÷ 4. No captura prompts, código ni comandos.</p>
           <ul>{largestPromptBudgets.map((profile) => <li key={profile.profile}><b>{profile.profile}</b><span>{profile.estimatedFixedTokens.toLocaleString("es-DO")} · {profile.tools} tools</span></li>)}</ul>
         </article>
+        <article className="control-card">
+          <header><span>08</span><h3>Ahorro vs Cloud</h3><i className="state-healthy" /></header>
+          <strong style={{ color: "#70c5a1" }}>${(snapshot?.delegation.efficiency.avoidedGpt56SolCostUsd ?? 0).toFixed(2)} USD Ahorrados</strong>
+          <p>Inferencia local $0 USD vs tarifas Cloud ($15/1M tokens).</p>
+          <ul>
+            <li><b>Tokens Locales</b><span>{(snapshot?.delegation.efficiency.localTokens ?? 0).toLocaleString("es-DO")} tok</span></li>
+            <li><b>Tasa de Éxito</b><span>{snapshot?.delegation.efficiency.acceptanceRate ?? 100}%</span></li>
+          </ul>
+        </article>
       </section>
 
       <section className="lower-grid">

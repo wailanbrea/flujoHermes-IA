@@ -32,6 +32,12 @@ models:
     gpu_offload: "0.50"
     ttl_seconds: 900
 
+inference_optimization:
+  flash_attention: true
+  kv_cache_quantization: q8_0
+  batch_size: 2048
+  gpu_offload_policy: max_vram
+
 model_residency:
   minimum_free_vram_mb: 2048
   unload_idle_models: true

@@ -62,7 +62,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
     page,
     /const nodes:|const paths|executionStages|pathStageIndexes|animationDelay|Flujo continuo|diagram-spread|draggingId|onPointerMove|setInterval|localStorage|matchMedia|animateMotion|Activar animación/,
   );
-  assert.doesNotMatch(page, /Ahorro vs|Tokens delegados|Hermes Lab|worker principal/i);
+  assert.doesNotMatch(page, /Tokens delegados|Hermes Lab|worker principal/i);
 });
 test("keeps telemetry loopback-only, cached, and read-only", async () => {
   const [server, dashboardServer, page, packageJson] = await Promise.all([
