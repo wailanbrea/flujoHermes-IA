@@ -125,7 +125,7 @@ export type HermesTaskState =
   | "validation-failed";
 
 export const WORKFLOW_STAGES = [
-  { id: "input", label: "Usuario y OpenClaw" },
+  { id: "input", label: "Usuario y Telegram Gateway" },
   { id: "brain", label: "Hermes Brain coordina" },
   { id: "routing", label: "Memoria, routing y agentes" },
   { id: "context", label: "Plan y políticas" },

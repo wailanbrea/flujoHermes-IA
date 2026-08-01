@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('gemma', 'gemma-qat', 'qwen')]
+    [ValidateSet('gemma', 'gemma-qat', 'agents-a1', 'qwen')]
     [string]$Model = 'gemma',
 
     [string]$LmsExecutable = 'lms.exe'

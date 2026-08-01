@@ -1,0 +1,38 @@
+routing:
+  classification:
+    primary: classifier
+
+  documentation:
+    primary: classifier
+
+  context_resolution:
+    primary: classifier
+
+  simple_crud:
+    primary: low_risk_coder
+    fallback: primary_coder
+
+  simple_tests:
+    primary: low_risk_coder
+    fallback: primary_coder
+
+  localized_change:
+    primary: low_risk_coder
+    fallback: primary_coder
+
+  normal_programming:
+    primary: primary_coder
+    fallback: escalation_coder
+
+  complex_programming:
+    primary: primary_coder
+    fallback: escalation_coder
+
+  failed_local_task:
+    primary: escalation_coder
+
+  architecture:
+    primary: cloud_director
+
+  critical_review:
+    primary: cloud_director

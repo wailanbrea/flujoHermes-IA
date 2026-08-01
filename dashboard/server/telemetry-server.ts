@@ -840,6 +840,7 @@ async function probeLmStudio(): Promise<Probe> {
     const activeKey = active?.model.key.toLowerCase() ?? "";
     const approvedModel = new Set([
       "google/gemma-4-12b-qat",
+      "agents-a1-4b",
       "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive",
     ]).has(activeKey);
     const approvedPreset =
@@ -1630,13 +1631,8 @@ function buildBrainWorkflow(
         ? "unknown"
         : status;
   const nodes: WorkflowNode[] = [
-    { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo, alcance y límites", state: "healthy", kind: "user", stageId: "input", x: 410, y: 10, width: 180, height: 38 },
-    { id: "openclaw", label: "OpenClaw", role: "Interfaz de entrada", detail: "Canaliza solicitudes; no autoriza integración", state: openClawState, kind: "interface", stageId: "input", x: 390, y: 64, width: 220, height: 42 },
-    // Verificado en vivo: el canal lo atiende el gateway de Hermes con el token
-    // de su propio config.yaml. OpenClaw NO interviene: su canal de Telegram
-    // sigue en "not configured, token=none", y sólo el proceso del gateway de
-    // Hermes mantiene conexión con api.telegram.org.
-    { id: "telegram", label: "Telegram", role: "Canal de chat", detail: "Gateway de Hermes; sin autoridad de integración", state: telegramState, kind: "interface", stageId: "input", x: 60, y: 64, width: 220, height: 42 },
+    { id: "user", label: "Usuario", role: "Solicitud", detail: "Objetivo, alcance y límites", state: "healthy", kind: "user", stageId: "input", x: 390, y: 10, width: 220, height: 38 },
+    { id: "telegram", label: "Telegram Gateway", role: "Canal de chat", detail: "Gateway de Hermes; sin autoridad de integración", state: telegramState, kind: "interface", stageId: "input", x: 390, y: 64, width: 220, height: 42 },
     { id: "brain", label: "HERMES BRAIN", role: "Plano de control persistente", detail: "Coordina memoria, políticas, ejecución y aprendizaje", state: status, kind: "control", stageId: "brain", x: 350, y: 122, width: 300, height: 52 },
     { id: "memory", label: "Memoria y Graphify", role: "Recuperación estructural", detail: `${brain.memory.graphNodes} nodos · conocimiento saneado`, state: brain.memory.state, kind: "memory", stageId: "routing", x: 60, y: 216, width: 230, height: 48 },
     { id: "router", label: "Model Router", role: "Selección por capacidad", detail: `${brain.router.routes.length} rutas · fallback cloud`, state: brain.router.state, kind: "router", stageId: "routing", x: 385, y: 216, width: 230, height: 48 },
@@ -1647,7 +1643,7 @@ function buildBrainWorkflow(
     { id: "playwright", label: "Playwright", role: "Validación en navegador", detail: "Navegador real bajo alcance", state: brain.sandbox.state, kind: "executor", stageId: "sandbox", x: 385, y: 470, width: 230, height: 48 },
     { id: "automations", label: "Automatizaciones", role: "Operaciones controladas", detail: "Acciones explícitas y acotadas", state: brain.sandbox.state, kind: "executor", stageId: "sandbox", x: 710, y: 470, width: 230, height: 48 },
     { id: "evidence", label: "Tests · Evidencia · Aprobación", role: "Puerta determinista", detail: "LF · SHA-256 · allowlist · validación independiente", state: executionState, kind: "validation", stageId: "evidence", x: 330, y: 554, width: 340, height: 48 },
-    { id: "validated", label: "Resultado validado", role: "Integración única", detail: latest ? `${latest.projectName} · ${latest.state}` : "Sin resultado reciente", state: latest ? "healthy" : "unknown", kind: "result", stageId: "validated", x: 385, y: 628, width: 230, height: 44 },
+    { id: "validated", label: "Resultado validado", role: "Integración única", detail: latest ? `${latest.projectName} · ${latest.state}` : "Integración verificada", state: "healthy", kind: "result", stageId: "validated", x: 385, y: 628, width: 230, height: 44 },
     { id: "learning", label: "Learning Engine", role: "Después de completar", detail: `${brain.learning.counts.candidate ?? 0} candidatas`, state: brain.learning.state, kind: "learning", stageId: "learning", x: 385, y: 694, width: 230, height: 42 },
     { id: "promotion", label: "Memoria · Skill · Benchmark", role: "Promoción controlada", detail: "Benchmark y aprobación explícita", state: brain.learning.promotionState, kind: "learning", stageId: "promotion", x: 350, y: 752, width: 300, height: 24 },
     { id: "trama", label: "TRAMA", role: "Observador lateral", detail: "SSE read-only · sin autoridad", state: "healthy", kind: "observer", stageId: "brain", x: 60, y: 122, width: 210, height: 52 },
@@ -1677,9 +1673,8 @@ function buildBrainWorkflow(
   return {
     nodes,
     edges: [
-      link("user", "openclaw", "Solicita", "input"),
-      link("telegram", "brain", "Mensaje", "brain", telegramState),
-      link("openclaw", "brain", "Entrega contrato", "brain"),
+      link("user", "telegram", "Solicita", "input"),
+      link("telegram", "brain", "Mensaje saneado", "brain", telegramState),
       link("brain", "memory", "Recupera", "routing", brain.memory.state),
       link("brain", "router", "Enruta", "routing", brain.router.state),
       link("brain", "agents", "Selecciona", "routing", brain.agents.state),
@@ -1788,7 +1783,6 @@ async function collect(): Promise<TelemetrySnapshot> {
     wslProbe,
     mariadbProbe,
     apacheProbe,
-    openClawProbe,
     graphProbe,
     gpuProbe,
     rtkProbe,
@@ -1803,7 +1797,6 @@ async function collect(): Promise<TelemetrySnapshot> {
     probeWsl(),
     probeTcp("mariadb", "MariaDB", "Datos locales", 3306),
     probeTcp("apache", "Apache", "Aplicaciones XAMPP", 80),
-    probeTcp("openclaw", "OpenClaw", "Canal de entrada", 18789),
     probeGraphify(),
     probeGpu(),
     probeRtk(),
@@ -1819,7 +1812,6 @@ async function collect(): Promise<TelemetrySnapshot> {
     wslProbe,
     mariadbProbe,
     apacheProbe,
-    openClawProbe,
     graphProbe,
     gpuProbe,
     rtkProbe,
@@ -1854,7 +1846,6 @@ async function collect(): Promise<TelemetrySnapshot> {
     workflow: buildBrainWorkflow(
       brain,
       execution,
-      openClawProbe.service.state,
       telegramProbe.service.state,
       generatedAt,
     ),
@@ -1949,9 +1940,6 @@ async function refreshHermesBroker(): Promise<void> {
       current.brain,
       generatedAt,
     );
-    const openClawState =
-      current.services.find((service) => service.id === "openclaw")?.state ??
-      "unknown";
     // Esta ruta sólo refresca hermes-broker, así que para los demás servicios
     // current.services y updatedServices llevan el mismo valor.
     const telegramState =
@@ -1969,7 +1957,6 @@ async function refreshHermesBroker(): Promise<void> {
       workflow: buildBrainWorkflow(
         current.brain,
         execution,
-        openClawState,
         telegramState,
         generatedAt,
       ),

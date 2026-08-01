@@ -149,6 +149,7 @@ function Get-HermesModelKey([string]$Alias) {
         # ran.
         'gemma' { return 'google/gemma-4-12b-qat' }
         'gemma-qat' { return 'google/gemma-4-12b-qat' }
+        'agents-a1' { return 'agents-a1-4b' }
         'qwen' { return 'qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive' }
         default { throw "Unknown Hermes model alias '$Alias'." }
     }

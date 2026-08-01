@@ -1,0 +1,53 @@
+limits:
+  gemma:
+    max_turns_soft: 8
+    max_turns_hard: 10
+    max_files: 5
+    max_diff_lines: 250
+
+  agents_a1:
+    max_turns_soft: 12
+    max_turns_hard: 16
+    max_files: 6
+    max_edit_regions: 6
+    max_diff_lines: 450
+    max_lines_deleted: 150
+    max_same_error_retries: 2
+    max_total_attempts: 3
+    context_tokens: 16384
+    max_output_tokens: 6144
+
+  qwen:
+    max_turns_soft: 20
+    max_turns_hard: 24
+    max_files: 10
+    max_diff_lines: 800
+    context_tokens: 24576
+    max_output_tokens: 8192
+
+patch_policy:
+  max_files_changed: 6
+  max_new_files: 3
+  max_lines_added: 450
+  max_lines_deleted: 150
+  max_deletion_ratio_per_file: 0.20
+
+  allow_file_deletion: false
+  allow_file_rename: false
+  allow_binary_files: false
+  allow_dependency_changes: false
+  allow_framework_changes: false
+  allow_database_engine_changes: false
+  allow_build_system_changes: false
+
+  protected_patterns:
+    - ".env"
+    - ".env.*"
+    - "*.key"
+    - "*.pem"
+    - "composer.json"
+    - "package.json"
+    - "vite.config.*"
+    - "settings.gradle*"
+    - "build.gradle*"
+    - "AndroidManifest.xml"

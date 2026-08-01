@@ -1,0 +1,22 @@
+security:
+  mysql_default: true
+  allow_postgresql: false
+  allow_float_double_money: false
+  allow_production_mutation: false
+  allow_env_read: false
+  allow_real_db_migration: false
+  allow_force_push: false
+  allow_branch_deletion: false
+  allow_repo_deletion: false
+  allow_global_dependencies: false
+  allow_framework_switch: false
+  allow_main_branch_patch: false
+
+telemetry:
+  heartbeat_interval_seconds: 30
+  stale_after_seconds: 120
+  failed_after_seconds: 300
+  append_only_events: true
+  redact_prompts: true
+  redact_secrets: true
+  retention_days: 30

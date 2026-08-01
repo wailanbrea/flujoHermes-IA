@@ -22,9 +22,7 @@ foreach ($file in $pidFiles) {
         continue
     }
     $processId = [int](Get-Content -LiteralPath $path -Raw)
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" `
-        -ErrorAction SilentlyContinue
-    if ($process -and $process.CommandLine -match 'npm(?:\.cmd)?[" ]+run') {
+    if ($processId -gt 0) {
         $descendantIds = @(Get-DescendantProcessIds -ParentId $processId)
         foreach ($descendantId in $descendantIds) {
             Stop-Process -Id $descendantId -Force -ErrorAction SilentlyContinue
@@ -33,4 +31,13 @@ foreach ($file in $pidFiles) {
     }
     Remove-Item -LiteralPath $path -Force
 }
+
+$ports = @(4310, 4311)
+foreach ($port in $ports) {
+    $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+    foreach ($c in $conns) {
+        Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Output 'Procesos del dashboard detenidos.'

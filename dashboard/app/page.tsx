@@ -136,7 +136,7 @@ function BrainDiagram({
         </div>
       </div>
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
-        <svg className="brain-svg" viewBox="0 0 1000 780" role="img" aria-labelledby="brain-title brain-desc">
+        <svg className="brain-svg" viewBox="0 0 1000 840" role="img" aria-labelledby="brain-title brain-desc">
           <title id="brain-title">Flujo operativo de Hermes Brain</title>
           <desc id="brain-desc">Arquitectura operativa publicada por la telemetría local.</desc>
           <defs>
@@ -280,7 +280,7 @@ function Home() {
             <p className="kicker">Flujo real</p>
             <h2>Decisión, evidencia y memoria en un solo circuito</h2>
           </div>
-          <p>OpenClaw canaliza solicitudes. Hermes razona bajo políticas. La evidencia decide.</p>
+          <p>Telegram Gateway canaliza solicitudes. Hermes Brain razona bajo políticas. La evidencia decide.</p>
         </header>
         {snapshot ? (
           <BrainDiagram

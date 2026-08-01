@@ -14,7 +14,6 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.ok(assets.some((name) => name.endsWith(".js")));
   for (const label of [
     "Usuario",
-    "OpenClaw",
     "HERMES BRAIN",
     "Memoria y Graphify",
     "Model Router",
@@ -40,7 +39,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   );
   assert.doesNotMatch(server, /function buildWorkflow\(/);
   assert.match(server, /link\("brain", "trama", "Telemetría read-only"/);
-  assert.match(page, /viewBox="0 0 1000 780"/);
+  assert.match(page, /viewBox="0 0 1000 840"/);
   assert.match(page, /EventSource/);
   assert.match(page, /workflow=\{snapshot\.workflow\}/);
   assert.match(page, /workflow\.nodes\.map/);
@@ -54,7 +53,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
   assert.match(css, /overflow-x: auto/);
-  assert.match(css, /height: 780px; width: 1000px/);
+  assert.match(css, /height: 840px; width: 1000px/);
   assert.match(css, /max-width: 1500px/);
   assert.match(css, /@keyframes workflow-flow/);
   assert.match(css, /brain-links path\.telemetry-active \{[^}]*animation:/);
@@ -87,11 +86,7 @@ test("keeps telemetry loopback-only, cached, and read-only", async () => {
   assert.match(server, /promptBudgetSchema/);
   assert.match(server, /readPromptBudget/);
   assert.match(server, /probeRtk/);
-  assert.match(
-    server,
-    /probeTcp\("openclaw", "OpenClaw", "Canal de entrada", 18789\)/,
-  );
-  assert.match(server, /state: openClawState/);
+  assert.match(server, /probeTelegram/);
   assert.match(
     server,
     /link\("execution-gateway", "playwright".{0,160}"configured"\)/,
