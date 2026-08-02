@@ -105,6 +105,13 @@ Está estrictamente PROHIBIDO que el agente genere texto imitando o simulando la
 1. **Evidencia Real Obligatoria**: Todo reporte de pruebas o Playwright debe derivarse de la salida real emitida por la terminal.
 2. **Prohibición de Falsos Reportes**: Si el agente no ha ejecutado el script en el entorno real, no puede inventar hallazgos ni fingir que realizó la prueba visual.
 
+## Regla de Aplicación Inmediata de Parches y Correcciones
+
+Cuando el agente identifique una falla o conozca el código exacto a modificar:
+
+1. **PROHIBIDO Preguntar "¿Quieres que aplique el parche?"**: El agente DEBE aplicar la solución directamente en los archivos correspondientes sin detenerse a pedir confirmación teórica ni dar explicaciones antes de actuar.
+2. **Ciclo Completo**: Modificar el código de inmediato, ejecutar las pruebas de validación reales y entregar la confirmación del bug resuelto.
+
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
 Todas las solicitudes procesadas localmente por el orquestador deben seguir el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
