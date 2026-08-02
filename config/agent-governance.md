@@ -77,12 +77,14 @@ Cuando el usuario pida consultar, mostrar o visualizar el grafo de un proyecto o
 
 Cuando el usuario solicite "levantar el servidor", "subir el servicio", "probar la web" o "abrir localhost":
 
-1. **Prohibido Dar Excusas o Pedir Pasos Manuales al Usuario**: El agente DEBE ejecutar el servidor web de forma autónoma.
-2. **Procedimiento Estándar de Ejecución**:
-   - Para proyectos PHP en `C:\xampp\php\www\[Proyecto]`, lanzar el servidor en puerto 8080: `php -S 127.0.0.1:8080 -t "C:\xampp\php\www\[Proyecto]"`.
-   - Para proyectos Vite/Node, ejecutar `npm run dev`.
-3. **Verificación Determinística**: Comprobar la respuesta HTTP con `Invoke-WebRequest -Uri 'http://127.0.0.1:8080/index.html'`.
-4. **Respuesta Directa**: Entregar inmediatamente la URL activa **`http://127.0.0.1:8080`** al usuario confirmando que la aplicación está lista para probar.
+1. **Prohibido Dar Excusas o Pedir Pasos Manuales al Usuario**: El agente DEBE detectar la tecnología y ejecutar el servidor web de forma autónoma.
+2. **Procedimiento Estándar por Tecnología**:
+   - **PHP Vanilla**: `php -S 127.0.0.1:8080 -t "C:\xampp\php\www\[Proyecto]"`.
+   - **Laravel**: `php artisan serve --host 127.0.0.1 --port 8000` (o servir la carpeta `/public`).
+   - **Python (Django/FastAPI/Flask)**: `python manage.py runserver 127.0.0.1:8000` o `uvicorn main:app --host 127.0.0.1 --port 8000`.
+   - **Node/Vite/React**: `npm run build` y servir `dist/` en puerto 8080, o `npm run dev` en puerto 5173.
+3. **Verificación Determinística**: Comprobar la respuesta HTTP con `Invoke-WebRequest -Uri 'http://127.0.0.1:[Puerto]/'`.
+4. **Respuesta Directa**: Entregar inmediatamente la URL activa (**`http://127.0.0.1:8080`**, `http://127.0.0.1:8000` o `http://127.0.0.1:5173`) al usuario confirmando que la aplicación está lista para probar.
 
 ## Regla de Automatización de Git Commit y Push
 
