@@ -64,6 +64,16 @@ Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer 
 2. Utiliza de forma autónoma las herramientas disponibles (`code_execution`, `terminal`, `browser`, `web`) para escribir y ejecutar el script de Playwright o el comando necesario.
 3. Extrae directamente la información requerida y entrega el resultado final al usuario de forma estructurada y limpia.
 
+## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
+
+Todas las solicitudes deben procesarse bajo el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
+- **Clasificación preliminar y final (L0-L4)** basada en las 6 dimensiones de complejidad (0 a 24 puntos).
+- **Enrutamiento adaptativo de Graphify y Model Router** (`Gemma`, `Agents-A1`, `Qwen3.6`).
+- **DAG de Tareas Atómicas** con presupuesto acotado y evidencias por tarea.
+- **Validación Determinística (Quality Gates)** + **Auditoría Post-Ejecución (Sección 15)**.
+- **Repair Loop** (máximo 5 estrategias por hallazgo, prueba negativa + regresión).
+- **Informe Final de 21 Secciones** para cada entrega (`COMPLETED_AND_VERIFIED`, `COMPLETED_WITH_LIMITATIONS`, `PARTIALLY_COMPLETED`, `BLOCKED`, `FAILED`).
+
 La configuración versionada está en `config/hermes-brain.json`.
 
 
