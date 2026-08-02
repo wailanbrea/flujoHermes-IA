@@ -73,6 +73,17 @@ Cuando el usuario pida consultar, mostrar o visualizar el grafo de un proyecto o
 3. **Si el proyecto NO está incluido en el catálogo local**: Responder directamente en 1 sola línea concisa: *"La aplicación [Nombre] aún no está incluida en el catálogo local de Graphify. ¿Deseas que la incluya e indexe ahora mismo?"*.
 4. Tras recibir la confirmación explícita para incluir la aplicación, ejecutar la indexación automática y mostrar el grafo de inmediato.
 
+## Regla de Levantamiento Autónomo de Servicios Web y XAMPP
+
+Cuando el usuario solicite "levantar el servidor", "subir el servicio", "probar la web" o "abrir localhost":
+
+1. **Prohibido Dar Excusas o Pedir Pasos Manuales al Usuario**: El agente DEBE ejecutar el servidor web de forma autónoma.
+2. **Procedimiento Estándar de Ejecución**:
+   - Para proyectos PHP en `C:\xampp\php\www\[Proyecto]`, lanzar el servidor en puerto 8080: `php -S 127.0.0.1:8080 -t "C:\xampp\php\www\[Proyecto]"`.
+   - Para proyectos Vite/Node, ejecutar `npm run dev`.
+3. **Verificación Determinística**: Comprobar la respuesta HTTP con `Invoke-WebRequest -Uri 'http://127.0.0.1:8080/index.html'`.
+4. **Respuesta Directa**: Entregar inmediatamente la URL activa **`http://127.0.0.1:8080`** al usuario confirmando que la aplicación está lista para probar.
+
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
 Todas las solicitudes procesadas localmente por el orquestador deben seguir el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
