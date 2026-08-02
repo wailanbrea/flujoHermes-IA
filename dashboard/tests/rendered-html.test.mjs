@@ -48,25 +48,39 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(server, /link\("brain", "trama"/);
   assert.match(page, /viewBox=/);
   assert.match(page, /EventSource/);
-  assert.match(page, /workflow=\{snapshot\.workflow\}/);
+  assert.match(page, /snapshot=\{snapshot\}/);
+  assert.match(page, /const workflow = snapshot\.workflow/);
   assert.match(page, /workflow\.nodes\.map/);
   assert.match(page, /workflow\.edges\.map/);
   assert.match(page, /function edgePathData/);
+  assert.match(page, /function calculateWorkflowBounds/);
   assert.match(page, /edge\.evidence === "observed"/);
-  assert.match(page, /executionMode === "live" \|\| executionMode === "waiting"/);
+  assert.match(page, /execution\.mode === "live" \|\| execution\.mode === "waiting"/);
   assert.match(page, /node-inspector/);
   assert.match(page, /snapshot\.execution/);
   assert.match(page, /En vivo/);
-  assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
-  assert.match(css, /diagram-canvas-container/);
-  assert.match(css, /max-width: 1500px/);
+  assert.match(page, /workflow-transform-layer/);
+  assert.match(page, /workflow-minimap/);
+  assert.match(page, /addEventListener\("wheel", handleWheel, \{ passive: false \}\)/);
+  assert.match(page, /removeEventListener\("wheel", handleWheel\)/);
+  assert.match(page, /onPointerMove=\{handlePointerMove\}/);
+  assert.match(page, /requestAnimationFrame/);
+  assert.match(page, /fitWorkflowToViewport/);
+  assert.match(page, /MIN_ZOOM = 0\.35/);
+  assert.match(page, /MAX_ZOOM = 1\.8/);
+  assert.match(css, /workflow-transform-layer/);
+  assert.doesNotMatch(css, /max-width:\s*1500px/);
   assert.match(css, /@keyframes workflow-flow/);
-  assert.match(css, /brain-links path\.telemetry-active \{[^}]*animation:/);
-  assert.doesNotMatch(css, /\.brain-links path \{[^}]*animation:/);
+  assert.match(css, /@keyframes hologram-float/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(css, /edge-group\.telemetry-active \.flow-path \{[^}]*animation:/);
+  assert.doesNotMatch(css, /\.brain-links \.flow-path \{[^}]*animation:/);
+  assert.match(server, /const holographicLayout/);
+  assert.match(server, /LOOP_CORRIDOR_X = 1870/);
   assert.doesNotMatch(
     page,
-    /const nodes:|const paths|executionStages|pathStageIndexes|animationDelay|Flujo continuo|diagram-spread|draggingId|onPointerMove|setInterval|localStorage|matchMedia|animateMotion|Activar animación/,
+    /const nodes:|const paths|executionStages|pathStageIndexes|animationDelay|setInterval|localStorage|animateMotion|Activar animación/,
   );
   assert.doesNotMatch(page, /Tokens delegados|Hermes Lab|worker principal/i);
 });

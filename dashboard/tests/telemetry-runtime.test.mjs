@@ -150,6 +150,26 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
       ),
     );
     assert.ok(
+      Math.max(...observed.workflow.nodes.map((node) => node.y + node.height)) <= 1_200,
+      "Workflow layout must remain compact enough for fit-to-view.",
+    );
+    assert.deepEqual(
+      observed.workflow.edges
+        .filter((edge) => edge.route === "loop")
+        .map((edge) => ({
+          source: edge.source,
+          target: edge.target,
+          corridorX: edge.corridorX,
+          targetPort: edge.targetPort,
+        })),
+      [{
+        source: "repair",
+        target: "atomic-plan",
+        corridorX: 1_870,
+        targetPort: "bottom",
+      }],
+    );
+    assert.ok(
       observed.workflow.edges
         .filter((edge) => edge.target === "code-sandbox")
         .every((edge) => edge.evidence === "observed"),

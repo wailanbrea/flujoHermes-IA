@@ -1660,7 +1660,7 @@ function buildBrainWorkflow(
   const LEFT_BRANCH_X = 40;
   const CENTER_BRANCH_X = 610;
   const RIGHT_BRANCH_X = 1180;
-  const LOOP_CORRIDOR_X = 1680;
+  const LOOP_CORRIDOR_X = 1870;
 
   const nodes: WorkflowNode[] = [
     // FASE A — INGRESO Y CONTRATO
@@ -2048,6 +2048,43 @@ function buildBrainWorkflow(
     },
   ];
 
+  // El snapshot conserva coordenadas deterministas para que cualquier cliente
+  // represente el mismo flujo. Esta geometría compacta forma cuatro corredores
+  // serpenteantes y deja libre el borde derecho para el Repair Loop.
+  const holographicLayout: Record<
+    string,
+    Pick<WorkflowNode, "x" | "y" | "width" | "height">
+  > = {
+    user: { x: 40, y: 60, width: 220, height: 126 },
+    telegram: { x: 290, y: 60, width: 240, height: 126 },
+    auth: { x: 570, y: 60, width: 270, height: 126 },
+    normalize: { x: 880, y: 60, width: 270, height: 126 },
+    preclassify: { x: 1190, y: 60, width: 300, height: 126 },
+    trama: { x: 1540, y: 220, width: 260, height: 112 },
+    brain: { x: 1480, y: 355, width: 320, height: 138 },
+    memory: { x: 1140, y: 210, width: 290, height: 122 },
+    router: { x: 1140, y: 340, width: 290, height: 122 },
+    agents: { x: 1140, y: 510, width: 290, height: 122 },
+    "atomic-plan": { x: 760, y: 365, width: 310, height: 138 },
+    "execution-gateway": { x: 390, y: 365, width: 300, height: 138 },
+    "code-sandbox": { x: 40, y: 650, width: 250, height: 130 },
+    playwright: { x: 320, y: 650, width: 250, height: 130 },
+    automations: { x: 600, y: 650, width: 250, height: 130 },
+    evidence: { x: 900, y: 650, width: 280, height: 130 },
+    integration: { x: 1210, y: 650, width: 280, height: 130 },
+    validated: { x: 1520, y: 650, width: 280, height: 130 },
+    audit: { x: 1520, y: 850, width: 280, height: 132 },
+    repair: { x: 1160, y: 850, width: 290, height: 132 },
+    learning: { x: 700, y: 850, width: 300, height: 132 },
+    promotion: { x: 300, y: 850, width: 320, height: 132 },
+  };
+
+  const laidOutNodes = nodes.map((node) => {
+    const layout = holographicLayout[node.id];
+    if (!layout) throw new Error(`Missing workflow layout for ${node.id}`);
+    return { ...node, ...layout };
+  });
+
   const link = (
     source: string,
     target: string,
@@ -2075,7 +2112,7 @@ function buildBrainWorkflow(
   });
 
   return {
-    nodes: nodes.map((node) => ({
+    nodes: laidOutNodes.map((node) => ({
       ...node,
       evidence: evidenceFor(node.stageId),
     })),
@@ -2085,26 +2122,26 @@ function buildBrainWorkflow(
       link("auth", "normalize", "Solicitud autorizada", "normalize"),
       link("normalize", "preclassify", "Contrato operativo", "preclassify"),
       link("preclassify", "brain", "Complejidad L0–L4", "brain"),
-      link("brain", "trama", "Telemetría SSE read-only", "brain", "healthy", evidenceFor("brain"), "observer", "left", "right"),
-      link("brain", "memory", "Contexto AST", "routing", brain.memory.state, evidenceFor("routing"), "branch", "bottom", "top"),
-      link("brain", "router", "Modelo y VRAM", "routing", brain.router.state, evidenceFor("routing"), "branch", "bottom", "top"),
-      link("brain", "agents", "Especialistas", "routing", brain.agents.state, evidenceFor("routing"), "branch", "bottom", "top"),
-      link("memory", "atomic-plan", "Mapa de impacto", "atomic-plan", brain.memory.state, evidenceFor("atomic-plan"), "merge", "bottom", "top"),
-      link("router", "atomic-plan", "Capacidad asignada", "atomic-plan", brain.router.state, evidenceFor("atomic-plan"), "merge", "bottom", "top"),
-      link("agents", "atomic-plan", "Perfiles asignados", "atomic-plan", brain.agents.state, evidenceFor("atomic-plan"), "merge", "bottom", "top"),
+      link("brain", "trama", "Telemetría SSE read-only", "brain", "healthy", evidenceFor("brain"), "observer", "top", "bottom"),
+      link("brain", "memory", "Contexto AST", "routing", brain.memory.state, evidenceFor("routing"), "branch", "left", "right"),
+      link("brain", "router", "Modelo y VRAM", "routing", brain.router.state, evidenceFor("routing"), "branch", "left", "right"),
+      link("brain", "agents", "Especialistas", "routing", brain.agents.state, evidenceFor("routing"), "branch", "left", "right"),
+      link("memory", "atomic-plan", "Mapa de impacto", "atomic-plan", brain.memory.state, evidenceFor("atomic-plan"), "merge", "left", "right"),
+      link("router", "atomic-plan", "Capacidad asignada", "atomic-plan", brain.router.state, evidenceFor("atomic-plan"), "merge", "left", "right"),
+      link("agents", "atomic-plan", "Perfiles asignados", "atomic-plan", brain.agents.state, evidenceFor("atomic-plan"), "merge", "left", "right"),
       link("atomic-plan", "execution-gateway", "DAG autorizado", "plan"),
       link("execution-gateway", "code-sandbox", "Rama código", "sandbox", brain.sandbox.state, evidenceFor("sandbox")),
       link("execution-gateway", "playwright", "Playwright MCP", "sandbox", brain.sandbox.state, "configured"),
       link("execution-gateway", "automations", "Rama operaciones", "sandbox", brain.sandbox.state, "configured"),
-      link("code-sandbox", "evidence", "Diff y pruebas", "evidence", executionState, evidenceFor("evidence"), "merge", "bottom", "top"),
-      link("playwright", "evidence", "Capturas y trazas", "evidence", executionState, evidenceFor("evidence"), "merge", "bottom", "top"),
-      link("automations", "evidence", "Logs y salidas", "evidence", executionState, evidenceFor("evidence"), "merge", "bottom", "top"),
+      link("code-sandbox", "evidence", "Diff y pruebas", "evidence", executionState, evidenceFor("evidence"), "merge", "bottom", "bottom"),
+      link("playwright", "evidence", "Capturas y trazas", "evidence", executionState, evidenceFor("evidence"), "merge", "bottom", "bottom"),
+      link("automations", "evidence", "Logs y salidas", "evidence", executionState, evidenceFor("evidence"), "merge", "bottom", "bottom"),
       link("evidence", "integration", "Parche verificado", "integration", executionState),
       link("integration", "validated", "Resultado integrado", "validated", executionState),
       link("validated", "audit", "Quality Gates", "audit", executionState),
-      link("audit", "repair", "Hallazgos corregibles", "repair", executionState, evidenceFor("repair"), "branch", "right", "left"),
-      link("repair", "atomic-plan", "Replanificación del Repair Loop", "atomic-plan", executionState, evidenceFor("repair"), "loop", "right", "right", LOOP_CORRIDOR_X),
-      link("audit", "learning", "Sin errores bloqueantes", "learning", brain.learning.state),
+      link("audit", "repair", "Hallazgos corregibles", "repair", executionState, evidenceFor("repair"), "branch", "left", "right"),
+      link("repair", "atomic-plan", "Replanificación del Repair Loop", "atomic-plan", executionState, evidenceFor("repair"), "loop", "right", "bottom", LOOP_CORRIDOR_X),
+      link("audit", "learning", "Sin errores bloqueantes", "learning", brain.learning.state, evidenceFor("learning"), "branch", "bottom", "bottom"),
       link("learning", "promotion", "Aprendizaje saneado", "promotion", brain.learning.promotionState),
     ],
   };
