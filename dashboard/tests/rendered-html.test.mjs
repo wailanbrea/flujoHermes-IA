@@ -14,19 +14,26 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.ok(assets.some((name) => name.endsWith(".js")));
   for (const label of [
     "Usuario",
-    "HERMES BRAIN",
+    "Telegram Gateway",
+    "Autenticación & Idempotencia",
+    "Normalizador & Contrato",
+    "Clasificador Preliminar",
+    "HERMES BRAIN & Graphify",
     "Memoria y Graphify",
-    "Model Router",
+    "Model Router & VRAM",
     "Agent Factory",
-    "Plan y políticas",
+    "Atomic Planner & Grafo DAG",
     "Execution Gateway",
     "Sandbox de código",
-    "Playwright",
+    "Playwright MCP",
     "Automatizaciones",
-    "Tests · Evidencia · Aprobación",
-    "Resultado validado",
-    "Learning Engine",
-    "Memoria · Skill · Benchmark",
+    "Patch Gate & Evidencia",
+    "Integración & Ensamblaje",
+    "Quality Gates Determinísticos",
+    "Auditoría Post-Ejecución",
+    "Repair Loop & Regresión",
+    "Learning Engine Saneado",
+    "Promoción, Memoria & Entrega",
     "TRAMA",
   ]) assert.match(server, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   const workflowBuilder = server.match(
@@ -39,7 +46,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   );
   assert.doesNotMatch(server, /function buildWorkflow\(/);
   assert.match(server, /link\("brain", "trama", "Telemetría read-only"/);
-  assert.match(page, /viewBox="0 0 1000 840"/);
+  assert.match(page, /viewBox="0 0 1000 960"/);
   assert.match(page, /EventSource/);
   assert.match(page, /workflow=\{snapshot\.workflow\}/);
   assert.match(page, /workflow\.nodes\.map/);
@@ -53,7 +60,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
   assert.match(css, /overflow-x: auto/);
-  assert.match(css, /height: 840px; width: 1000px/);
+  assert.match(css, /height: 960px; width: 1000px/);
   assert.match(css, /max-width: 1500px/);
   assert.match(css, /@keyframes workflow-flow/);
   assert.match(css, /brain-links path\.telemetry-active \{[^}]*animation:/);

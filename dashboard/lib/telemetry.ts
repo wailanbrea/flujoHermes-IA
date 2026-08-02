@@ -125,16 +125,22 @@ export type HermesTaskState =
   | "validation-failed";
 
 export const WORKFLOW_STAGES = [
-  { id: "input", label: "Usuario y Telegram Gateway" },
-  { id: "brain", label: "Hermes Brain coordina" },
-  { id: "routing", label: "Memoria, routing y agentes" },
-  { id: "context", label: "Plan y políticas" },
+  { id: "input", label: "Usuario & Telegram Gateway" },
+  { id: "auth", label: "Autenticación & Idempotencia" },
+  { id: "normalize", label: "Normalizador & Contrato" },
+  { id: "preclassify", label: "Clasificador Preliminar (L0-L4)" },
+  { id: "brain", label: "Hermes Brain & Graphify" },
+  { id: "routing", label: "Model Router & VRAM" },
+  { id: "atomic-plan", label: "Atomic Planner & Grafo DAG" },
   { id: "plan", label: "Execution Gateway" },
-  { id: "sandbox", label: "Ejecución aislada" },
-  { id: "evidence", label: "Tests, evidencia y aprobación" },
-  { id: "validated", label: "Resultado validado" },
-  { id: "learning", label: "Learning Engine" },
-  { id: "promotion", label: "Memoria, skill y benchmark" },
+  { id: "sandbox", label: "Sandbox, Tools & Playwright" },
+  { id: "evidence", label: "Patch Gate & Evidencia" },
+  { id: "integration", label: "Integración & Ensamblaje" },
+  { id: "validated", label: "Quality Gates Determinísticos" },
+  { id: "audit", label: "Auditoría Post-Ejecución" },
+  { id: "repair", label: "Repair Loop & Regresión" },
+  { id: "learning", label: "Learning Engine Saneado" },
+  { id: "promotion", label: "Promoción, Memoria & Entrega" },
 ] as const;
 
 export type WorkflowStageId = (typeof WORKFLOW_STAGES)[number]["id"];

@@ -114,7 +114,7 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
     assert.equal(observed.delegation.focusTask?.taskId, taskId);
     assert.equal(observed.execution.mode, "live");
     assert.equal(observed.execution.stageId, "sandbox");
-    assert.equal(observed.execution.stageIndex, 5);
+    assert.equal(observed.execution.stageIndex, 8);
     assert.equal(observed.execution.taskId, taskId);
     assert.equal(observed.execution.taskState, "executing");
     assert.deepEqual(
@@ -122,17 +122,23 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
       [
         "user",
         "telegram",
+        "auth",
+        "normalize",
+        "preclassify",
         "brain",
         "memory",
         "router",
         "agents",
-        "plan",
+        "atomic-plan",
         "execution-gateway",
         "code-sandbox",
         "playwright",
         "automations",
         "evidence",
+        "integration",
         "validated",
+        "audit",
+        "repair",
         "learning",
         "promotion",
         "trama",

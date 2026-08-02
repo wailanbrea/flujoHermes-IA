@@ -136,7 +136,7 @@ function BrainDiagram({
         </div>
       </div>
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo fijo de Hermes Brain">
-        <svg className="brain-svg" viewBox="0 0 1000 840" role="img" aria-labelledby="brain-title brain-desc">
+        <svg className="brain-svg" viewBox="0 0 1000 960" role="img" aria-labelledby="brain-title brain-desc">
           <title id="brain-title">Flujo operativo de Hermes Brain</title>
           <desc id="brain-desc">Arquitectura operativa publicada por la telemetría local.</desc>
           <defs>
