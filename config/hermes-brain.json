@@ -50,61 +50,61 @@
     "controlled-operator": {
       "toolsets": ["browser", "clarify", "code_execution", "context_engine", "delegation", "file", "image_gen", "kanban", "memory", "session_search", "skills", "terminal", "todo", "vision", "web"],
       "maxTurns": 120,
-      "maxTokens": 4096,
+      "maxTokens": 8192,
       "writeScope": "managed-worktrees"
     },
     "android-operator": {
       "toolsets": ["clarify", "code_execution", "context_engine", "file", "kanban", "memory", "skills", "terminal", "todo", "vision"],
       "maxTurns": 120,
-      "maxTokens": 4096,
+      "maxTokens": 8192,
       "writeScope": "managed-worktrees"
     },
     "backend-operator": {
       "toolsets": ["clarify", "code_execution", "context_engine", "file", "kanban", "memory", "skills", "terminal", "todo"],
       "maxTurns": 120,
-      "maxTokens": 4096,
+      "maxTokens": 8192,
       "writeScope": "managed-worktrees"
     },
     "orchestrator": {
       "toolsets": ["clarify", "context_engine", "delegation", "kanban", "memory", "session_search", "skills", "todo"],
       "maxTurns": 60,
-      "maxTokens": 3072,
+      "maxTokens": 8192,
       "writeScope": "scratch-only"
     },
     "researcher": {
       "toolsets": ["browser", "clarify", "context_engine", "memory", "session_search", "skills", "todo", "vision", "web"],
       "maxTurns": 60,
-      "maxTokens": 3072,
+      "maxTokens": 8192,
       "writeScope": "scratch-only"
     },
     "financial-advisor": {
       "toolsets": ["clarify", "context_engine", "memory", "session_search", "skills", "todo", "web"],
       "maxTurns": 60,
-      "maxTokens": 3072,
+      "maxTokens": 8192,
       "writeScope": "none"
     },
     "validator": {
       "toolsets": ["browser", "clarify", "context_engine", "file", "memory", "session_search", "skills", "todo", "vision", "web"],
       "maxTurns": 60,
-      "maxTokens": 3072,
+      "maxTokens": 8192,
       "writeScope": "scratch-only"
     },
     "read-only": {
       "toolsets": ["clarify", "context_engine", "file", "memory", "session_search", "skills", "todo", "web"],
       "maxTurns": 40,
-      "maxTokens": 2048,
+      "maxTokens": 8192,
       "writeScope": "scratch-only"
     },
     "classifier": {
       "toolsets": ["clarify", "context_engine", "memory", "session_search", "skills", "todo"],
       "maxTurns": 30,
-      "maxTokens": 2048,
+      "maxTokens": 8192,
       "writeScope": "scratch-only"
     },
     "curator": {
       "toolsets": ["clarify", "context_engine", "memory", "session_search", "skills", "todo"],
       "maxTurns": 40,
-      "maxTokens": 2048,
+      "maxTokens": 8192,
       "writeScope": "scratch-only"
     }
   },
