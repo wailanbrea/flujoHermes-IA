@@ -14,16 +14,16 @@ Cuando el usuario pida levantar, iniciar, probar o verificar un servidor web loc
    - `C:\xampp\php\www\[NombreProyecto]`
 
 2. **Ejecutar el Servidor Web Integrado de PHP o Dev Server**:
-   - Lanzar el servidor en segundo plano:
+   - Para aplicaciones Vite/React (como `CalculadoraParley Web`), primero compilar el bundle si es necesario (`npm run build`) y servir la carpeta `dist`:
      ```powershell
-     powershell -Command "php -S 127.0.0.1:8080 -t 'C:\xampp\php\www\[Proyecto]'"
+     powershell -Command "php -S 127.0.0.1:8080 -t 'C:\xampp\php\www\[Proyecto]\dist'"
      ```
-   - Si el proyecto usa Node/Vite, ejecutar `npm run dev`.
+   - O bien lanzar el servidor de desarrollo Vite (`npm run dev -- --host 127.0.0.1 --port 5173`).
 
 3. **Validación Automática de Respuesta HTTP**:
    - Probar con `Invoke-WebRequest -Uri 'http://127.0.0.1:8080/index.html'`
    - Confirmar estado HTTP 200 OK.
 
 4. **Entregar la URL al Usuario**:
-   - Entregar la URL directa `http://127.0.0.1:8080` o `http://localhost/CalculadoraParley%20Web/`.
-   - Cero excusas de entorno, cero preguntas teóricas.
+   - Entregar la URL directa `http://127.0.0.1:8080` (producción/dist) o `http://127.0.0.1:5173` (dev/Vite).
+   - Cero excusas de entorno, cero pantallas en blanco.
