@@ -81,10 +81,20 @@ Set-ManagedPolicyBlock `
     -Path (Join-Path $env:USERPROFILE '.codex\AGENTS.md') `
     -AgentName 'Codex'
 
+# Synchronize all Hermes native profiles SOUL.md files
+$hermesProfilesDir = Join-Path $env:LOCALAPPDATA 'hermes\profiles'
+if (Test-Path -LiteralPath $hermesProfilesDir -PathType Container) {
+    Get-ChildItem -Path $hermesProfilesDir -Filter 'SOUL.md' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $profileName = $_.Directory.Name
+        Set-ManagedPolicyBlock -Path $_.FullName -AgentName "Hermes Profile ($profileName)"
+    }
+}
+
 [pscustomobject]@{
     policy = $policyPath
     claude = Join-Path $env:USERPROFILE '.claude\CLAUDE.md'
     antigravity = Join-Path $env:USERPROFILE '.gemini\GEMINI.md'
     openCode = Join-Path $env:USERPROFILE '.config\opencode\AGENTS.md'
     codex = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
+    hermesProfilesSynced = (Test-Path -LiteralPath $hermesProfilesDir)
 } | ConvertTo-Json -Compress
