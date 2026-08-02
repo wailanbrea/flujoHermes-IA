@@ -34,32 +34,57 @@ export interface TelemetryEvent {
 
 export type WorkflowEvidence = "observed" | "configured" | "indexed";
 
+export type WorkflowNodeKind =
+  | "user"
+  | "interface"
+  | "control"
+  | "memory"
+  | "router"
+  | "factory"
+  | "policy"
+  | "gateway"
+  | "executor"
+  | "validation"
+  | "result"
+  | "learning"
+  | "observer";
+
+export type WorkflowPhaseId =
+  | "ingress"
+  | "context"
+  | "execution"
+  | "quality"
+  | "delivery";
+
 export interface WorkflowNode {
   id: string;
   label: string;
   role: string;
   detail: string;
   state: HealthState;
-  kind:
-    | "user"
-    | "interface"
-    | "control"
-    | "memory"
-    | "router"
-    | "factory"
-    | "policy"
-    | "gateway"
-    | "executor"
-    | "validation"
-    | "result"
-    | "learning"
-    | "observer";
+  kind: WorkflowNodeKind;
   stageId: WorkflowStageId;
   x: number;
   y: number;
   width: number;
   height: number;
+
+  stageNumber?: number;
+  phase?: WorkflowPhaseId;
+  purpose?: string;
+  input?: string;
+  output?: string;
+  authority?: "control" | "execution" | "validation" | "observation" | "bounded";
 }
+
+export type WorkflowPort = "top" | "right" | "bottom" | "left";
+
+export type WorkflowRoute =
+  | "forward"
+  | "branch"
+  | "merge"
+  | "loop"
+  | "observer";
 
 export interface WorkflowEdge {
   id: string;
@@ -70,6 +95,11 @@ export interface WorkflowEdge {
   evidence: WorkflowEvidence;
   stageId: WorkflowStageId;
   lastObservedAt: string;
+
+  sourcePort?: WorkflowPort;
+  targetPort?: WorkflowPort;
+  route?: WorkflowRoute;
+  corridorX?: number;
 }
 
 export interface GraphRepositorySummary {

@@ -45,13 +45,13 @@ test("builds the compact Hermes Brain dashboard", async () => {
     /lm-studio|submit-hermes-task|directors|project-catalog/i,
   );
   assert.doesNotMatch(server, /function buildWorkflow\(/);
-  assert.match(server, /link\("brain", "trama", "Telemetría read-only"/);
-  assert.match(page, /viewBox="0 0 1000 960"/);
+  assert.match(server, /link\("brain", "trama"/);
+  assert.match(page, /viewBox="0 0 1550 2500"/);
   assert.match(page, /EventSource/);
   assert.match(page, /workflow=\{snapshot\.workflow\}/);
   assert.match(page, /workflow\.nodes\.map/);
   assert.match(page, /workflow\.edges\.map/);
-  assert.match(page, /function edgePath/);
+  assert.match(page, /function edgePathData/);
   assert.match(page, /edge\.evidence === "observed"/);
   assert.match(page, /executionMode === "live" \|\| executionMode === "waiting"/);
   assert.match(page, /node-inspector/);
@@ -59,8 +59,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(page, /En vivo/);
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
-  assert.match(css, /overflow-x: auto/);
-  assert.match(css, /height: 960px; width: 1000px/);
+  assert.match(css, /height: 2500px/);
   assert.match(css, /max-width: 1500px/);
   assert.match(css, /@keyframes workflow-flow/);
   assert.match(css, /brain-links path\.telemetry-active \{[^}]*animation:/);

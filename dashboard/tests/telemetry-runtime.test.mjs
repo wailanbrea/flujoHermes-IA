@@ -126,6 +126,7 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
         "normalize",
         "preclassify",
         "brain",
+        "trama",
         "memory",
         "router",
         "agents",
@@ -141,7 +142,6 @@ test("publishes a sanitized Hermes status through the debounced watcher", async 
         "repair",
         "learning",
         "promotion",
-        "trama",
       ],
     );
     assert.ok(
