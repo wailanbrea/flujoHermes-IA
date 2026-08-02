@@ -75,6 +75,7 @@ export interface WorkflowNode {
   input?: string;
   output?: string;
   authority?: "control" | "execution" | "validation" | "observation" | "bounded";
+  evidence?: WorkflowEvidence;
 }
 
 export type WorkflowPort = "top" | "right" | "bottom" | "left";

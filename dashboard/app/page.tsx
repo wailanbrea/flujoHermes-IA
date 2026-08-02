@@ -6,12 +6,34 @@ import type {
   WorkflowEdge,
   WorkflowExecutionSummary,
   WorkflowNode,
+  WorkflowPort,
 } from "../lib/telemetry";
 import "./globals.css";
 
 const API_URL = "http://127.0.0.1:4311";
+const CANVAS_WIDTH = 1720;
+const CANVAS_HEIGHT = 3130;
 
 type StreamState = "connecting" | "live" | "retrying";
+
+const STAGE_SHORT_LABELS = [
+  "Ingreso",
+  "Autenticación",
+  "Contrato",
+  "Clasificación",
+  "Brain",
+  "Routing",
+  "Plan atómico",
+  "Gateway",
+  "Sandbox",
+  "Evidencia",
+  "Integración",
+  "Quality Gates",
+  "Auditoría",
+  "Repair Loop",
+  "Learning",
+  "Entrega",
+] as const;
 
 const idleExecution: WorkflowExecutionSummary = {
   mode: "idle",
@@ -39,40 +61,55 @@ function formatAge(value?: string | null): string {
   return `hace ${Math.floor(seconds / 3600)}h`;
 }
 
+function portPoint(node: WorkflowNode, port: WorkflowPort = "bottom") {
+  switch (port) {
+    case "top":
+      return { x: Math.round(node.x + node.width / 2), y: node.y };
+    case "right":
+      return { x: node.x + node.width, y: Math.round(node.y + node.height / 2) };
+    case "left":
+      return { x: node.x, y: Math.round(node.y + node.height / 2) };
+    case "bottom":
+    default:
+      return { x: Math.round(node.x + node.width / 2), y: node.y + node.height };
+  }
+}
+
 function edgePathData(
   edge: WorkflowEdge,
   nodesById: Map<string, WorkflowNode>,
-): { path: string; labelX: number; labelY: number } | null {
+): { path: string; labelX: number; labelY: number; verticalLabel?: boolean } | null {
   const source = nodesById.get(edge.source);
   const target = nodesById.get(edge.target);
   if (!source || !target) return null;
 
+  const start = portPoint(source, edge.sourcePort ?? (edge.route === "observer" ? "left" : "bottom"));
+  const end = portPoint(target, edge.targetPort ?? (edge.route === "observer" ? "right" : "top"));
+
   if (edge.route === "loop") {
-    const corridorX = edge.corridorX ?? 1460;
-    const startX = source.x + source.width;
-    const startY = Math.round(source.y + source.height / 2);
-    const endX = target.x + target.width;
-    const endY = Math.round(target.y + target.height / 2);
-    const path = `M ${startX} ${startY} H ${corridorX} V ${endY} H ${endX}`;
-    return { path, labelX: corridorX - 10, labelY: Math.round((startY + endY) / 2) };
+    const corridorX = edge.corridorX ?? CANVAS_WIDTH - 40;
+    const path = `M ${start.x} ${start.y} H ${corridorX} V ${end.y} H ${end.x}`;
+    return {
+      path,
+      labelX: corridorX - 12,
+      labelY: Math.round((start.y + end.y) / 2),
+      verticalLabel: true,
+    };
   }
 
-  if (edge.route === "observer") {
-    const startX = source.x;
-    const startY = Math.round(source.y + source.height / 2);
-    const endX = target.x + target.width;
-    const endY = Math.round(target.y + target.height / 2);
-    const path = `M ${startX} ${startY} H ${endX}`;
-    return { path, labelX: Math.round((startX + endX) / 2), labelY: startY - 10 };
+  if (edge.route === "observer" || (edge.sourcePort === "right" && edge.targetPort === "left")) {
+    const middleX = Math.round((start.x + end.x) / 2);
+    const path = `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
+    return { path, labelX: middleX, labelY: Math.min(start.y, end.y) - 14 };
   }
 
-  const startX = Math.round(source.x + source.width / 2);
-  const startY = source.y + source.height;
-  const endX = Math.round(target.x + target.width / 2);
-  const endY = target.y;
-  const middleY = Math.round((startY + endY) / 2);
-  const path = `M ${startX} ${startY} V ${middleY} H ${endX} V ${endY}`;
-  return { path, labelX: Math.round((startX + endX) / 2), labelY: middleY };
+  const middleY = Math.round((start.y + end.y) / 2);
+  const path = `M ${start.x} ${start.y} V ${middleY} H ${end.x} V ${end.y}`;
+  return {
+    path,
+    labelX: Math.round((start.x + end.x) / 2),
+    labelY: middleY,
+  };
 }
 
 function BrainDiagram({
@@ -86,14 +123,19 @@ function BrainDiagram({
   selected: string;
   onSelect: (id: string) => void;
 }) {
-  const nodesById = new Map(workflow.nodes.map((node) => [node.id, node]));
+  const nodesById = useMemo(
+    () => new Map(workflow.nodes.map((node) => [node.id, node])),
+    [workflow.nodes],
+  );
   const selectedNode = nodesById.get(selected) ?? nodesById.get("brain") ?? workflow.nodes[0];
   const diagramScroller = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(100);
+  const [fitScale, setFitScale] = useState(1);
   const activeStageIndex = Math.max(0, execution.stageIndex);
   const activeStage = WORKFLOW_STAGES[activeStageIndex] ?? WORKFLOW_STAGES[0];
   const executionMode = execution.mode;
   const executionIsActive = executionMode === "live" || executionMode === "waiting";
+  const effectiveScale = fitScale * (zoom / 100);
   const executionModeLabel = {
     idle: "Sin tarea",
     live: "En vivo",
@@ -104,44 +146,103 @@ function BrainDiagram({
     ? `${execution.projectName} · ${execution.requestedBy} · ${execution.taskState}`
     : "Esperando una tarea autorizada";
 
-  useEffect(() => {
-    const centerOnEntry = () => {
-      const scroller = diagramScroller.current;
-      if (!scroller || window.innerWidth > 700) return;
-      scroller.scrollLeft = Math.max(0, (scroller.scrollWidth - scroller.clientWidth) / 2);
-    };
+  const calculateFitScale = (force = false) => {
+    const scroller = diagramScroller.current;
+    if (!scroller) return;
+    const availableWidth = Math.max(320, scroller.clientWidth - 32);
+    const ratio = availableWidth / CANVAS_WIDTH;
+    // En automático no reduce tanto que vuelva ilegibles los textos. El botón
+    // "Ajustar ancho" sí puede comprimir un poco más cuando el usuario lo decide.
+    const next = force
+      ? Math.min(1.08, Math.max(0.72, ratio))
+      : ratio >= 0.84
+        ? Math.min(1.08, ratio)
+        : 1;
+    setFitScale(Number(next.toFixed(3)));
+  };
 
-    centerOnEntry();
-    window.addEventListener("resize", centerOnEntry);
-    return () => window.removeEventListener("resize", centerOnEntry);
+  useEffect(() => {
+    const scroller = diagramScroller.current;
+    if (!scroller) return;
+    calculateFitScale(false);
+    const observer = new ResizeObserver(() => calculateFitScale(false));
+    observer.observe(scroller);
+    return () => observer.disconnect();
   }, []);
 
   const handleZoom = (delta: number) => {
-    setZoom((prev) => Math.min(130, Math.max(70, prev + delta)));
+    setZoom((previous) => Math.min(130, Math.max(70, previous + delta)));
+  };
+
+  const centerNode = (node?: WorkflowNode) => {
+    const scroller = diagramScroller.current;
+    if (!node || !scroller) return;
+    const scaledCenterX = (node.x + node.width / 2) * effectiveScale;
+    const scaledTop = node.y * effectiveScale;
+    scroller.scrollTo({
+      left: Math.max(0, scaledCenterX - scroller.clientWidth / 2),
+      top: Math.max(0, scaledTop - 130),
+      behavior: "smooth",
+    });
   };
 
   const centerActiveStage = () => {
-    const activeNode = workflow.nodes.find((n) => n.stageId === execution.stageId);
-    if (activeNode && diagramScroller.current) {
-      diagramScroller.current.scrollTop = Math.max(0, activeNode.y - 120);
-    }
+    centerNode(workflow.nodes.find((node) => node.stageId === execution.stageId));
+  };
+
+  const selectStage = (stageId: string) => {
+    const node = workflow.nodes.find((candidate) => candidate.stageId === stageId);
+    if (!node) return;
+    onSelect(node.id);
+    centerNode(node);
   };
 
   const phases = [
-    { id: "ingress", label: "FASE A — INGRESO Y CONTRATO", subtitle: "Recibir, autorizar, normalizar y clasificar la solicitud", y: 40, height: 730 },
-    { id: "context", label: "FASE B — CONTEXTO Y ENRUTAMIENTO", subtitle: "Hermes Brain, Graphify AST, Model Router & Agent Factory", y: 790, height: 320 },
-    { id: "execution", label: "FASE C — PLANIFICACIÓN Y EJECUCIÓN", subtitle: "Descomposición Atómica, Execution Gateway y Sandbox de Trabajo", y: 1120, height: 590 },
-    { id: "quality", label: "FASE D — INTEGRACIÓN, CALIDAD Y REPARACIÓN", subtitle: "Quality Gates Determinísticos, Auditoría Post-Ejecución & Repair Loop", y: 1730, height: 440 },
-    { id: "delivery", label: "FASE E — APRENDIZAJE Y ENTREGA", subtitle: "Learning Engine Saneado, Promoción y Entrega Verificada", y: 2180, height: 300 },
+    {
+      id: "ingress",
+      label: "FASE A — INGRESO Y CONTRATO",
+      subtitle: "Recibir, autorizar, normalizar y clasificar la solicitud",
+      y: 30,
+      height: 955,
+    },
+    {
+      id: "context",
+      label: "FASE B — CONTEXTO Y ENRUTAMIENTO",
+      subtitle: "Hermes Brain, Graphify, selección de modelo y especialistas",
+      y: 1000,
+      height: 405,
+    },
+    {
+      id: "execution",
+      label: "FASE C — PLANIFICACIÓN Y EJECUCIÓN",
+      subtitle: "DAG atómico, autorización, sandbox y evidencia",
+      y: 1420,
+      height: 735,
+    },
+    {
+      id: "quality",
+      label: "FASE D — INTEGRACIÓN, CALIDAD Y REPARACIÓN",
+      subtitle: "Integración, Quality Gates, auditoría y Repair Loop",
+      y: 2170,
+      height: 575,
+    },
+    {
+      id: "delivery",
+      label: "FASE E — APRENDIZAJE Y ENTREGA",
+      subtitle: "Aprendizaje saneado y promoción verificable",
+      y: 2760,
+      height: 345,
+    },
   ];
+
+  const outgoingEdges = workflow.edges.filter((edge) => edge.source === selectedNode?.id);
 
   return (
     <div className="diagram-layout" data-execution-mode={executionMode}>
-      {/* SELECCIÓN Y BARRA SUPERIOR DE SECUENCIA OPERATIVA 16 ETAPAS */}
       <div className="execution-sequence" aria-live="polite">
         <div className="execution-readout">
           <span>
-            Secuencia operativa (16 Etapas Atómicas)
+            Secuencia operativa · 16 etapas
             <em className={`execution-mode mode-${executionMode}`}>{executionModeLabel}</em>
           </span>
           <strong>
@@ -153,10 +254,9 @@ function BrainDiagram({
           <small>{executionDetail}</small>
         </div>
 
-        {/* BARRA DESPLAZABLE DE LAS 16 ETAPAS CON NOMBRES CORTOS */}
         <div
           className="execution-stages-row"
-          aria-label={`Fase ${activeStageIndex + 1} de ${WORKFLOW_STAGES.length}: ${activeStage.label}`}
+          aria-label={`Etapa ${activeStageIndex + 1} de ${WORKFLOW_STAGES.length}: ${activeStage.label}`}
           role="progressbar"
           aria-valuemin={1}
           aria-valuemax={WORKFLOW_STAGES.length}
@@ -165,205 +265,207 @@ function BrainDiagram({
           {WORKFLOW_STAGES.map((stage, index) => {
             const isCurrent = index === activeStageIndex;
             const isPassed = index < activeStageIndex;
-            const targetNode = workflow.nodes.find((n) => n.stageId === stage.id);
             return (
               <button
+                type="button"
                 className={`stage-pill ${isCurrent ? "active" : isPassed ? "passed" : ""}`}
                 key={stage.id}
                 title={`[${String(index + 1).padStart(2, "0")}] ${stage.label}`}
-                onClick={() => targetNode && onSelect(targetNode.id)}
+                aria-current={isCurrent ? "step" : undefined}
+                onClick={() => selectStage(stage.id)}
               >
                 <span className="stage-num">{String(index + 1).padStart(2, "0")}</span>
-                <span className="stage-name">{stage.label.split("&")[0].trim()}</span>
+                <span className="stage-name">{STAGE_SHORT_LABELS[index]}</span>
               </button>
             );
           })}
         </div>
 
-        {/* CONTROLES DE ZOOM Y LEYENDA */}
         <div className="diagram-toolbar">
           <div className="zoom-controls">
-            <button title="Disminuir zoom" onClick={() => handleZoom(-10)}>−</button>
-            <span>{zoom}%</span>
-            <button title="Aumentar zoom" onClick={() => handleZoom(10)}>+</button>
-            <button title="Restablecer 100%" onClick={() => setZoom(100)}>100%</button>
-            <button title="Centrar en etapa activa" onClick={centerActiveStage}>Centrar activa</button>
+            <button type="button" title="Disminuir zoom" onClick={() => handleZoom(-10)}>−</button>
+            <span>{Math.round(effectiveScale * 100)}%</span>
+            <button type="button" title="Aumentar zoom" onClick={() => handleZoom(10)}>+</button>
+            <button type="button" title="Restablecer zoom" onClick={() => setZoom(100)}>100%</button>
+            <button type="button" title="Ajustar el lienzo al ancho disponible" onClick={() => calculateFitScale(true)}>Ajustar ancho</button>
+            <button type="button" title="Centrar en la etapa activa" onClick={centerActiveStage}>Etapa activa</button>
           </div>
-          <div className="legend-strip">
+          <div className="legend-strip" aria-label="Leyenda del workflow">
             <span className="legend-item"><i className="legend-dot healthy" /> Sano</span>
             <span className="legend-item"><i className="legend-dot degraded" /> Degradado</span>
             <span className="legend-item"><i className="legend-dot observed" /> Observado</span>
             <span className="legend-item"><i className="legend-dot configured" /> Configurado</span>
-            <span className="legend-item"><i className="legend-dot loop" /> Repair Loop</span>
+            <span className="legend-item"><i className="legend-dot loop" /> Reparación</span>
           </div>
         </div>
       </div>
 
-      {/* LIENZO PRINCIPAL CON TARJETAS HTML SOBRE CAPA DE CONECTORES SVG */}
       <div ref={diagramScroller} className="diagram-scroll" aria-label="Flujo operativo ampliado de Hermes Brain">
-        {/* VISTA DESKTOP / TABLET: HÍBRIDO HTML + SVG (1550 x 2500 px) */}
         <div
-          className="diagram-canvas-container"
+          className="diagram-canvas-stage"
           style={{
-            position: "relative",
-            width: 1550,
-            height: 2500,
-            transform: `scale(${zoom / 100})`,
-            transformOrigin: "top left",
+            width: CANVAS_WIDTH * effectiveScale,
+            height: CANVAS_HEIGHT * effectiveScale,
           }}
         >
-          {/* CAPA DE SVG PARA BANDAS DE FASE, CONECTORES Y ETIQUETAS */}
-          <svg className="brain-svg-overlay" style={{ position: "absolute", top: 0, left: 0, width: 1550, height: 2500, pointerEvents: "none" }} viewBox="0 0 1550 2500">
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#54727f" />
-              </marker>
-              <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#a4edff" />
-              </marker>
-              <marker id="arrow-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb86c" />
-              </marker>
-            </defs>
+          <div
+            className="diagram-canvas-container"
+            style={{
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              transform: `scale(${effectiveScale})`,
+            }}
+          >
+            <svg
+              className="brain-svg-overlay"
+              width={CANVAS_WIDTH}
+              height={CANVAS_HEIGHT}
+              viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
+              aria-hidden="true"
+            >
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#54727f" />
+                </marker>
+                <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#a4edff" />
+                </marker>
+                <marker id="arrow-loop" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb86c" />
+                </marker>
+              </defs>
 
-            {/* BANDAS DE FONDO DE FASE A-E */}
-            <g className="phase-bands">
-              {phases.map((phase) => (
-                <g className={`phase-band phase-${phase.id}`} key={phase.id}>
-                  <rect x={40} y={phase.y} width={1470} height={phase.height} rx={8} fill="#0d1b22" opacity={0.4} stroke="#1b3644" strokeWidth={1} strokeDasharray="6 6" />
-                  <text x={60} y={phase.y + 26} fill="#628696" fontSize={11} fontFamily="IBM Plex Mono, monospace" fontWeight="bold" letterSpacing="0.08em">
-                    {phase.label}
-                  </text>
-                  <text x={60} y={phase.y + 42} fill="#3d5866" fontSize={10} fontFamily="Manrope, sans-serif">
-                    {phase.subtitle}
-                  </text>
-                </g>
-              ))}
-            </g>
-
-            {/* ENLACES Y ETIQUETAS DE CONEXIÓN */}
-            <g className="brain-links">
-              {workflow.edges.map((edge) => {
-                const data = edgePathData(edge, nodesById);
-                if (!data) return null;
-                const isTraversing = executionIsActive && edge.evidence === "observed" && edge.stageId === execution.stageId;
-                const isLoop = edge.route === "loop";
-                const isObserver = edge.route === "observer";
-
-                return (
-                  <g key={edge.id} className={`edge-group ${isLoop ? "loop-edge" : ""} ${isObserver ? "observer-edge" : ""}`}>
-                    <path
-                      className={`flow-path evidence-${edge.evidence}${isTraversing ? " telemetry-active" : ""}${isLoop ? " loop-path" : ""}`}
-                      d={data.path}
-                      stroke={isLoop ? "#ffb86c" : isObserver ? "#4a7485" : "#54727f"}
-                      strokeWidth={isLoop ? 2 : 1.5}
-                      strokeDasharray={isObserver ? "4 4" : isLoop ? "6 4" : "none"}
-                      fill="none"
-                      markerEnd={isLoop ? "url(#arrow-loop)" : isTraversing ? "url(#arrow-active)" : "url(#arrow)"}
-                    />
-                    {/* ETIQUETA SOBRE LA LÍNEA DE CONEXIÓN */}
-                    <g className="edge-label-pill" transform={`translate(${data.labelX}, ${data.labelY})`}>
-                      <rect x={-Math.min(100, edge.label.length * 4)} y={-10} width={Math.min(200, edge.label.length * 8)} height={18} rx={4} fill="#0d1b22" stroke="#254350" strokeWidth={1} />
-                      <text fill="#a8c5d1" fontSize={9} fontFamily="IBM Plex Mono, monospace" textAnchor="middle" y={3}>
-                        {edge.label}
-                      </text>
-                    </g>
+              <g className="phase-bands">
+                {phases.map((phase) => (
+                  <g className={`phase-band phase-${phase.id}`} key={phase.id}>
+                    <rect x={20} y={phase.y} width={1680} height={phase.height} rx={12} />
+                    <text className="phase-title" x={46} y={phase.y + 30}>{phase.label}</text>
+                    <text className="phase-subtitle" x={46} y={phase.y + 50}>{phase.subtitle}</text>
                   </g>
-                );
-              })}
-            </g>
-          </svg>
+                ))}
+              </g>
 
-          {/* TARJETAS HTML POSICIONADAS PARA LOS NODOS */}
-          {workflow.nodes.map((node) => {
-            const active = node.id === selected;
-            const isSequenceActive = node.stageId === execution.stageId;
-            const stageNum = node.stageNumber ?? WORKFLOW_STAGES.findIndex((s) => s.id === node.stageId) + 1;
-            const edgeEvidence = workflow.edges.find((e) => e.target === node.id || e.source === node.id)?.evidence ?? "configured";
+              <g className="brain-links">
+                {workflow.edges.map((edge) => {
+                  const data = edgePathData(edge, nodesById);
+                  if (!data) return null;
+                  const isTraversing = executionIsActive && edge.evidence === "observed" && edge.stageId === execution.stageId;
+                  const isLoop = edge.route === "loop";
+                  const isObserver = edge.route === "observer";
+                  const labelWidth = Math.min(260, Math.max(96, edge.label.length * 6.2));
 
-            return (
-              <article
-                className={`brain-node-card kind-${node.kind} state-${node.state}${active ? " selected" : ""}${isSequenceActive ? " sequence-active" : ""}`}
-                key={node.id}
-                style={{
-                  position: "absolute",
-                  left: node.x,
-                  top: node.y,
-                  width: node.width,
-                  height: node.height,
-                  pointerEvents: "auto",
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={`${node.label}: ${node.role}`}
-                aria-current={isSequenceActive ? "step" : undefined}
-                onClick={() => onSelect(node.id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") onSelect(node.id);
-                }}
-              >
-                <header className="card-badge-header">
-                  <span className="stage-num-tag">[{String(stageNum).padStart(2, "0")}/16]</span>
-                  <span className={`state-tag state-${node.state}`}>{node.state.toUpperCase()}</span>
-                  <span className={`evidence-tag evidence-${edgeEvidence}`}>{edgeEvidence.toUpperCase()}</span>
-                </header>
-                <h4 className="card-title-text">{node.label}</h4>
-                <div className="card-role-sub"><strong className="role-lbl">Rol:</strong> {node.role}</div>
-                <p className="card-purpose-desc">{node.purpose ?? node.detail}</p>
-                {node.detail && node.detail !== node.purpose && (
-                  <div className="card-metric-footer">⚡ {node.detail}</div>
-                )}
-              </article>
-            );
-          })}
+                  return (
+                    <g key={edge.id} className={`edge-group ${isLoop ? "loop-edge" : ""} ${isObserver ? "observer-edge" : ""}`}>
+                      <path
+                        className={`flow-path evidence-${edge.evidence}${isTraversing ? " telemetry-active" : ""}${isLoop ? " loop-path" : ""}`}
+                        d={data.path}
+                        markerEnd={isLoop ? "url(#arrow-loop)" : isTraversing ? "url(#arrow-active)" : "url(#arrow)"}
+                      />
+                      <g
+                        className="edge-label-pill"
+                        transform={`translate(${data.labelX}, ${data.labelY})${data.verticalLabel ? " rotate(-90)" : ""}`}
+                      >
+                        <rect x={-labelWidth / 2} y={-12} width={labelWidth} height={24} rx={6} />
+                        <text textAnchor="middle" dominantBaseline="middle">{edge.label}</text>
+                      </g>
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+
+            {workflow.nodes.map((node) => {
+              const active = node.id === selected;
+              const isSequenceActive = node.stageId === execution.stageId;
+              const stageNumber = node.stageNumber ?? WORKFLOW_STAGES.findIndex((stage) => stage.id === node.stageId) + 1;
+              const evidence = node.evidence
+                ?? workflow.edges.find((edge) => edge.target === node.id)?.evidence
+                ?? "configured";
+
+              return (
+                <button
+                  type="button"
+                  className={`brain-node-card kind-${node.kind} state-${node.state}${active ? " selected" : ""}${isSequenceActive ? " sequence-active" : ""}`}
+                  key={node.id}
+                  style={{
+                    left: node.x,
+                    top: node.y,
+                    width: node.width,
+                    height: node.height,
+                  }}
+                  aria-label={`${node.label}. ${node.role}. ${node.purpose ?? node.detail}`}
+                  aria-current={isSequenceActive ? "step" : undefined}
+                  onClick={() => onSelect(node.id)}
+                >
+                  <span className="card-badge-header">
+                    <span className="stage-num-tag">[{String(stageNumber).padStart(2, "0")}/16]</span>
+                    <span className={`state-tag state-${node.state}`}>{node.state.toUpperCase()}</span>
+                    <span className={`evidence-tag evidence-${evidence}`}>{evidence.toUpperCase()}</span>
+                  </span>
+                  <span className="card-title-text">{node.label}</span>
+                  <span className="card-role-sub"><strong className="role-lbl">Rol:</strong> {node.role}</span>
+                  <span className="card-purpose-desc">{node.purpose ?? node.detail}</span>
+                  {node.detail && node.detail !== node.purpose && (
+                    <span className="card-metric-footer">{node.detail}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* VISTA MÓVIL REEMPLAZANTE: LISTA VERTICAL ORDENADA SIN DEFORMACIÓN */}
-        <ol className="workflow-mobile-list" aria-label="Lista ordenada de 16 etapas operativas">
+        <ol className="workflow-mobile-list" aria-label="Lista ordenada de etapas operativas">
           {WORKFLOW_STAGES.map((stage, index) => {
-            const node = workflow.nodes.find((n) => n.stageId === stage.id);
+            const stageNodes = workflow.nodes.filter((node) => node.stageId === stage.id);
             const isCurrent = index === activeStageIndex;
             const isPassed = index < activeStageIndex;
             return (
-              <li
-                className={`mobile-stage-card ${isCurrent ? "active" : isPassed ? "passed" : ""}`}
-                key={stage.id}
-                onClick={() => node && onSelect(node.id)}
-              >
-                <div className="mobile-card-top">
-                  <span className="mobile-stage-badge">Etapa {String(index + 1).padStart(2, "0")} / 16</span>
-                  <span className={`state-tag state-${node?.state ?? "unknown"}`}>{node?.state ?? "unknown"}</span>
+              <li className={`mobile-stage-group ${isCurrent ? "active" : isPassed ? "passed" : ""}`} key={stage.id}>
+                <header className="mobile-stage-heading">
+                  <span>Etapa {String(index + 1).padStart(2, "0")} / 16</span>
+                  <strong>{stage.label}</strong>
+                </header>
+                <div className="mobile-stage-nodes">
+                  {stageNodes.map((node) => (
+                    <button type="button" className="mobile-stage-card" key={node.id} onClick={() => onSelect(node.id)}>
+                      <span className="mobile-card-top">
+                        <span className={`state-tag state-${node.state}`}>{node.state}</span>
+                        <span className={`evidence-tag evidence-${node.evidence ?? "configured"}`}>{node.evidence ?? "configured"}</span>
+                      </span>
+                      <strong>{node.label}</strong>
+                      <span className="mobile-role">{node.role}</span>
+                      <span className="mobile-purpose">{node.purpose ?? node.detail}</span>
+                    </button>
+                  ))}
                 </div>
-                <h5>{node?.label ?? stage.label}</h5>
-                <p className="mobile-role">{node?.role}</p>
-                <p className="mobile-purpose">{node?.purpose ?? node?.detail}</p>
-                {stage.id === "repair" && (
-                  <div className="mobile-loop-note">↺ Retorna a Etapa 07 — Atomic Planner & Grafo DAG</div>
-                )}
+                {stage.id === "repair" && <div className="mobile-loop-note">↺ Retorna a la etapa 07 — Atomic Planner & Grafo DAG</div>}
               </li>
             );
           })}
         </ol>
       </div>
 
-      {/* INSPECTOR LATERAL DETALLADO */}
       <aside className="node-inspector" aria-live="polite">
-        <span>Inspector Operativo</span>
-        <h3>{selectedNode?.label ?? "Workflow"}</h3>
-        <p className="inspector-purpose">{selectedNode?.purpose ?? selectedNode?.detail ?? "Sin detalle disponible."}</p>
+        <div className="inspector-summary">
+          <span>Inspector operativo</span>
+          <h3>{selectedNode?.label ?? "Workflow"}</h3>
+          <p className="inspector-purpose">{selectedNode?.purpose ?? selectedNode?.detail ?? "Sin detalle disponible."}</p>
+        </div>
         <dl className="inspector-dl">
           <div><dt>Etapa</dt><dd>[{String(selectedNode?.stageNumber ?? 0).padStart(2, "0")}/16] {selectedNode?.stageId}</dd></div>
-          <div><dt>Fase</dt><dd>{selectedNode?.phase?.toUpperCase() ?? "INFERRED"}</dd></div>
+          <div><dt>Fase</dt><dd>{selectedNode?.phase?.toUpperCase() ?? "SIN FASE"}</dd></div>
           <div><dt>Rol</dt><dd>{selectedNode?.role ?? "desconocido"}</dd></div>
-          <div><dt>Estado Operativo</dt><dd className={stateClass(selectedNode?.state ?? "unknown")}>{selectedNode?.state ?? "unknown"}</dd></div>
+          <div><dt>Estado</dt><dd className={stateClass(selectedNode?.state ?? "unknown")}>{selectedNode?.state ?? "unknown"}</dd></div>
+          <div><dt>Evidencia</dt><dd>{selectedNode?.evidence?.toUpperCase() ?? "CONFIGURADO"}</dd></div>
           <div><dt>Autoridad</dt><dd>{selectedNode?.authority ?? "bounded"}</dd></div>
-          <div><dt>Nivel de Evidencia</dt><dd>{workflow.edges.find((e) => e.target === selectedNode?.id || e.source === selectedNode?.id)?.evidence.toUpperCase() ?? "CONFIGURADO"}</dd></div>
-          <div><dt>Métrica / Detalle</dt><dd>{selectedNode?.detail ?? "—"}</dd></div>
+          <div><dt>Detalle</dt><dd>{selectedNode?.detail ?? "—"}</dd></div>
+          <div><dt>Salidas</dt><dd>{outgoingEdges.length ? outgoingEdges.map((edge) => edge.label).join(" · ") : "Sin transición"}</dd></div>
         </dl>
       </aside>
     </div>
   );
 }
+
 function Home() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [stream, setStream] = useState<StreamState>("connecting");

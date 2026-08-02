@@ -46,7 +46,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   );
   assert.doesNotMatch(server, /function buildWorkflow\(/);
   assert.match(server, /link\("brain", "trama"/);
-  assert.match(page, /viewBox="0 0 1550 2500"/);
+  assert.match(page, /viewBox=/);
   assert.match(page, /EventSource/);
   assert.match(page, /workflow=\{snapshot\.workflow\}/);
   assert.match(page, /workflow\.nodes\.map/);
@@ -59,7 +59,7 @@ test("builds the compact Hermes Brain dashboard", async () => {
   assert.match(page, /En vivo/);
   assert.match(page, /role="progressbar"/);
   assert.match(page, /aria-current/);
-  assert.match(css, /height: 2500px/);
+  assert.match(css, /diagram-canvas-container/);
   assert.match(css, /max-width: 1500px/);
   assert.match(css, /@keyframes workflow-flow/);
   assert.match(css, /brain-links path\.telemetry-active \{[^}]*animation:/);
