@@ -76,16 +76,9 @@ Para cada hallazgo crítico/alto:
 
 ---
 
-# 5. ESTRUCTURA DEL INFORME FINAL (SECCIÓN 21)
+---
 
-```text
-✅ OBJETIVO
-⚙️ CLASIFICACIÓN
-📦 EJECUCIÓN
-📝 CAMBIOS
-🧪 VALIDACIÓN
-🔍 AUDITORÍA
-🔁 REGRESIÓN
-⚠️ LIMITACIONES
-🏁 ESTADO FINAL
-```
+# 6. ALCANCE DE ATOMIZACIÓN Y PRESUPUESTO DE TOKENS (LOCAL VS. CLOUD)
+
+1. **IA Local (Hermes Brain / VRAM Local)**: Aplica las 16 etapas completas, descomposición atómica en DAG `T-001..T-025`, consultas AST en Graphify y Repair Loop de 5 estrategias. Cero costo de tokens cloud.
+2. **IA Cloud / Directores Cloud (Codex, Claude, Antigravity, OpenCode)**: Aplica un **Flujo Optimizado Streamlined** (3 a 5 fases directas, parches contiguos, lecturas de archivos focalizadas y respuestas concisas) para minimizar el consumo de contexto y evitar el gasto innecesario de tokens en APIs cloud.

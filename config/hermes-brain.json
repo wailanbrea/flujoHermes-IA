@@ -12,6 +12,8 @@
   ],
   "modelRouter": {
     "policy": "capability-first",
+    "atomicDecompositionScope": "local-only",
+    "tokenBudgetPolicy": "local-atomic-cloud-streamlined",
     "hermesExternalInference": "disabled",
     "localTimeoutSeconds": 45,
     "routes": [

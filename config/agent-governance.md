@@ -66,7 +66,7 @@ Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer 
 
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
-Todas las solicitudes deben procesarse bajo el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
+Todas las solicitudes procesadas localmente por el orquestador deben seguir el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
 - **Clasificación preliminar y final (L0-L4)** basada en las 6 dimensiones de complejidad (0 a 24 puntos).
 - **Enrutamiento adaptativo de Graphify y Model Router** (`Gemma`, `Agents-A1`, `Qwen3.6`).
 - **DAG de Tareas Atómicas** con presupuesto acotado y evidencias por tarea.
@@ -75,6 +75,13 @@ Todas las solicitudes deben procesarse bajo el protocolo de 16 etapas (`RECEIVED
 - **Informe Final de 21 Secciones** para cada entrega (`COMPLETED_AND_VERIFIED`, `COMPLETED_WITH_LIMITATIONS`, `PARTIALLY_COMPLETED`, `BLOCKED`, `FAILED`).
 
 La configuración versionada está en `config/hermes-brain.json`.
+
+## Regla de Enrutamiento y Presupuesto de Tokens (IA Local vs. IA Cloud)
+
+El sistema de atomización en 16 etapas y descomposición atómica profunda debe aplicarse **únicamente cuando la ejecución es realizada por la IA Local** (Hermes Brain / VRAM Local con modelos locales en LM Studio / Ollama):
+
+1. **Ejecución Local (`mode: local_atomic`)**: Aplica las 16 etapas completas, descomposición atómica en DAG `T-001..T-025`, consultas AST en Graphify y Repair Loop de 5 estrategias. Cero costo de tokens cloud.
+2. **Ejecución Cloud (`mode: cloud_streamlined`)**: Cuando la tarea sea ejecutada por Directores o Modelos Cloud (Codex, Claude, Antigravity, OpenCode), se utiliza un **Flujo Optimizado Streamlined** (3 a 5 fases directas, parches contiguos, lecturas de archivos focalizadas y respuestas concisas) para minimizar el consumo de contexto y evitar el gasto innecesario de tokens en APIs cloud.
 
 
 ## Canales de chat
