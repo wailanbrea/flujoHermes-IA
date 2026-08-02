@@ -62,7 +62,7 @@ Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer 
 
 1. No emitas meta-respuestas explicativas sobre la falta de herramientas nombradas literalmente ("No tengo una herramienta llamada Playwright...") ni pidas confirmación sobre qué alternativa usar.
 2. Utiliza de forma autónoma las herramientas disponibles (`code_execution`, `terminal`, `browser`, `web`) para escribir y ejecutar el script de Playwright o el comando necesario.
-3. Extrae directamente la información requerida y entrega el resultado final al usuario de forma estructurada y limpia.
+3. Extrae directamente la información requerida y entrega el resultado final al usuario de forma estructurada y limpia. PROHIBIDO hacer preguntas de confirmación como *"¿Quieres que te informe de cada paso o solo el reporte final?"*. Ejecutar la prueba completa y entregar los resultados de inmediato.
 
 ## Regla de Uso Autónomo y Onboarding de Graphify
 
@@ -83,6 +83,18 @@ Cuando el usuario solicite "levantar el servidor", "subir el servicio", "probar 
    - Para proyectos Vite/Node, ejecutar `npm run dev`.
 3. **Verificación Determinística**: Comprobar la respuesta HTTP con `Invoke-WebRequest -Uri 'http://127.0.0.1:8080/index.html'`.
 4. **Respuesta Directa**: Entregar inmediatamente la URL activa **`http://127.0.0.1:8080`** al usuario confirmando que la aplicación está lista para probar.
+
+## Regla de Automatización de Git Commit y Push
+
+Cuando el usuario pida realizar commit/push o tras finalizar y verificar un lote de cambios en cualquier proyecto:
+
+1. **Prohibido Pedir al Usuario Hacerlo Manualmente**: El agente DEBE ejecutar los comandos de Git de forma autónoma.
+2. **Flujo de Ejecución Estándar**:
+   - `git status` para revisar archivos modificados/nuevos.
+   - `git add .` para preparar los archivos.
+   - `git commit -m "<tipo>(<alcance>): <descripción>"` usando formato convencional (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`).
+   - `git push origin main` para publicar en GitHub/servidor remoto.
+3. **Verificación Directa**: Entregar al usuario el hash corto del commit (ej. `a84f5f3`) y confirmar que los cambios están respaldados en el repositorio remoto.
 
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
