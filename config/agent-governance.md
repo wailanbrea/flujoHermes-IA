@@ -85,6 +85,7 @@ Cuando el usuario solicite "levantar el servidor", "subir el servicio", "probar 
    - **Node/Vite/React**: `npm run build` y servir `dist/` en puerto 8080, o `npm run dev` en puerto 5173.
 3. **Verificación Determinística**: Comprobar la respuesta HTTP con `Invoke-WebRequest -Uri 'http://127.0.0.1:[Puerto]/'`.
 4. **Respuesta Directa**: Entregar inmediatamente la URL activa (**`http://127.0.0.1:8080`**, `http://127.0.0.1:8000` o `http://127.0.0.1:5173`) al usuario confirmando que la aplicación está lista para probar.
+5. **PROHIBIDO Mencionar la URL Rota `http://localhost/CalculadoraParley Web/`**: Está estrictamente PROHIBIDO entregar URLs no compiladas o carpetas con espacios como `http://localhost/CalculadoraParley Web/` o sugerir abrir el panel de XAMPP manualmente. La ÚNICA URL válida para la CalculadoraParley Web es **`http://127.0.0.1:8080`** (o `http://127.0.0.1:5173`).
 
 ## Regla de Automatización de Git Commit y Push
 
