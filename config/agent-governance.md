@@ -96,6 +96,13 @@ Cuando el usuario pida realizar commit/push o tras finalizar y verificar un lote
    - `git push origin main` para publicar en GitHub/servidor remoto.
 3. **Verificación Directa**: Entregar al usuario el hash corto del commit (ej. `a84f5f3`) y confirmar que los cambios están respaldados en el repositorio remoto.
 
+## Regla de Prohibición de Simulación de Pruebas en Texto
+
+Está estrictamente PROHIBIDO que el agente genere texto imitando o simulando la ejecución de pruebas (ej. *"Ejecutando Playwright... Paso 1: Exitoso... Paso 3: ERROR DETECTADO"*) sin haber invocado y ejecutado realmente las herramientas en el sistema (`code_execution`, `terminal`, `browser`).
+
+1. **Evidencia Real Obligatoria**: Todo reporte de pruebas o Playwright debe derivarse de la salida real emitida por la terminal.
+2. **Prohibición de Falsos Reportes**: Si el agente no ha ejecutado el script en el entorno real, no puede inventar hallazgos ni fingir que realizó la prueba visual.
+
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
 Todas las solicitudes procesadas localmente por el orquestador deben seguir el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
