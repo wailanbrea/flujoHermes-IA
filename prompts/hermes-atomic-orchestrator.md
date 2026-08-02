@@ -82,3 +82,12 @@ Para cada hallazgo crítico/alto:
 
 1. **IA Local (Hermes Brain / VRAM Local)**: Aplica las 16 etapas completas, descomposición atómica en DAG `T-001..T-025`, consultas AST en Graphify y Repair Loop de 5 estrategias. Cero costo de tokens cloud.
 2. **IA Cloud / Directores Cloud (Codex, Claude, Antigravity, OpenCode)**: Aplica un **Flujo Optimizado Streamlined** (3 a 5 fases directas, parches contiguos, lecturas de archivos focalizadas y respuestas concisas) para minimizar el consumo de contexto y evitar el gasto innecesario de tokens en APIs cloud.
+
+---
+
+# 7. INTEGRACIÓN CON TRAMA Y DASHBOARD VISUAL DE GRAFOS
+
+1. **Dashboard Visual Oficial**: El mapa interactivo de grafos de arquitectura y workflow de 16 etapas está activo en **`http://127.0.0.1:4310`**.
+2. **API de Telemetría SSE**: El estado del pipeline y métricas se transmiten en tiempo real vía **`http://127.0.0.1:4311/api/status`**.
+3. **Consulta Obligatoria de Catálogo**: Antes de afirmar el estado de un proyecto, consultar `telemetry/runtime/project-catalog.json`. Proyectos registrados (ej. `CalculadoraParley Web` con 302 nodos y 559 relaciones) deben responderse con sus datos reales.
+4. **Prohibición de Excusas**: Jamás decir que "no existe un portal web para ver el grafo" ni pedir confirmaciones teóricas repetitivas. Al solicitar ver el grafo, entregar la URL **`http://127.0.0.1:4310`** y el resumen de nodos.
