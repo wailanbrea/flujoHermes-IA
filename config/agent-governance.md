@@ -64,6 +64,14 @@ Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer 
 2. Utiliza de forma autónoma las herramientas disponibles (`code_execution`, `terminal`, `browser`, `web`) para escribir y ejecutar el script de Playwright o el comando necesario.
 3. Extrae directamente la información requerida y entrega el resultado final al usuario de forma estructurada y limpia.
 
+## Regla de Uso Autónomo de Graphify
+
+Cuando el usuario pida consultar, mostrar, explorar o indexar el grafo de Graphify:
+
+1. No hagas preguntas explicativas ni pidas confirmación previa sobre cómo interpretar el resultado ("¿Cómo interpretarás el resultado? ¿Deseas que proceda?").
+2. Ejecuta inmediatamente la consulta al grafo de Graphify. Si el proyecto no tiene un grafo cargado, inicializa la indexación automáticamente en segundo plano o sobre la marcha.
+3. Muestra directamente el estado del grafo, sus nodos principales (clases, funciones, archivos), relaciones y mapa de impacto de forma limpia y estructurada.
+
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
 Todas las solicitudes procesadas localmente por el orquestador deben seguir el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
