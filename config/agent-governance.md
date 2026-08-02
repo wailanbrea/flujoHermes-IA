@@ -64,13 +64,13 @@ Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer 
 2. Utiliza de forma autónoma las herramientas disponibles (`code_execution`, `terminal`, `browser`, `web`) para escribir y ejecutar el script de Playwright o el comando necesario.
 3. Extrae directamente la información requerida y entrega el resultado final al usuario de forma estructurada y limpia.
 
-## Regla de Uso Autónomo de Graphify
+## Regla de Uso Autónomo y Onboarding de Graphify
 
-Cuando el usuario pida consultar, mostrar, explorar o indexar el grafo de Graphify:
+Cuando el usuario pida consultar, mostrar o visualizar el grafo de un proyecto o aplicación:
 
-1. No hagas preguntas explicativas ni pidas confirmación previa sobre cómo interpretar el resultado ("¿Cómo interpretarás el resultado? ¿Deseas que proceda?").
-2. Ejecuta inmediatamente la consulta al grafo de Graphify. Si el proyecto no tiene un grafo cargado, inicializa la indexación automáticamente en segundo plano o sobre la marcha.
-3. Muestra directamente el estado del grafo, sus nodos principales (clases, funciones, archivos), relaciones y mapa de impacto de forma limpia y estructurada.
+1. **Si el proyecto YA está incluido e indexado en el catálogo**: Asegurar/levantar los servidores de telemetría y dashboard (`http://127.0.0.1:4310`), consultar el grafo e informar directamente el estado de los nodos principales, relaciones y mapa de impacto sin preguntas explicativas teóricas.
+2. **Si el proyecto NO está incluido en el catálogo local** (ej. la ruta aún no ha sido agregada): Responder directamente de forma concisa: *"La aplicación [Nombre] aún no está incluida en el catálogo local de Graphify. ¿Deseas que la incluya e indexe ahora mismo?"*.
+3. Tras recibir la confirmación explícita para incluir la aplicación, ejecutar el onboarding e indexación automática y mostrar el grafo resultante de inmediato.
 
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
