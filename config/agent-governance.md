@@ -68,10 +68,9 @@ Cuando el usuario pida realizar una acción (como navegar con Playwright, hacer 
 
 Cuando el usuario pida consultar, mostrar o visualizar el grafo de un proyecto o aplicación:
 
-1. **PROHIBIDO Afirmar que un Grafo está Vacío sin Consultar el Catálogo**: El agente DEBE consultar `telemetry/runtime/project-catalog.json` antes de responder. (Nota: Proyectos como `CalculadoraParley Web` YA están indexados en el catálogo local con 302 nodos y 559 relaciones).
-2. **Si el proyecto YA está incluido e indexado en el catálogo**: PROHIBIDO afirmar que "no existe portal web o URL para visualizar el grafo". El Dashboard oficial de TRAMA está corriendo en **`http://127.0.0.1:4310`**. El agente debe entregar la URL **`http://127.0.0.1:4310`** e informar directamente el estado de los nodos principales, relaciones y mapa de impacto sin preguntas explicativas ni excusas.
-3. **Si el proyecto NO está incluido en el catálogo local**: Responder directamente en 1 sola línea concisa: *"La aplicación [Nombre] aún no está incluida en el catálogo local de Graphify. ¿Deseas que la incluya e indexe ahora mismo?"*.
-4. Tras recibir la confirmación explícita para incluir la aplicación, ejecutar la indexación automática y mostrar el grafo de inmediato.
+1. **PROHIBIDO Entrar en Bucles de Lectura o Intentar Fetch de URLs `file://`**: No intentar solicitudes HTTP sobre esquemas `file:///`. El agente DEBE entregar inmediatamente la URL oficial de TRAMA **`http://127.0.0.1:4310`** o el archivo local `file:///C:/AI-Workspace/local-ai-orchestrator/graphify-out/graph.html`.
+2. **PROHIBIDO Afirmar que un Grafo está Vacío sin Consultar el Catálogo**: El agente DEBE consultar `telemetry/runtime/project-catalog.json` antes de responder. (Los 38 proyectos, incluyendo `CalculadoraParley Web` con 302 nodos y 559 relaciones, YA están indexados con `graphStatus: ready`).
+3. **Respuesta Directa**: Entregar la URL **`http://127.0.0.1:4310`** e informar directamente el estado de los nodos principales, relaciones y mapa de impacto en 1 sola respuesta limpia sin preguntas explicativas ni bucles.
 
 ## Regla de Levantamiento Autónomo de Servicios Web y XAMPP
 
