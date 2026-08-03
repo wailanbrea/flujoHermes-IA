@@ -112,6 +112,13 @@ Cuando el agente identifique una falla o conozca el código exacto a modificar:
 1. **PROHIBIDO Preguntar "¿Quieres que aplique el parche?"**: El agente DEBE aplicar la solución directamente en los archivos correspondientes sin detenerse a pedir confirmación teórica ni dar explicaciones antes de actuar.
 2. **Ciclo Completo**: Modificar el código de inmediato, ejecutar las pruebas de validación reales y entregar la confirmación del bug resuelto.
 
+## Regla de Finalización y Mono-Ejecución
+
+Una vez que la solicitud o tarea del usuario haya sido ejecutada y verificada exitosamente:
+
+1. **PROHIBIDO Re-ejecutar el Mismo Mandato**: El agente DEBE entregar la respuesta final de inmediato y DETENER la ejecución de herramientas. Está estrictamente PROHIBIDO re-ejecutar el mismo mandato en bucle o reiniciar el ciclo tras haberlo completado.
+2. **Respuesta Única y Cierre**: Entregar el reporte con los resultados verificados y finalizar la intervención en 1 solo turno sin re-invocaciones automáticas.
+
 ## Flujo Operativo Hermes de 16 Etapas y Descomposición Atómica
 
 Todas las solicitudes procesadas localmente por el orquestador deben seguir el protocolo de 16 etapas (`RECEIVED` ➔ `DELIVERED`):
