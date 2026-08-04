@@ -128,8 +128,7 @@
     { "id": "learning-curator", "runtimeId": "learningcurator", "role": "Validated learning and skill promotion reviewer", "mode": "curator", "skillSet": "learning-review" },
     { "id": "quality-expert", "runtimeId": "quality", "role": "Independent deterministic and adversarial code quality evidence-gate reviewer", "mode": "read-only", "skillSet": "quality-review" },
     { "id": "security-devops-expert", "runtimeId": "securitydevops", "role": "Read-only deterministic-first CI dependency configuration and infrastructure security reviewer", "mode": "read-only", "skillSet": "security-devops-review" },
-    { "id": "classifier", "runtimeId": "clasificador", "role": "Low-cost request classifier and deterministic profile router", "mode": "classifier", "skillSet": "classification" },
-    { "id": "walletfinanzas-agent", "runtimeId": "walletfinanzas", "role": "Full-stack specialist for the Wallet Finanzas Personales ecosystem: Android Kotlin app (Room, Hilt, Compose, deduplication), Laravel backend API (Sanctum, MariaDB), VPS deployment (62.171.174.191), Firebase, and Gmail/Microsoft OAuth email sync", "mode": "controlled-operator", "skillSet": "walletfinanzas" }
+    { "id": "classifier", "runtimeId": "clasificador", "role": "Low-cost request classifier and deterministic profile router", "mode": "classifier", "skillSet": "classification" }
   ],
   "skills": {
     "selectionPolicy": {
