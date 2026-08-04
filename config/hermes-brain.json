@@ -128,7 +128,8 @@
     { "id": "learning-curator", "runtimeId": "learningcurator", "role": "Validated learning and skill promotion reviewer", "mode": "curator", "skillSet": "learning-review" },
     { "id": "quality-expert", "runtimeId": "quality", "role": "Independent deterministic and adversarial code quality evidence-gate reviewer", "mode": "read-only", "skillSet": "quality-review" },
     { "id": "security-devops-expert", "runtimeId": "securitydevops", "role": "Read-only deterministic-first CI dependency configuration and infrastructure security reviewer", "mode": "read-only", "skillSet": "security-devops-review" },
-    { "id": "classifier", "runtimeId": "clasificador", "role": "Low-cost request classifier and deterministic profile router", "mode": "classifier", "skillSet": "classification" }
+    { "id": "classifier", "runtimeId": "clasificador", "role": "Low-cost request classifier and deterministic profile router", "mode": "classifier", "skillSet": "classification" },
+    { "id": "walletfinanzas-agent", "runtimeId": "walletfinanzas", "role": "Full-stack specialist for the Wallet Finanzas Personales ecosystem: Android Kotlin app (Room, Hilt, Compose, deduplication), Laravel backend API (Sanctum, MariaDB), VPS deployment (62.171.174.191), Firebase, and Gmail/Microsoft OAuth email sync", "mode": "controlled-operator", "skillSet": "walletfinanzas" }
   ],
   "skills": {
     "selectionPolicy": {
@@ -158,7 +159,8 @@
       "bsolutions-project-handoff",
       "bsolutions-quality-gate",
       "bsolutions-security-review",
-      "bsolutions-typescript-web"
+      "bsolutions-typescript-web",
+      "bsolutions-walletfinanzas"
     ],
     "roleSets": {
       "brain": ["hermes-brain", "hermes-agent-factory", "hermes-model-router", "hermes-learning-engine", "hermes-evidence-gate", "hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-kotlin-android", "bsolutions-laravel", "bsolutions-mcp-integration", "bsolutions-mysql", "bsolutions-playwright", "bsolutions-project-handoff", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-typescript-web", "hermes-agent-skill-authoring", "plan", "requesting-code-review", "spike", "systematic-debugging", "test-driven-development"],
@@ -179,7 +181,8 @@
       "learning-review": ["hermes-learning-engine", "hermes-evidence-gate", "bsolutions-quality-gate", "hermes-agent-skill-authoring"],
       "quality-review": ["hermes-memory-retrieval", "graphify", "hermes-evidence-gate", "bsolutions-quality-gate", "bsolutions-security-review", "fail-closed-release-audits", "requesting-code-review"],
       "security-devops-review": ["hermes-memory-retrieval", "graphify", "bsolutions-api-review", "bsolutions-quality-gate", "bsolutions-security-review"],
-      "classification": ["hermes-model-router", "hermes-memory-retrieval", "graphify"]
+      "classification": ["hermes-model-router", "hermes-memory-retrieval", "graphify"],
+      "walletfinanzas": ["hermes-memory-retrieval", "graphify", "bsolutions-walletfinanzas", "bsolutions-kotlin-android", "bsolutions-laravel", "bsolutions-mysql", "bsolutions-api-review", "bsolutions-debugging", "bsolutions-quality-gate", "bsolutions-security-review", "bsolutions-playwright", "bsolutions-xampp-server", "plan", "requesting-code-review", "systematic-debugging", "test-driven-development"]
     }
   },
   "bundles": {
