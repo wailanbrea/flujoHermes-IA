@@ -92,56 +92,32 @@ UI (Jetpack Compose) → ViewModel → UseCase → Repository → Room (local DB
 - `book()` sets status to "APPROVED" via `completeBookingReview()`
 - Multi-evidence movements (≥2) auto-booked unless `isPossibleDuplicate` is true
 
-## 5. Laravel Backend API
+## 5. Laravel Backend & Agent API
 
-### Connection
+### Public & Auth API (`/api/v1/`)
+- Base URL: `https://apiwallet.bsolutions.dev/api/v1/`
+- User auth: Sanctum token via `POST /auth/login`
 
-| Field | Value |
-|---|---|
-| **Base URL** | `https://apiwallet.bsolutions.dev/api/v1/` |
-| **Auth** | Laravel Sanctum (Bearer token) |
-| **Framework** | Laravel 11 |
-| **PHP** | 8.2 |
+### Hermes Agent API (`/api/v1/agent/`)
+- Base URL: `https://apiwallet.bsolutions.dev/api/v1/agent/`
+- Token: `HN6wEAGd6shQZM8d5RioCoYRSlgrJJa1qADHNL6Oce8966d0`
+- Scopes: `agent.read`, `agent.write`, `agent.delete`
 
-### Endpoints (all under `/api/v1/`)
+| Method | Endpoint | Scope | Description |
+|---|---|---|---|
+| `GET` | `/accounts` | `agent.read` | Accounts & current balances |
+| `GET` | `/transactions` | `agent.read` | User transaction history |
+| `GET` | `/debts` | `agent.read` | Registered debts |
+| `POST` | `/accounts` | `agent.write` | Create new account |
+| `POST` | `/transactions` | `agent.write` | Record new transaction |
+| `PATCH` | `/transactions/{id}` | `agent.write` | Update transaction |
+| `POST` | `/debts` | `agent.write` | Record debt |
+| `DELETE` | `/transactions/{id}` | `agent.delete` | Delete transaction |
 
-**Public:**
-- `GET /health` → `{"status":"ok"}`
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /oauth/{gmail|microsoft}/callback`
-
-**Protected (auth:sanctum):**
-- `POST /auth/logout`
-- `GET|PATCH /user`
-- `GET|POST /accounts`
-- `GET|POST /transactions`, `PATCH|DELETE /transactions/{id}`
-- `GET|POST /categories`, `/budgets`, `/goals`, `/debts`, `/planned-payments`
-- `GET /bank-connections`
-- `GET /email-connections`
-- `POST /email-connections/{provider}/authorization-url`
-- `POST /email-connections/{provider}/sync`
-- `GET /email-connections/{provider}/sync-runs/{run}`
-- `DELETE /email-connections/{provider}`
-- `GET /email-candidates`, `PATCH /email-candidates/{id}`
-
-### Querying user data via API
-
-```bash
-# 1. Authenticate
-curl -X POST https://apiwallet.bsolutions.dev/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@email.com","password":"..."}'
-# Response: { "token": "xxx" }
-
-# 2. Query transactions
-curl -H "Authorization: Bearer xxx" \
-  "https://apiwallet.bsolutions.dev/api/v1/transactions?date=2026-08-04"
-
-# 3. Query accounts
-curl -H "Authorization: Bearer xxx" \
-  "https://apiwallet.bsolutions.dev/api/v1/accounts"
-```
+### Agent Request Rules
+- Amounts in minor units (cents): `RD$ 600.00` = `60000`, `US$ 400.00` = `40000`. Expenses are negative (`-46000`).
+- Always pass `idempotency_key` (UUID v4 or unique string) on POST operations.
+- Always perform a GET call first to inspect accounts/transactions before modifying.
 
 ## 6. VPS Deployment
 
