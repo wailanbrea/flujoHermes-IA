@@ -15,7 +15,7 @@ to auto-categorize and deduplicate transactions.
 - **Package:** `com.bsolutions.wallet`
 - **Repository:** `https://github.com/wailanbrea/walletFinanzas.git`
 - **Local Path:** `C:\xampp\php\www\wallet Finanzas\WalletFinanzasPersonales`
-- **Docs:** `C:\xampp\php\www\wallet Finanzas\docs\` (00–09, 99_TODO)
+- **Docs:** `C:\xampp\php\www\wallet Finanzas\docs\` (00–09, 99_PENDING)
 
 ## 2. Architecture
 
